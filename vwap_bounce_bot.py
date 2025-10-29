@@ -7,11 +7,11 @@ import os
 import logging
 from datetime import datetime, time, timedelta
 from collections import deque
-from typing import Dict, List, Optional, Tuple, Callable
+from typing import Any, Dict, List, Optional, Tuple, Callable
 import pytz
 
 # Configuration Dictionary
-CONFIG = {
+CONFIG: Dict[str, Any] = {
     # Trading Parameters
     "instrument": "MES",
     "timezone": "America/New_York",
@@ -65,14 +65,18 @@ CONFIG = {
     "max_bars_storage": 200
 }
 
+# String constants
+MSG_LIVE_TRADING_NOT_IMPLEMENTED = "Live trading not implemented - SDK integration required"
+SEPARATOR_LINE = "=" * 60
+
 # Global SDK client instance
 sdk_client = None
 
 # State management dictionary
-state = {}
+state: Dict[str, Any] = {}
 
 # Global tracking for safety mechanisms (Phase 12)
-bot_status = {
+bot_status: Dict[str, Any] = {
     "trading_enabled": True,
     "starting_equity": None,
     "last_tick_time": None,
@@ -154,7 +158,7 @@ def get_account_equity() -> float:
         return 0.0
 
 
-def place_market_order(symbol: str, side: str, quantity: int) -> Optional[Dict]:
+def place_market_order(symbol: str, side: str, quantity: int) -> Optional[Dict[str, Any]]:
     """
     Place a market order through the SDK.
     
@@ -188,14 +192,14 @@ def place_market_order(symbol: str, side: str, quantity: int) -> Optional[Dict]:
         # )
         # return order
         
-        logger.warning("Live trading not implemented - SDK integration required")
+        logger.warning(MSG_LIVE_TRADING_NOT_IMPLEMENTED)
         return None
     except Exception as e:
         logger.error(f"Error placing market order: {e}")
         return None
 
 
-def place_stop_order(symbol: str, side: str, quantity: int, stop_price: float) -> Optional[Dict]:
+def place_stop_order(symbol: str, side: str, quantity: int, stop_price: float) -> Optional[Dict[str, Any]]:
     """
     Place a stop order through the SDK.
     
@@ -232,14 +236,14 @@ def place_stop_order(symbol: str, side: str, quantity: int, stop_price: float) -
         # )
         # return order
         
-        logger.warning("Live trading not implemented - SDK integration required")
+        logger.warning(MSG_LIVE_TRADING_NOT_IMPLEMENTED)
         return None
     except Exception as e:
         logger.error(f"Error placing stop order: {e}")
         return None
 
 
-def place_limit_order(symbol: str, side: str, quantity: int, limit_price: float) -> Optional[Dict]:
+def place_limit_order(symbol: str, side: str, quantity: int, limit_price: float) -> Optional[Dict[str, Any]]:
     """
     Place a limit order through the SDK.
     Phase Seven: Used for aggressive flatten orders to avoid market order slippage.
@@ -277,7 +281,7 @@ def place_limit_order(symbol: str, side: str, quantity: int, limit_price: float)
         # )
         # return order
         
-        logger.warning("Live trading not implemented - SDK integration required")
+        logger.warning(MSG_LIVE_TRADING_NOT_IMPLEMENTED)
         return None
     except Exception as e:
         logger.error(f"Error placing limit order: {e}")
@@ -315,7 +319,7 @@ def get_position_quantity(symbol: str) -> int:
         return 0
 
 
-def subscribe_market_data(symbol: str, callback: Callable):
+def subscribe_market_data(symbol: str, callback: Callable[[str, float, int, int], None]) -> None:
     """
     Subscribe to real-time market data for a symbol.
     
@@ -337,7 +341,7 @@ def subscribe_market_data(symbol: str, callback: Callable):
         logger.error(f"Error subscribing to market data: {e}")
 
 
-def fetch_historical_bars(symbol: str, timeframe: int, count: int) -> List[Dict]:
+def fetch_historical_bars(symbol: str, timeframe: int, count: int) -> List[Dict[str, Any]]:
     """
     Fetch historical bars for initial trend calculation.
     
@@ -372,7 +376,7 @@ def fetch_historical_bars(symbol: str, timeframe: int, count: int) -> List[Dict]
 # PHASE THREE: State Management
 # ============================================================================
 
-def initialize_state(symbol: str):
+def initialize_state(symbol: str) -> None:
     """
     Initialize state tracking for an instrument.
     
@@ -453,7 +457,7 @@ def initialize_state(symbol: str):
 # PHASE FOUR: Data Processing Pipeline
 # ============================================================================
 
-def on_tick(symbol: str, price: float, volume: int, timestamp_ms: int):
+def on_tick(symbol: str, price: float, volume: int, timestamp_ms: int) -> None:
     """
     Handle incoming tick data.
     
@@ -497,7 +501,7 @@ def on_tick(symbol: str, price: float, volume: int, timestamp_ms: int):
     update_15min_bar(symbol, price, volume, dt)
 
 
-def update_1min_bar(symbol: str, price: float, volume: int, dt: datetime):
+def update_1min_bar(symbol: str, price: float, volume: int, dt: datetime) -> None:
     """
     Update or create 1-minute bars for VWAP calculation.
     
@@ -540,7 +544,7 @@ def update_1min_bar(symbol: str, price: float, volume: int, dt: datetime):
         current_bar["volume"] += volume
 
 
-def update_15min_bar(symbol: str, price: float, volume: int, dt: datetime):
+def update_15min_bar(symbol: str, price: float, volume: int, dt: datetime) -> None:
     """
     Update or create 15-minute bars for trend filter.
     
@@ -580,7 +584,7 @@ def update_15min_bar(symbol: str, price: float, volume: int, dt: datetime):
         current_bar["volume"] += volume
 
 
-def update_trend_filter(symbol: str):
+def update_trend_filter(symbol: str) -> None:
     """
     Update the trend filter using EMA of 15-minute bars.
     
@@ -645,7 +649,7 @@ def calculate_ema(values: List[float], period: int) -> Optional[float]:
 # PHASE FIVE: VWAP Calculation
 # ============================================================================
 
-def calculate_vwap(symbol: str):
+def calculate_vwap(symbol: str) -> None:
     """
     Calculate VWAP and standard deviation bands from 1-minute bars.
     VWAP is volume-weighted average price, reset daily.
@@ -704,7 +708,7 @@ def calculate_vwap(symbol: str):
 # PHASE SEVEN: Signal Generation Logic
 # ============================================================================
 
-def check_for_signals(symbol: str):
+def check_for_signals(symbol: str) -> None:
     """
     Check for trading signals on each completed 1-minute bar.
     Called after VWAP calculation is complete.
@@ -801,7 +805,7 @@ def check_for_signals(symbol: str):
         logger.debug(f"Long check: touched_lower={touched_lower}, bounced_back={bounced_back}")
         
         if touched_lower and bounced_back:
-            logger.info(f"LONG SIGNAL: Bounce off lower band 2 with uptrend")
+            logger.info("LONG SIGNAL: Bounce off lower band 2 with uptrend")
             logger.info(f"  Price: {current_bar['close']:.2f}, Lower Band 2: {vwap_bands['lower_2']:.2f}")
             logger.info(f"  Trend: {trend}, EMA: {state[symbol]['trend_ema']:.2f}")
             execute_entry(symbol, "long", current_bar["close"])
@@ -815,7 +819,7 @@ def check_for_signals(symbol: str):
         bounced_back = current_bar["close"] < vwap_bands["upper_2"]
         
         if touched_upper and bounced_back:
-            logger.info(f"SHORT SIGNAL: Bounce off upper band 2 with downtrend")
+            logger.info("SHORT SIGNAL: Bounce off upper band 2 with downtrend")
             logger.info(f"  Price: {current_bar['close']:.2f}, Upper Band 2: {vwap_bands['upper_2']:.2f}")
             logger.info(f"  Trend: {trend}, EMA: {state[symbol]['trend_ema']:.2f}")
             execute_entry(symbol, "short", current_bar["close"])
@@ -901,7 +905,7 @@ def calculate_position_size(symbol: str, side: str, entry_price: float) -> Tuple
 # PHASE NINE: Entry Execution
 # ============================================================================
 
-def execute_entry(symbol: str, side: str, entry_price: float):
+def execute_entry(symbol: str, side: str, entry_price: float) -> None:
     """
     Execute entry order with stop loss and target.
     Phase Four: Double time check before placing entry order.
@@ -931,18 +935,18 @@ def execute_entry(symbol: str, side: str, entry_price: float):
     trading_state = get_trading_state(entry_time)
     
     if trading_state != "entry_window":
-        logger.warning("=" * 60)
+        logger.warning(SEPARATOR_LINE)
         logger.warning("ENTRY ABORTED - No longer in entry window")
         logger.warning(f"  Current state: {trading_state}")
         logger.warning(f"  Time: {entry_time.strftime('%H:%M:%S %Z')}")
-        logger.warning(f"  Signal triggered but calculations took too long")
-        logger.warning("=" * 60)
+        logger.warning("  Signal triggered but calculations took too long")
+        logger.warning(SEPARATOR_LINE)
         return
     
     # Place market order
     order_side = "BUY" if side == "long" else "SELL"
     
-    logger.info(f"=" * 60)
+    logger.info(SEPARATOR_LINE)
     logger.info(f"ENTERING {side.upper()} POSITION")
     logger.info(f"  Time: {entry_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
     logger.info(f"  Symbol: {symbol}")
@@ -982,14 +986,14 @@ def execute_entry(symbol: str, side: str, entry_price: float):
     state[symbol]["daily_trade_count"] += 1
     
     logger.info(f"Position opened successfully (Trade {state[symbol]['daily_trade_count']}/{CONFIG['max_trades_per_day']})")
-    logger.info("=" * 60)
+    logger.info(SEPARATOR_LINE)
 
 
 # ============================================================================
 # PHASE TEN: Exit Management
 # ============================================================================
 
-def check_exit_conditions(symbol: str):
+def check_exit_conditions(symbol: str) -> None:
     """
     Check exit conditions for open position on each bar.
     Implements flatten mode for aggressive position closing.
@@ -1046,9 +1050,9 @@ def check_exit_conditions(symbol: str):
             position_details
         )
         
-        logger.critical("=" * 60)
+        logger.critical(SEPARATOR_LINE)
         logger.critical("FLATTEN MODE ACTIVATED - POSITION MUST CLOSE IN 15 MINUTES")
-        logger.critical("=" * 60)
+        logger.critical(SEPARATOR_LINE)
     
     # Phase Six: Minute-by-minute status logging during flatten mode
     if bot_status["flatten_mode"]:
@@ -1090,9 +1094,9 @@ def check_exit_conditions(symbol: str):
     
     # Force close at forced_flatten_time (4:45 PM)
     if trading_state == "closed":
-        logger.critical("=" * 60)
+        logger.critical(SEPARATOR_LINE)
         logger.critical("EMERGENCY FORCED FLATTEN - 4:45 PM DEADLINE REACHED")
-        logger.critical("=" * 60)
+        logger.critical(SEPARATOR_LINE)
         # Phase Seven: Use aggressive limit order for forced flatten
         flatten_price = get_flatten_price(symbol, side, current_bar["close"])
         execute_exit(symbol, flatten_price, "emergency_forced_flatten")
@@ -1191,9 +1195,9 @@ def check_exit_conditions(symbol: str):
     if bar_time.weekday() == 4:  # Friday
         # Target close by 3 PM to avoid weekend gap risk
         if bar_time.time() >= CONFIG["friday_close_target"]:
-            logger.critical("=" * 60)
+            logger.critical(SEPARATOR_LINE)
             logger.critical("FRIDAY 3 PM - CLOSING POSITION TO AVOID WEEKEND GAP RISK")
-            logger.critical("=" * 60)
+            logger.critical(SEPARATOR_LINE)
             flatten_price = get_flatten_price(symbol, side, current_bar["close"])
             execute_exit(symbol, flatten_price, "friday_weekend_protection")
             return
@@ -1308,7 +1312,7 @@ def get_flatten_price(symbol: str, side: str, current_price: float) -> float:
     return round_to_tick(flatten_price)
 
 
-def execute_exit(symbol: str, exit_price: float, reason: str):
+def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
     """
     Execute exit order and update P&L.
     Phase Seven: Use aggressive limit orders during flatten mode.
@@ -1327,7 +1331,7 @@ def execute_exit(symbol: str, exit_price: float, reason: str):
     order_side = "SELL" if position["side"] == "long" else "BUY"
     exit_time = datetime.now(pytz.timezone(CONFIG["timezone"]))
     
-    logger.info("=" * 60)
+    logger.info(SEPARATOR_LINE)
     logger.info(f"EXITING {position['side'].upper()} POSITION")
     logger.info(f"  Reason: {reason.replace('_', ' ').title()}")
     logger.info(f"  Time: {exit_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
@@ -1426,7 +1430,7 @@ def execute_exit(symbol: str, exit_price: float, reason: str):
     
     logger.info(f"Daily P&L: ${state[symbol]['daily_pnl']:+.2f}")
     logger.info(f"Trades today: {state[symbol]['daily_trade_count']}/{CONFIG['max_trades_per_day']}")
-    logger.info("=" * 60)
+    logger.info(SEPARATOR_LINE)
     
     # Reset position tracking
     state[symbol]["position"] = {
@@ -1441,7 +1445,7 @@ def execute_exit(symbol: str, exit_price: float, reason: str):
 
 
 def execute_flatten_with_limit_orders(symbol: str, order_side: str, contracts: int, 
-                                       base_price: float, reason: str):
+                                       base_price: float, reason: str) -> None:
     """
     Phase Seven & Eight: Execute flatten using aggressive limit orders with partial fill handling.
     
@@ -1520,7 +1524,7 @@ def execute_flatten_with_limit_orders(symbol: str, order_side: str, contracts: i
 # PHASE ELEVEN: Daily Reset Logic
 # ============================================================================
 
-def check_vwap_reset(symbol: str, current_time: datetime):
+def check_vwap_reset(symbol: str, current_time: datetime) -> None:
     """
     Check if VWAP should reset at 9:30 AM ET (stock market open).
     VWAP resets daily at market open since MES/MNQ track equity indexes.
@@ -1544,7 +1548,7 @@ def check_vwap_reset(symbol: str, current_time: datetime):
         perform_vwap_reset(symbol, current_date, current_time)
 
 
-def perform_vwap_reset(symbol: str, new_date, reset_time: datetime):
+def perform_vwap_reset(symbol: str, new_date: Any, reset_time: datetime) -> None:
     """
     Perform VWAP reset at 9:30 AM ET daily.
     
@@ -1553,10 +1557,10 @@ def perform_vwap_reset(symbol: str, new_date, reset_time: datetime):
         new_date: The new VWAP date
         reset_time: Time of the reset
     """
-    logger.info("=" * 60)
+    logger.info(SEPARATOR_LINE)
     logger.info(f"VWAP RESET at {reset_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
     logger.info(f"Stock market open alignment - New VWAP day: {new_date}")
-    logger.info("=" * 60)
+    logger.info(SEPARATOR_LINE)
     
     # Clear accumulated 1-minute bars for VWAP calculation
     state[symbol]["bars_1min"].clear()
@@ -1577,10 +1581,10 @@ def perform_vwap_reset(symbol: str, new_date, reset_time: datetime):
     # Note: 15-minute trend bars continue running - trend carries from overnight
     logger.info("VWAP data cleared - 15-minute trend bars continue running")
     logger.info(f"Current 15-min bars: {len(state[symbol]['bars_15min'])}")
-    logger.info("=" * 60)
+    logger.info(SEPARATOR_LINE)
 
 
-def check_daily_reset(symbol: str, current_time: datetime):
+def check_daily_reset(symbol: str, current_time: datetime) -> None:
     """
     Check if we've crossed into a new trading day and reset daily counters.
     This happens at 9:30 AM ET along with VWAP reset, but tracks date changes.
@@ -1604,7 +1608,7 @@ def check_daily_reset(symbol: str, current_time: datetime):
         logger.info(f"Trading day initialized: {current_date}")
 
 
-def perform_daily_reset(symbol: str, new_date):
+def perform_daily_reset(symbol: str, new_date: Any) -> None:
     """
     Perform the actual daily reset operations.
     Resets daily counters and session stats.
@@ -1614,9 +1618,9 @@ def perform_daily_reset(symbol: str, new_date):
         symbol: Instrument symbol
         new_date: The new trading date
     """
-    logger.info("="*60)
+    logger.info(SEPARATOR_LINE)
     logger.info(f"DAILY RESET - New Trading Day: {new_date}")
-    logger.info("="*60)
+    logger.info(SEPARATOR_LINE)
     
     # Log session summary before reset
     log_session_summary(symbol)
@@ -1648,7 +1652,7 @@ def perform_daily_reset(symbol: str, new_date):
     
     logger.info("Daily reset complete - Ready for trading")
     logger.info("(VWAP reset handled separately at 9:30 AM)")
-    logger.info("="*60)
+    logger.info(SEPARATOR_LINE)
 
 
 # ============================================================================
@@ -1680,7 +1684,7 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
     if state[symbol]["daily_pnl"] <= -CONFIG["daily_loss_limit"]:
         if bot_status["trading_enabled"]:
             logger.critical(f"DAILY LOSS LIMIT BREACHED: ${state[symbol]['daily_pnl']:.2f}")
-            logger.critical(f"Trading STOPPED for the day")
+            logger.critical("Trading STOPPED for the day")
             bot_status["trading_enabled"] = False
             bot_status["stop_reason"] = "daily_loss_limit"
         return False, "Daily loss limit exceeded"
@@ -1727,7 +1731,7 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
     return True, None
 
 
-def check_no_overnight_positions(symbol: str):
+def check_no_overnight_positions(symbol: str) -> None:
     """
     Phase Eleven: Critical safety check - ensure NO positions past 5 PM.
     This prevents gap risk and TopStep evaluation issues.
@@ -1810,7 +1814,7 @@ def validate_order(symbol: str, side: str, quantity: int, entry_price: float,
 # PHASE THIRTEEN: Logging and Monitoring
 # ============================================================================
 
-def log_session_summary(symbol: str):
+def log_session_summary(symbol: str) -> None:
     """
     Log comprehensive session summary at end of trading day.
     
@@ -1819,9 +1823,9 @@ def log_session_summary(symbol: str):
     """
     stats = state[symbol]["session_stats"]
     
-    logger.info("="*60)
+    logger.info(SEPARATOR_LINE)
     logger.info("SESSION SUMMARY")
-    logger.info("="*60)
+    logger.info(SEPARATOR_LINE)
     logger.info(f"Trading Day: {state[symbol]['trading_day']}")
     logger.info(f"Total Trades: {len(stats['trades'])}")
     logger.info(f"Wins: {stats['win_count']}")
@@ -1849,7 +1853,7 @@ def log_session_summary(symbol: str):
     total_decisions = (bot_status["target_wait_wins"] + bot_status["target_wait_losses"] + 
                        bot_status["early_close_saves"])
     if total_decisions > 0:
-        logger.info("="*60)
+        logger.info(SEPARATOR_LINE)
         logger.info("FLATTEN MODE EXIT ANALYSIS (Phase 10)")
         logger.info(f"Target Wait Wins: {bot_status['target_wait_wins']}")
         logger.info(f"Target Wait Losses: {bot_status['target_wait_losses']}")
@@ -1858,11 +1862,11 @@ def log_session_summary(symbol: str):
             target_success_rate = (bot_status["target_wait_wins"] / 
                                    (bot_status["target_wait_wins"] + bot_status["target_wait_losses"]) * 100)
             logger.info(f"Target Wait Success Rate: {target_success_rate:.1f}%")
-        logger.info("="*60)
+        logger.info(SEPARATOR_LINE)
     
     # Phase Twenty: Position duration statistics
     if len(stats['trade_durations']) > 0:
-        logger.info("="*60)
+        logger.info(SEPARATOR_LINE)
         logger.info("POSITION DURATION ANALYSIS (Phase 20)")
         
         avg_duration = sum(stats['trade_durations']) / len(stats['trade_durations'])
@@ -1904,12 +1908,12 @@ def log_session_summary(symbol: str):
             logger.warning("⚠️  Average duration uses >80% of available time window")
             logger.warning(f"   Avg duration {avg_duration:.1f} min vs {time_to_flatten_at_2pm} min available at 2 PM")
         
-        logger.info("="*60)
+        logger.info(SEPARATOR_LINE)
     
-    logger.info("="*60)
+    logger.info(SEPARATOR_LINE)
 
 
-def update_session_stats(symbol: str, pnl: float):
+def update_session_stats(symbol: str, pnl: float) -> None:
     """
     Update session statistics after a trade.
     
@@ -2024,7 +2028,7 @@ def get_trading_state(dt: datetime = None) -> str:
 # PHASE FIFTEEN & SIXTEEN: Timezone Handling and Time-Based Logging
 # ============================================================================
 
-def validate_timezone_configuration():
+def validate_timezone_configuration() -> None:
     """
     Phase Fifteen: Validate timezone configuration on bot startup.
     Ensures pytz is working correctly and DST is handled properly.
@@ -2032,9 +2036,9 @@ def validate_timezone_configuration():
     tz = pytz.timezone(CONFIG["timezone"])
     current_time = datetime.now(tz)
     
-    logger.info("=" * 60)
+    logger.info(SEPARATOR_LINE)
     logger.info("TIMEZONE CONFIGURATION VALIDATION")
-    logger.info("=" * 60)
+    logger.info(SEPARATOR_LINE)
     logger.info(f"Configured Timezone: {CONFIG['timezone']}")
     logger.info(f"Current Time (ET): {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
     logger.info(f"UTC Offset: {current_time.strftime('%z')}")
@@ -2049,14 +2053,14 @@ def validate_timezone_configuration():
     # Warn if system local time differs significantly from ET
     system_time = datetime.now()
     if abs((current_time.replace(tzinfo=None) - system_time).total_seconds()) > 3600:
-        logger.warning(f"System local time differs from ET by >1 hour")
+        logger.warning("System local time differs from ET by >1 hour")
         logger.warning(f"System: {system_time.strftime('%H:%M:%S')}, ET: {current_time.strftime('%H:%M:%S')}")
         logger.warning("All trading decisions use ET - system time is informational only")
     
-    logger.info("=" * 60)
+    logger.info(SEPARATOR_LINE)
 
 
-def log_time_based_action(action: str, reason: str, details: dict = None):
+def log_time_based_action(action: str, reason: str, details: Optional[Dict[str, Any]] = None) -> None:
     """
     Phase Sixteen: Log all time-based actions with timestamp and reason.
     Creates audit trail for reviewing time-based rule performance.
@@ -2258,11 +2262,11 @@ VALIDATION:
 # MAIN EXECUTION
 # ============================================================================
 
-def main():
+def main() -> None:
     """Main bot execution"""
-    logger.info("="*60)
+    logger.info(SEPARATOR_LINE)
     logger.info("VWAP Bounce Bot Starting")
-    logger.info("="*60)
+    logger.info(SEPARATOR_LINE)
     logger.info(f"Mode: {'DRY RUN' if CONFIG['dry_run'] else 'LIVE TRADING'}")
     logger.info(f"Instrument: {CONFIG['instrument']}")
     logger.info(f"Entry Window: {CONFIG['entry_window_start']} - {CONFIG['entry_window_end']} ET")
@@ -2272,7 +2276,7 @@ def main():
     logger.info(f"Max Trades/Day: {CONFIG['max_trades_per_day']}")
     logger.info(f"Daily Loss Limit: ${CONFIG['daily_loss_limit']}")
     logger.info(f"Max Drawdown: {CONFIG['max_drawdown_percent']}%")
-    logger.info("="*60)
+    logger.info(SEPARATOR_LINE)
     
     # Phase Fifteen: Validate timezone configuration
     validate_timezone_configuration()

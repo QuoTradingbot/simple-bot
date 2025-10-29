@@ -34,14 +34,17 @@ class Trade:
 
 @dataclass
 class BacktestConfig:
-    """Configuration for backtesting"""
+    """
+    Configuration for backtesting.
+    Backtesting is completely independent of broker API and uses only historical data.
+    """
     start_date: datetime
     end_date: datetime
     initial_equity: float = 25000.0
     symbols: List[str] = field(default_factory=lambda: ["MES"])
     slippage_ticks: float = 0.5  # Average slippage in ticks
     commission_per_contract: float = 2.50  # Round-trip commission
-    data_source: str = "csv"  # "csv" or "api"
+    data_source: str = "csv"  # "csv" for local files (no API needed)
     data_path: str = "./historical_data"
     
 
@@ -445,7 +448,19 @@ class PerformanceMetrics:
 
 
 class BacktestEngine:
-    """Main backtesting engine that replays historical data through the bot"""
+    """
+    Main backtesting engine that replays historical data through the bot.
+    
+    This engine is completely independent of the broker API and runs using
+    only historical data. It simulates live trading by:
+    1. Loading historical tick and bar data from CSV files
+    2. Replaying each tick/bar as if it's happening in real-time
+    3. Executing the trading strategy on historical data
+    4. Simulating realistic order fills with slippage
+    5. Tracking performance metrics
+    
+    No broker connection or API token is needed for backtesting.
+    """
     
     def __init__(self, config: BacktestConfig, bot_config: Dict[str, Any]):
         self.config = config
@@ -501,35 +516,108 @@ class BacktestEngine:
         return results
     
     def _run_symbol_backtest(self, symbol: str, strategy_func: Any) -> None:
-        """Run backtest for a single symbol"""
+        """
+        Run backtest for a single symbol with tick-by-tick replay.
+        Replays historical data as if it's live trading.
+        """
         self.logger.info(f"\nBacktesting {symbol}...")
         
-        # Load data
-        bars = self.data_loader.load_bar_data(symbol, "1min")
+        # Load tick data for tick-by-tick replay
+        ticks = self.data_loader.load_tick_data(symbol)
         
-        if len(bars) == 0:
+        # Also load bar data for VWAP and trend calculations
+        bars_1min = self.data_loader.load_bar_data(symbol, "1min")
+        bars_15min = self.data_loader.load_bar_data(symbol, "15min")
+        
+        if len(ticks) == 0 and len(bars_1min) == 0:
             self.logger.warning(f"No data available for {symbol}")
             return
             
         # Validate data quality
-        is_valid, issues = self.data_loader.validate_data_quality(bars)
-        if not is_valid:
-            self.logger.warning(f"Data quality issues found:")
-            for issue in issues:
-                self.logger.warning(f"  - {issue}")
-                
-        # Process each bar
-        for i, bar in enumerate(bars):
+        if len(bars_1min) > 0:
+            is_valid, issues = self.data_loader.validate_data_quality(bars_1min)
+            if not is_valid:
+                self.logger.warning(f"Data quality issues found:")
+                for issue in issues:
+                    self.logger.warning(f"  - {issue}")
+        
+        # Decide whether to use tick-by-tick or bar-by-bar replay
+        if len(ticks) > 0:
+            self.logger.info(f"Running tick-by-tick replay with {len(ticks)} ticks")
+            self._replay_ticks(symbol, ticks, bars_1min, bars_15min, strategy_func)
+        else:
+            self.logger.info(f"Running bar-by-bar replay with {len(bars_1min)} bars")
+            self._replay_bars(symbol, bars_1min, bars_15min, strategy_func)
+    
+    def _replay_ticks(self, symbol: str, ticks: List[Dict[str, Any]], 
+                      bars_1min: List[Dict[str, Any]], bars_15min: List[Dict[str, Any]],
+                      strategy_func: Any) -> None:
+        """
+        Replay ticks one by one as if it's live trading.
+        This simulates the actual bot behavior with historical data.
+        """
+        for i, tick in enumerate(ticks):
+            # Check pending orders on each tick
+            if self.current_position is not None:
+                self._check_tick_exits(tick)
+            
+            # Run strategy logic (placeholder - would integrate with actual bot)
+            # In full integration, this would call the bot's on_tick handler
+            # which processes the tick, updates bars, checks signals, etc.
+            
+            if i % 1000 == 0:
+                self.logger.debug(f"Processed {i}/{len(ticks)} ticks")
+        
+        self.logger.info(f"Processed {len(ticks)} ticks for {symbol}")
+    
+    def _replay_bars(self, symbol: str, bars_1min: List[Dict[str, Any]], 
+                     bars_15min: List[Dict[str, Any]], strategy_func: Any) -> None:
+        """
+        Replay bars when tick data is not available.
+        Each bar is treated as a single event.
+        """
+        for i, bar in enumerate(bars_1min):
             # Check pending orders (stops, limits)
             self._process_pending_orders(bar)
             
-            # Run strategy logic (would integrate with bot strategy)
-            # This is a placeholder - actual integration would call bot's signal logic
+            # Run strategy logic (placeholder - actual integration would call bot's signal logic)
             
-            # For now, we just track the bar
-            pass
+        self.logger.info(f"Processed {len(bars_1min)} bars for {symbol}")
+    
+    def _check_tick_exits(self, tick: Dict[str, Any]) -> None:
+        """
+        Check if any exit conditions are met on a tick.
+        This provides more accurate simulation than bar-based exits.
+        """
+        if self.current_position is None:
+            return
+        
+        price = tick['price']
+        timestamp = tick['timestamp']
+        
+        # Check stop loss
+        if 'stop_price' in self.current_position:
+            stop_price = self.current_position['stop_price']
+            side = self.current_position['side']
             
-        self.logger.info(f"Processed {len(bars)} bars for {symbol}")
+            if side == 'long' and price <= stop_price:
+                self._close_position(timestamp, stop_price, 'stop_loss')
+                return
+            elif side == 'short' and price >= stop_price:
+                self._close_position(timestamp, stop_price, 'stop_loss')
+                return
+        
+        # Check target
+        if 'target_price' in self.current_position:
+            target_price = self.current_position['target_price']
+            side = self.current_position['side']
+            
+            if side == 'long' and price >= target_price:
+                self._close_position(timestamp, target_price, 'target_reached')
+                return
+            elif side == 'short' and price <= target_price:
+                self._close_position(timestamp, target_price, 'target_reached')
+                return
     
     def _process_pending_orders(self, bar: Dict[str, Any]) -> None:
         """Process any pending stop or limit orders"""

@@ -60,11 +60,11 @@ class BotConfiguration:
     log_file: str = "vwap_bounce_bot.log"
     max_bars_storage: int = 200
     
-    # Broker Configuration
+    # Broker Configuration (only for live trading)
     api_token: Optional[str] = None
     
     # Operational mode
-    backtest_mode: bool = False  # When True, API token not required
+    backtest_mode: bool = False  # When True, runs in backtest mode without broker
     
     # Environment
     environment: str = "production"  # "development", "staging", "production"
@@ -308,8 +308,12 @@ def log_config(config: BotConfiguration, logger) -> None:
     logger.info("CONFIGURATION")
     logger.info("=" * 60)
     logger.info(f"Environment: {config.environment}")
-    logger.info(f"Broker: TopStep")
-    logger.info(f"Dry Run: {config.dry_run}")
+    
+    # Only show broker info in live mode
+    if not config.backtest_mode:
+        logger.info(f"Broker: TopStep")
+        logger.info(f"Dry Run: {config.dry_run}")
+    
     logger.info(f"Instrument: {config.instrument}")
     logger.info(f"Timezone: {config.timezone}")
     logger.info(f"Risk per Trade: {config.risk_per_trade * 100:.1f}%")
@@ -324,9 +328,11 @@ def log_config(config: BotConfiguration, logger) -> None:
     logger.info(f"Flatten Time: {config.flatten_time} ET")
     logger.info(f"Forced Flatten: {config.forced_flatten_time} ET")
     
-    # Never log API tokens
-    if config.api_token:
-        logger.info("API Token: *** (configured)")
+    # API token info (only relevant for live trading)
+    if config.backtest_mode:
+        logger.info("Mode: Backtest (no API/broker connection needed)")
+    elif config.api_token:
+        logger.info("API Token: *** (configured for live trading)")
     else:
         logger.info("API Token: (not configured)")
     

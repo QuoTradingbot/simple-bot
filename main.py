@@ -131,10 +131,14 @@ Examples:
 
 
 def run_backtest(args, bot_config):
-    """Run backtesting mode"""
+    """
+    Run backtesting mode - completely independent of broker API.
+    Uses historical data to replay market conditions and simulate trading.
+    """
     logger = logging.getLogger('main')
     logger.info("="*60)
     logger.info("STARTING BACKTEST MODE")
+    logger.info("Backtesting does NOT use broker API - runs on historical data only")
     logger.info("="*60)
     
     # Determine date range
@@ -273,9 +277,8 @@ def main():
     backtest_mode = (args.mode == 'backtest')
     bot_config = load_config(environment=args.environment, backtest_mode=backtest_mode)
     
-    # Set a placeholder token for backtesting if not provided
-    if backtest_mode and not bot_config.api_token:
-        bot_config.api_token = 'BACKTEST_MODE_NO_TOKEN_NEEDED'
+    # In backtest mode, we don't need API token at all
+    # The backtest runs completely independently using historical data
     
     # Override symbol if specified
     if args.symbol:

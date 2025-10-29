@@ -90,7 +90,7 @@ bot_status: Dict[str, Any] = {
 }
 
 
-def setup_logging():
+def setup_logging() -> logging.Logger:
     """Configure logging for the bot"""
     logging.basicConfig(
         level=logging.INFO,
@@ -110,7 +110,7 @@ logger = setup_logging()
 # PHASE TWO: SDK Integration
 # ============================================================================
 
-def initialize_sdk():
+def initialize_sdk() -> Optional[Dict[str, Any]]:
     """
     Initialize the TopStep SDK client using environment variable token.
     Returns the initialized client or exits if token is missing.

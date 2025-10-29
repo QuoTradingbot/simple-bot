@@ -104,6 +104,11 @@ ENV/
 env.bak/
 venv.bak/
 
+# Environment configuration files (contain credentials)
+.env.*
+!.env.example
+!.env.*.example
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -126,3 +131,7 @@ dmypy.json
 vwap_bounce_bot.log
 *.log
 /tmp/
+bot.pid
+/logs/
+/data/
+/backups/

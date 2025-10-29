@@ -1,0 +1,49 @@
+[Unit]
+Description=VWAP Bounce Bot - Automated Trading System
+After=network-online.target
+Wants=network-online.target
+Documentation=https://github.com/Quotraders/simple-bot
+
+[Service]
+Type=simple
+User=vwap-bot
+Group=vwap-bot
+WorkingDirectory=/opt/vwap-bot/simple-bot
+Environment="PATH=/opt/vwap-bot/simple-bot/venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=/opt/vwap-bot/simple-bot/.env.production
+
+# Startup command
+ExecStartPre=/opt/vwap-bot/simple-bot/scripts/pre-start-check.sh
+ExecStart=/opt/vwap-bot/simple-bot/venv/bin/python /opt/vwap-bot/simple-bot/main.py --mode live --log-level INFO
+ExecStop=/opt/vwap-bot/simple-bot/scripts/graceful-shutdown.sh
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=5
+StartLimitIntervalSec=300
+
+# Graceful shutdown
+TimeoutStopSec=30
+KillMode=mixed
+KillSignal=SIGTERM
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/vwap-bot/simple-bot/logs /opt/vwap-bot/simple-bot/data
+
+# Resource limits
+LimitNOFILE=65536
+MemoryLimit=2G
+CPUQuota=200%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vwap-bot
+
+[Install]
+WantedBy=multi-user.target

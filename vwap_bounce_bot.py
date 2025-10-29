@@ -27,6 +27,9 @@ CONFIG = {
     "forced_flatten_time": time(16, 45),   # 4:45 PM ET - force close positions
     "shutdown_time": time(17, 0),          # 5:00 PM ET - bot shutdown
     "vwap_reset_time": time(9, 30),        # 9:30 AM ET - VWAP daily reset
+    # Note: VWAP resets at 9:30 AM (stock market open) while entry window starts at 9:00 AM.
+    # This allows overnight VWAP to carry into early trading (9:00-9:30 AM), then resets
+    # at market open for proper equity index alignment.
     
     # Risk Management
     "risk_per_trade": 0.001,  # 0.1% of account equity
@@ -932,14 +935,16 @@ def check_exit_conditions(symbol: str):
         if side == "long":
             profit_ticks = (current_bar["close"] - entry_price) / CONFIG["tick_size"]
             # Take profit if we're up even 1 tick, or cut loss if down more than half the stop distance
-            if profit_ticks > 1 or current_bar["close"] < (entry_price + stop_price) / 2:
+            midpoint = entry_price - (entry_price - stop_price) / 2
+            if profit_ticks > 1 or current_bar["close"] < midpoint:
                 logger.info(f"Flatten mode exit: profit_ticks={profit_ticks:.1f}")
                 execute_exit(symbol, current_bar["close"], "flatten_mode_exit")
                 return
         else:  # short
             profit_ticks = (entry_price - current_bar["close"]) / CONFIG["tick_size"]
             # Take profit if we're up even 1 tick, or cut loss if down more than half the stop distance
-            if profit_ticks > 1 or current_bar["close"] > (entry_price + stop_price) / 2:
+            midpoint = entry_price + (stop_price - entry_price) / 2
+            if profit_ticks > 1 or current_bar["close"] > midpoint:
                 logger.info(f"Flatten mode exit: profit_ticks={profit_ticks:.1f}")
                 execute_exit(symbol, current_bar["close"], "flatten_mode_exit")
                 return

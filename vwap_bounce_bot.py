@@ -608,9 +608,16 @@ def check_for_signals(symbol: str):
     Args:
         symbol: Instrument symbol
     """
-    # Check if within trading hours
-    if not is_trading_hours():
-        logger.info("Outside trading hours, skipping signal check")
+    # Get the latest bar to check its timestamp
+    if len(state[symbol]["bars_1min"]) == 0:
+        return
+    
+    latest_bar = state[symbol]["bars_1min"][-1]
+    bar_time = latest_bar["timestamp"]
+    
+    # Check if within trading hours using the bar timestamp
+    if not is_trading_hours(bar_time):
+        logger.debug(f"Outside trading hours ({bar_time.time()}), skipping signal check")
         return
     
     # Check if already have a position

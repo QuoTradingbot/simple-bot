@@ -41,6 +41,12 @@ CONFIG = {
     "risk_reward_ratio": 1.5,
     "stop_buffer_ticks": 2,  # Buffer beyond band for stop placement
     
+    # Safety Mechanisms (Phase 12)
+    "max_drawdown_percent": 2.0,  # Maximum total drawdown percentage
+    "market_close_time": time(16, 0),  # 4:00 PM ET - hard stop
+    "daily_reset_time": time(8, 0),  # 8:00 AM ET - daily reset
+    "tick_timeout_seconds": 60,  # Max seconds without tick during market hours
+    
     # System Settings
     "dry_run": True,
     "log_file": "vwap_bounce_bot.log",
@@ -53,6 +59,15 @@ sdk_client = None
 
 # State management dictionary
 state = {}
+
+# Global tracking for safety mechanisms (Phase 12)
+bot_status = {
+    "trading_enabled": True,
+    "starting_equity": None,
+    "last_tick_time": None,
+    "emergency_stop": False,
+    "stop_reason": None
+}
 
 
 def setup_logging():
@@ -306,6 +321,17 @@ def initialize_state(symbol: str):
         "trading_day": None,
         "daily_trade_count": 0,
         "daily_pnl": 0.0,
+        
+        # Session tracking (Phase 13)
+        "session_stats": {
+            "trades": [],
+            "win_count": 0,
+            "loss_count": 0,
+            "total_pnl": 0.0,
+            "largest_win": 0.0,
+            "largest_loss": 0.0,
+            "pnl_variance": 0.0
+        },
         
         # Position tracking
         "position": {
@@ -608,6 +634,12 @@ def check_for_signals(symbol: str):
     Args:
         symbol: Instrument symbol
     """
+    # Phase 12: Check safety conditions first
+    is_safe, reason = check_safety_conditions(symbol)
+    if not is_safe:
+        logger.debug(f"Safety check failed: {reason}")
+        return
+    
     # Get the latest bar to check its timestamp
     if len(state[symbol]["bars_1min"]) == 0:
         return
@@ -622,15 +654,15 @@ def check_for_signals(symbol: str):
     
     # Check if already have a position
     if state[symbol]["position"]["active"]:
-        logger.info("Position already active, skipping signal generation")
+        logger.debug("Position already active, skipping signal generation")
         return
     
     # Check daily trade limit
     if state[symbol]["daily_trade_count"] >= CONFIG["max_trades_per_day"]:
-        logger.info(f"Daily trade limit reached ({CONFIG['max_trades_per_day']}), stopping for the day")
+        logger.warning(f"Daily trade limit reached ({CONFIG['max_trades_per_day']}), stopping for the day")
         return
     
-    # Check daily loss limit
+    # Check daily loss limit (redundant with safety check but keep for clarity)
     if state[symbol]["daily_pnl"] <= -CONFIG["daily_loss_limit"]:
         logger.warning(f"Daily loss limit hit (${state[symbol]['daily_pnl']:.2f}), stopping for the day")
         return
@@ -957,6 +989,283 @@ def execute_exit(symbol: str, exit_price: float, reason: str):
         "target_price": None,
         "entry_time": None
     }
+
+
+# ============================================================================
+# PHASE ELEVEN: Daily Reset Logic
+# ============================================================================
+
+def check_daily_reset(symbol: str):
+    """
+    Check if we've crossed into a new trading day and reset counters.
+    Should be called around 8 AM ET before market opens.
+    
+    Args:
+        symbol: Instrument symbol
+    """
+    tz = pytz.timezone(CONFIG["timezone"])
+    current_time = datetime.now(tz)
+    current_date = current_time.date()
+    
+    # Check if it's time for daily reset (8 AM ET)
+    reset_time = CONFIG["daily_reset_time"]
+    
+    # If we have a trading day stored and it's different from current date
+    if state[symbol]["trading_day"] is not None:
+        if state[symbol]["trading_day"] != current_date:
+            # Check if we're past reset time
+            if current_time.time() >= reset_time:
+                perform_daily_reset(symbol, current_date)
+    else:
+        # First run - initialize trading day
+        state[symbol]["trading_day"] = current_date
+        logger.info(f"Trading day initialized: {current_date}")
+
+
+def perform_daily_reset(symbol: str, new_date):
+    """
+    Perform the actual daily reset operations.
+    
+    Args:
+        symbol: Instrument symbol
+        new_date: The new trading date
+    """
+    logger.info("="*60)
+    logger.info(f"DAILY RESET - New Trading Day: {new_date}")
+    logger.info("="*60)
+    
+    # Log session summary before reset
+    log_session_summary(symbol)
+    
+    # Reset daily counters
+    state[symbol]["daily_trade_count"] = 0
+    state[symbol]["daily_pnl"] = 0.0
+    state[symbol]["trading_day"] = new_date
+    
+    # Clear VWAP data (new day = new VWAP)
+    state[symbol]["bars_1min"].clear()
+    state[symbol]["vwap"] = None
+    state[symbol]["vwap_bands"] = {
+        "upper_1": None,
+        "upper_2": None,
+        "lower_1": None,
+        "lower_2": None
+    }
+    state[symbol]["vwap_std_dev"] = None
+    
+    # Reset session stats
+    state[symbol]["session_stats"] = {
+        "trades": [],
+        "win_count": 0,
+        "loss_count": 0,
+        "total_pnl": 0.0,
+        "largest_win": 0.0,
+        "largest_loss": 0.0,
+        "pnl_variance": 0.0
+    }
+    
+    # Re-enable trading if it was stopped for daily limits
+    if bot_status["stop_reason"] == "daily_loss_limit":
+        bot_status["trading_enabled"] = True
+        bot_status["stop_reason"] = None
+        logger.info("Trading re-enabled for new day")
+    
+    logger.info("Daily reset complete - Ready for trading")
+    logger.info("="*60)
+
+
+# ============================================================================
+# PHASE TWELVE: Safety Mechanisms
+# ============================================================================
+
+def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
+    """
+    Check all safety conditions before allowing trading.
+    
+    Args:
+        symbol: Instrument symbol
+    
+    Returns:
+        Tuple of (is_safe, reason) where is_safe is True if safe to trade
+    """
+    tz = pytz.timezone(CONFIG["timezone"])
+    current_time = datetime.now(tz)
+    
+    # Check if emergency stop is active
+    if bot_status["emergency_stop"]:
+        return False, f"Emergency stop active: {bot_status['stop_reason']}"
+    
+    # Check if trading is disabled
+    if not bot_status["trading_enabled"]:
+        return False, f"Trading disabled: {bot_status['stop_reason']}"
+    
+    # Check daily loss limit
+    if state[symbol]["daily_pnl"] <= -CONFIG["daily_loss_limit"]:
+        if bot_status["trading_enabled"]:
+            logger.critical(f"DAILY LOSS LIMIT BREACHED: ${state[symbol]['daily_pnl']:.2f}")
+            logger.critical(f"Trading STOPPED for the day")
+            bot_status["trading_enabled"] = False
+            bot_status["stop_reason"] = "daily_loss_limit"
+        return False, "Daily loss limit exceeded"
+    
+    # Check maximum drawdown
+    if bot_status["starting_equity"] is not None:
+        current_equity = get_account_equity()
+        drawdown_percent = ((bot_status["starting_equity"] - current_equity) / 
+                           bot_status["starting_equity"] * 100)
+        
+        if drawdown_percent >= CONFIG["max_drawdown_percent"]:
+            if not bot_status["emergency_stop"]:
+                logger.critical(f"MAXIMUM DRAWDOWN EXCEEDED: {drawdown_percent:.2f}%")
+                logger.critical(f"Starting: ${bot_status['starting_equity']:.2f}, "
+                              f"Current: ${current_equity:.2f}")
+                logger.critical("EMERGENCY STOP ACTIVATED")
+                bot_status["emergency_stop"] = True
+                bot_status["trading_enabled"] = False
+                bot_status["stop_reason"] = "max_drawdown_exceeded"
+            return False, f"Max drawdown exceeded: {drawdown_percent:.2f}%"
+    
+    # Check time-based kill switch (after 4 PM ET)
+    market_close = CONFIG["market_close_time"]
+    if current_time.time() >= market_close:
+        if bot_status["trading_enabled"]:
+            logger.warning(f"Market closed - Shutting down bot at {current_time.time()}")
+            bot_status["trading_enabled"] = False
+            bot_status["stop_reason"] = "market_closed"
+        return False, "Market closed"
+    
+    # Check connection health (no ticks in 60 seconds during market hours)
+    if bot_status["last_tick_time"] is not None:
+        if is_trading_hours(current_time):
+            time_since_tick = (current_time - bot_status["last_tick_time"]).total_seconds()
+            if time_since_tick > CONFIG["tick_timeout_seconds"]:
+                logger.error(f"DATA FEED ISSUE: No tick in {time_since_tick:.0f} seconds")
+                logger.error("Trading paused - connection health check failed")
+                bot_status["trading_enabled"] = False
+                bot_status["stop_reason"] = "data_feed_timeout"
+                return False, f"No tick data for {time_since_tick:.0f} seconds"
+    
+    return True, None
+
+
+def validate_order(symbol: str, side: str, quantity: int, entry_price: float, 
+                   stop_price: float) -> Tuple[bool, Optional[str]]:
+    """
+    Validate order parameters before placing.
+    
+    Args:
+        symbol: Instrument symbol
+        side: 'long' or 'short'
+        quantity: Number of contracts
+        entry_price: Entry price
+        stop_price: Stop loss price
+    
+    Returns:
+        Tuple of (is_valid, error_message)
+    """
+    # Check quantity is positive
+    if quantity <= 0:
+        return False, f"Invalid quantity: {quantity}"
+    
+    # Check stop price is on correct side of entry
+    if side == "long":
+        if stop_price >= entry_price:
+            return False, f"Stop price ${stop_price:.2f} must be below entry ${entry_price:.2f} for long"
+    else:  # short
+        if stop_price <= entry_price:
+            return False, f"Stop price ${stop_price:.2f} must be above entry ${entry_price:.2f} for short"
+    
+    # Check we have sufficient account equity for margin
+    equity = get_account_equity()
+    if equity <= 0:
+        return False, "Invalid account equity"
+    
+    # Basic margin check (simplified - actual margin requirements vary)
+    # For MES, approximate initial margin is ~$1,200 per contract
+    estimated_margin = quantity * 1200
+    if estimated_margin > equity * 0.5:  # Don't use more than 50% of equity for margin
+        return False, f"Insufficient margin: need ~${estimated_margin:.0f}, have ${equity:.2f}"
+    
+    return True, None
+
+
+# ============================================================================
+# PHASE THIRTEEN: Logging and Monitoring
+# ============================================================================
+
+def log_session_summary(symbol: str):
+    """
+    Log comprehensive session summary at end of trading day.
+    
+    Args:
+        symbol: Instrument symbol
+    """
+    stats = state[symbol]["session_stats"]
+    
+    logger.info("="*60)
+    logger.info("SESSION SUMMARY")
+    logger.info("="*60)
+    logger.info(f"Trading Day: {state[symbol]['trading_day']}")
+    logger.info(f"Total Trades: {len(stats['trades'])}")
+    logger.info(f"Wins: {stats['win_count']}")
+    logger.info(f"Losses: {stats['loss_count']}")
+    
+    if len(stats['trades']) > 0:
+        win_rate = stats['win_count'] / len(stats['trades']) * 100
+        logger.info(f"Win Rate: {win_rate:.1f}%")
+    else:
+        logger.info("Win Rate: N/A (no trades)")
+    
+    logger.info(f"Total P&L: ${stats['total_pnl']:+.2f}")
+    logger.info(f"Largest Win: ${stats['largest_win']:+.2f}")
+    logger.info(f"Largest Loss: ${stats['largest_loss']:+.2f}")
+    
+    # Calculate Sharpe ratio if we have variance data
+    if stats['pnl_variance'] > 0 and len(stats['trades']) > 1:
+        avg_pnl = stats['total_pnl'] / len(stats['trades'])
+        std_dev = (stats['pnl_variance'] / (len(stats['trades']) - 1)) ** 0.5
+        if std_dev > 0:
+            sharpe_ratio = avg_pnl / std_dev
+            logger.info(f"Sharpe Ratio: {sharpe_ratio:.2f}")
+    
+    logger.info("="*60)
+
+
+def update_session_stats(symbol: str, pnl: float):
+    """
+    Update session statistics after a trade.
+    
+    Args:
+        symbol: Instrument symbol
+        pnl: Profit/Loss from the trade
+    """
+    stats = state[symbol]["session_stats"]
+    
+    # Add trade to history
+    stats["trades"].append(pnl)
+    
+    # Update win/loss counts
+    if pnl > 0:
+        stats["win_count"] += 1
+        stats["largest_win"] = max(stats["largest_win"], pnl)
+    elif pnl < 0:
+        stats["loss_count"] += 1
+        stats["largest_loss"] = min(stats["largest_loss"], pnl)
+    
+    # Update total P&L
+    stats["total_pnl"] += pnl
+    
+    # Update variance for Sharpe ratio calculation
+    # Using Welford's online algorithm for variance
+    n = len(stats["trades"])
+    if n == 1:
+        stats["mean_pnl"] = pnl
+        stats["pnl_variance"] = 0.0
+    else:
+        old_mean = stats.get("mean_pnl", 0.0)
+        new_mean = old_mean + (pnl - old_mean) / n
+        stats["pnl_variance"] += (pnl - old_mean) * (pnl - new_mean)
+        stats["mean_pnl"] = new_mean
 
 
 # ============================================================================

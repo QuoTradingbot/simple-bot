@@ -351,32 +351,6 @@ def initialize_state(symbol: str):
     logger.info(f"State initialized for {symbol}")
 
 
-def reset_daily_state(symbol: str):
-    """
-    Reset daily tracking at start of new trading day.
-    
-    Args:
-        symbol: Instrument symbol
-    """
-    if symbol not in state:
-        return
-    
-    logger.info(f"Resetting daily state for {symbol}")
-    
-    state[symbol]["bars_1min"].clear()
-    state[symbol]["daily_trade_count"] = 0
-    state[symbol]["daily_pnl"] = 0.0
-    state[symbol]["vwap"] = None
-    state[symbol]["vwap_bands"] = {
-        "upper_1": None,
-        "upper_2": None,
-        "lower_1": None,
-        "lower_2": None
-    }
-    state[symbol]["vwap_std_dev"] = None
-    state[symbol]["trading_day"] = datetime.now(pytz.timezone(CONFIG["timezone"])).date()
-
-
 # ============================================================================
 # PHASE FOUR: Data Processing Pipeline
 # ============================================================================
@@ -411,11 +385,6 @@ def on_tick(symbol: str, price: float, volume: int, timestamp_ms: int):
     
     # Phase 11: Check for daily reset
     check_daily_reset(symbol)
-    
-    # Check if new trading day (backward compatibility with existing reset logic)
-    current_day = dt.date()
-    if state[symbol]["trading_day"] != current_day:
-        reset_daily_state(symbol)
     
     # Update 1-minute bars
     update_1min_bar(symbol, price, volume, dt)

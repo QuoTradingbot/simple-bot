@@ -1,0 +1,11 @@
+{
+  "timestamp": 1761752925.8889816,
+  "position": 0,
+  "equity": 10000.0,
+  "bot_status": {
+    "trading_enabled": true,
+    "last_tick_time": 1761752923.893636,
+    "emergency_stop": false,
+    "flatten_mode": false
+  }
+}

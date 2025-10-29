@@ -15,10 +15,18 @@ CONFIG = {
     # Trading Parameters
     "instrument": "MES",
     "trading_window": {
-        "start": time(10, 0),  # 10:00 AM ET
-        "end": time(15, 30)    # 3:30 PM ET
+        "start": time(10, 0),  # 10:00 AM ET (legacy, use entry_window_start instead)
+        "end": time(15, 30)    # 3:30 PM ET (legacy, use entry_window_end instead)
     },
     "timezone": "America/New_York",
+    
+    # Enhanced Time Parameters (Phase One)
+    "entry_window_start": time(9, 0),      # 9:00 AM ET - signals enabled
+    "entry_window_end": time(14, 30),      # 2:30 PM ET - signals disabled
+    "warning_time": time(16, 30),          # 4:30 PM ET - flatten mode begins
+    "forced_flatten_time": time(16, 45),   # 4:45 PM ET - force close positions
+    "shutdown_time": time(17, 0),          # 5:00 PM ET - bot shutdown
+    "vwap_reset_time": time(9, 30),        # 9:30 AM ET - VWAP daily reset
     
     # Risk Management
     "risk_per_trade": 0.001,  # 0.1% of account equity
@@ -40,11 +48,12 @@ CONFIG = {
     },
     "risk_reward_ratio": 1.5,
     "stop_buffer_ticks": 2,  # Buffer beyond band for stop placement
+    "flatten_buffer_ticks": 2,  # Ticks worse than bid/offer for flatten orders
     
     # Safety Mechanisms (Phase 12)
     "max_drawdown_percent": 2.0,  # Maximum total drawdown percentage
-    "market_close_time": time(16, 0),  # 4:00 PM ET - hard stop
-    "daily_reset_time": time(8, 0),  # 8:00 AM ET - daily reset
+    "market_close_time": time(17, 0),  # 5:00 PM ET - shutdown time (aligned with shutdown_time)
+    "daily_reset_time": time(8, 0),  # 8:00 AM ET - daily reset (legacy)
     "tick_timeout_seconds": 60,  # Max seconds without tick during market hours
     
     # System Settings
@@ -66,7 +75,8 @@ bot_status = {
     "starting_equity": None,
     "last_tick_time": None,
     "emergency_stop": False,
-    "stop_reason": None
+    "stop_reason": None,
+    "flatten_mode": False  # Phase One: Aggressive exit mode flag
 }
 
 
@@ -308,6 +318,7 @@ def initialize_state(symbol: str):
             "lower_2": None
         },
         "vwap_std_dev": None,
+        "vwap_day": None,  # Phase Three: Track VWAP day separately
         
         # Trend filter
         "trend_ema": None,
@@ -383,8 +394,11 @@ def on_tick(symbol: str, price: float, volume: int, timestamp_ms: int):
     # Append to tick storage
     state[symbol]["ticks"].append(tick)
     
+    # Phase Three: Check for VWAP reset at 9:30 AM ET
+    check_vwap_reset(symbol, dt)
+    
     # Phase 11: Check for daily reset
-    check_daily_reset(symbol)
+    check_daily_reset(symbol, dt)
     
     # Update 1-minute bars
     update_1min_bar(symbol, price, volume, dt)
@@ -621,9 +635,12 @@ def check_for_signals(symbol: str):
     latest_bar = state[symbol]["bars_1min"][-1]
     bar_time = latest_bar["timestamp"]
     
-    # Check if within trading hours using the bar timestamp
-    if not is_trading_hours(bar_time):
-        logger.debug(f"Outside trading hours ({bar_time.time()}), skipping signal check")
+    # Phase Two: Check trading state using centralized time check
+    trading_state = get_trading_state(bar_time)
+    
+    # Only generate signals during entry_window
+    if trading_state != "entry_window":
+        logger.debug(f"Not in entry window (state: {trading_state}), skipping signal check")
         return
     
     # Check if already have a position
@@ -851,6 +868,7 @@ def execute_entry(symbol: str, side: str, entry_price: float):
 def check_exit_conditions(symbol: str):
     """
     Check exit conditions for open position on each bar.
+    Implements flatten mode for aggressive position closing.
     
     Args:
         symbol: Instrument symbol
@@ -864,10 +882,29 @@ def check_exit_conditions(symbol: str):
         return
     
     current_bar = state[symbol]["bars_1min"][-1]
+    bar_time = current_bar["timestamp"]
     side = position["side"]
     entry_price = position["entry_price"]
     stop_price = position["stop_price"]
     target_price = position["target_price"]
+    
+    # Phase Two: Check trading state
+    trading_state = get_trading_state(bar_time)
+    
+    # Update flatten mode flag
+    if trading_state == "flatten_mode" and not bot_status["flatten_mode"]:
+        bot_status["flatten_mode"] = True
+        logger.warning("=" * 60)
+        logger.warning("FLATTEN MODE ACTIVATED - Aggressive exit mode enabled")
+        logger.warning("=" * 60)
+    
+    # Force close at forced_flatten_time
+    if trading_state == "closed":
+        logger.critical("FORCED FLATTEN TIME REACHED - Closing position immediately")
+        # Use current close price with flatten buffer
+        flatten_price = get_flatten_price(symbol, side, current_bar["close"])
+        execute_exit(symbol, flatten_price, "forced_flatten")
+        return
     
     # Check for stop hit
     if side == "long":
@@ -889,21 +926,66 @@ def check_exit_conditions(symbol: str):
             execute_exit(symbol, target_price, "target_reached")
             return
     
-    # Check for signal reversal
-    vwap_bands = state[symbol]["vwap_bands"]
-    trend = state[symbol]["trend_direction"]
+    # Flatten mode: More aggressive profit taking and loss cutting
+    if bot_status["flatten_mode"]:
+        # In flatten mode, take any profit or cut losses quickly
+        if side == "long":
+            profit_ticks = (current_bar["close"] - entry_price) / CONFIG["tick_size"]
+            # Take profit if we're up even 1 tick, or cut loss if down more than half the stop distance
+            if profit_ticks > 1 or current_bar["close"] < (entry_price + stop_price) / 2:
+                logger.info(f"Flatten mode exit: profit_ticks={profit_ticks:.1f}")
+                execute_exit(symbol, current_bar["close"], "flatten_mode_exit")
+                return
+        else:  # short
+            profit_ticks = (entry_price - current_bar["close"]) / CONFIG["tick_size"]
+            # Take profit if we're up even 1 tick, or cut loss if down more than half the stop distance
+            if profit_ticks > 1 or current_bar["close"] > (entry_price + stop_price) / 2:
+                logger.info(f"Flatten mode exit: profit_ticks={profit_ticks:.1f}")
+                execute_exit(symbol, current_bar["close"], "flatten_mode_exit")
+                return
     
-    if side == "long" and trend == "up":
-        # If price crosses back above upper band 2, bounce is complete
-        if current_bar["close"] > vwap_bands["upper_2"]:
-            execute_exit(symbol, current_bar["close"], "signal_reversal")
-            return
+    # Check for signal reversal (only when not in flatten mode)
+    if not bot_status["flatten_mode"]:
+        vwap_bands = state[symbol]["vwap_bands"]
+        trend = state[symbol]["trend_direction"]
+        
+        if side == "long" and trend == "up":
+            # If price crosses back above upper band 2, bounce is complete
+            if current_bar["close"] > vwap_bands["upper_2"]:
+                execute_exit(symbol, current_bar["close"], "signal_reversal")
+                return
+        
+        if side == "short" and trend == "down":
+            # If price crosses back below lower band 1, bounce is complete
+            if current_bar["close"] < vwap_bands["lower_1"]:
+                execute_exit(symbol, current_bar["close"], "signal_reversal")
+                return
+
+
+def get_flatten_price(symbol: str, side: str, current_price: float) -> float:
+    """
+    Calculate flatten price with buffer to avoid worst price.
+    Places limit order N ticks worse than current bid/offer.
     
-    if side == "short" and trend == "down":
-        # If price crosses back below lower band 1, bounce is complete
-        if current_bar["close"] < vwap_bands["lower_1"]:
-            execute_exit(symbol, current_bar["close"], "signal_reversal")
-            return
+    Args:
+        symbol: Instrument symbol
+        side: Position side ('long' or 'short')
+        current_price: Current market price
+    
+    Returns:
+        Adjusted price for flatten order
+    """
+    tick_size = CONFIG["tick_size"]
+    buffer_ticks = CONFIG["flatten_buffer_ticks"]
+    
+    if side == "long":
+        # Selling, so go buffer ticks below current price (worse than bid)
+        flatten_price = current_price - (buffer_ticks * tick_size)
+    else:  # short
+        # Buying, so go buffer ticks above current price (worse than offer)
+        flatten_price = current_price + (buffer_ticks * tick_size)
+    
+    return round_to_tick(flatten_price)
 
 
 def execute_exit(symbol: str, exit_price: float, reason: str):
@@ -978,26 +1060,83 @@ def execute_exit(symbol: str, exit_price: float, reason: str):
 # PHASE ELEVEN: Daily Reset Logic
 # ============================================================================
 
-def check_daily_reset(symbol: str):
+def check_vwap_reset(symbol: str, current_time: datetime):
     """
-    Check if we've crossed into a new trading day and reset counters.
-    Should be called around 8 AM ET before market opens.
+    Check if VWAP should reset at 9:30 AM ET (stock market open).
+    VWAP resets daily at market open since MES/MNQ track equity indexes.
     
     Args:
         symbol: Instrument symbol
+        current_time: Current datetime in Eastern Time
     """
-    tz = pytz.timezone(CONFIG["timezone"])
-    current_time = datetime.now(tz)
     current_date = current_time.date()
+    vwap_reset_time = CONFIG["vwap_reset_time"]
     
-    # Check if it's time for daily reset (8 AM ET)
-    reset_time = CONFIG["daily_reset_time"]
+    # Check if we've crossed 9:30 AM on a new day
+    if state[symbol]["vwap_day"] is None:
+        # First run - initialize VWAP day
+        state[symbol]["vwap_day"] = current_date
+        logger.info(f"VWAP day initialized: {current_date}")
+        return
+    
+    # If it's a new day and we're past 9:30 AM, reset VWAP
+    if state[symbol]["vwap_day"] != current_date and current_time.time() >= vwap_reset_time:
+        perform_vwap_reset(symbol, current_date, current_time)
+
+
+def perform_vwap_reset(symbol: str, new_date, reset_time: datetime):
+    """
+    Perform VWAP reset at 9:30 AM ET daily.
+    
+    Args:
+        symbol: Instrument symbol
+        new_date: The new VWAP date
+        reset_time: Time of the reset
+    """
+    logger.info("=" * 60)
+    logger.info(f"VWAP RESET at {reset_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+    logger.info(f"Stock market open alignment - New VWAP day: {new_date}")
+    logger.info("=" * 60)
+    
+    # Clear accumulated 1-minute bars for VWAP calculation
+    state[symbol]["bars_1min"].clear()
+    
+    # Reset cumulative VWAP data
+    state[symbol]["vwap"] = None
+    state[symbol]["vwap_bands"] = {
+        "upper_1": None,
+        "upper_2": None,
+        "lower_1": None,
+        "lower_2": None
+    }
+    state[symbol]["vwap_std_dev"] = None
+    
+    # Update VWAP day
+    state[symbol]["vwap_day"] = new_date
+    
+    # Note: 15-minute trend bars continue running - trend carries from overnight
+    logger.info("VWAP data cleared - 15-minute trend bars continue running")
+    logger.info(f"Current 15-min bars: {len(state[symbol]['bars_15min'])}")
+    logger.info("=" * 60)
+
+
+def check_daily_reset(symbol: str, current_time: datetime):
+    """
+    Check if we've crossed into a new trading day and reset daily counters.
+    This happens at 9:30 AM ET along with VWAP reset, but tracks date changes.
+    
+    Args:
+        symbol: Instrument symbol
+        current_time: Current datetime in Eastern Time
+    """
+    current_date = current_time.date()
+    vwap_reset_time = CONFIG["vwap_reset_time"]
     
     # If we have a trading day stored and it's different from current date
     if state[symbol]["trading_day"] is not None:
         if state[symbol]["trading_day"] != current_date:
-            # Check if we're past reset time
-            if current_time.time() >= reset_time:
+            # Reset daily counters at 9:30 AM (same as VWAP reset)
+            if current_time.time() >= vwap_reset_time:
                 perform_daily_reset(symbol, current_date)
     else:
         # First run - initialize trading day
@@ -1008,6 +1147,8 @@ def check_daily_reset(symbol: str):
 def perform_daily_reset(symbol: str, new_date):
     """
     Perform the actual daily reset operations.
+    Resets daily counters and session stats.
+    VWAP reset is handled separately by perform_vwap_reset.
     
     Args:
         symbol: Instrument symbol
@@ -1024,17 +1165,6 @@ def perform_daily_reset(symbol: str, new_date):
     state[symbol]["daily_trade_count"] = 0
     state[symbol]["daily_pnl"] = 0.0
     state[symbol]["trading_day"] = new_date
-    
-    # Clear VWAP data (new day = new VWAP)
-    state[symbol]["bars_1min"].clear()
-    state[symbol]["vwap"] = None
-    state[symbol]["vwap_bands"] = {
-        "upper_1": None,
-        "upper_2": None,
-        "lower_1": None,
-        "lower_2": None
-    }
-    state[symbol]["vwap_std_dev"] = None
     
     # Reset session stats
     state[symbol]["session_stats"] = {
@@ -1053,7 +1183,11 @@ def perform_daily_reset(symbol: str, new_date):
         bot_status["stop_reason"] = None
         logger.info("Trading re-enabled for new day")
     
+    # Reset flatten mode flag for new day
+    bot_status["flatten_mode"] = False
+    
     logger.info("Daily reset complete - Ready for trading")
+    logger.info("(VWAP reset handled separately at 9:30 AM)")
     logger.info("="*60)
 
 
@@ -1284,6 +1418,59 @@ def round_to_tick(price: float) -> float:
     """
     tick_size = CONFIG["tick_size"]
     return round(price / tick_size) * tick_size
+
+
+# ============================================================================
+# PHASE TWO: Time Check Function
+# ============================================================================
+
+def get_trading_state(dt: datetime = None) -> str:
+    """
+    Centralized time checking function that returns current trading state.
+    Converts to Eastern Time and determines state based on time of day.
+    
+    Args:
+        dt: Datetime to check (defaults to now in Eastern Time)
+    
+    Returns:
+        Trading state: 'before_open', 'entry_window', 'exit_only', 'flatten_mode', or 'closed'
+    """
+    if dt is None:
+        tz = pytz.timezone(CONFIG["timezone"])
+        dt = datetime.now(tz)
+    elif dt.tzinfo is None:
+        # If naive datetime provided, assume it's Eastern Time
+        tz = pytz.timezone(CONFIG["timezone"])
+        dt = tz.localize(dt)
+    else:
+        # Convert to Eastern Time
+        tz = pytz.timezone(CONFIG["timezone"])
+        dt = dt.astimezone(tz)
+    
+    current_time = dt.time()
+    
+    # Before 9:00 AM - before open
+    if current_time < CONFIG["entry_window_start"]:
+        return "before_open"
+    
+    # 9:00 AM to 2:30 PM - entry window (signals enabled)
+    if CONFIG["entry_window_start"] <= current_time < CONFIG["entry_window_end"]:
+        return "entry_window"
+    
+    # 2:30 PM to 4:30 PM - exit only (signals disabled, position management continues)
+    if CONFIG["entry_window_end"] <= current_time < CONFIG["warning_time"]:
+        return "exit_only"
+    
+    # 4:30 PM to 4:45 PM - flatten mode (aggressive position closing)
+    if CONFIG["warning_time"] <= current_time < CONFIG["forced_flatten_time"]:
+        return "flatten_mode"
+    
+    # After 4:45 PM - closed (force flatten complete, wait for next day)
+    if current_time >= CONFIG["forced_flatten_time"]:
+        return "closed"
+    
+    # Should not reach here, but default to closed for safety
+    return "closed"
 
 
 # ============================================================================

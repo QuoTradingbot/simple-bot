@@ -110,7 +110,7 @@ The bot will:
 #### Backtesting Mode
 
 **Backtesting runs completely independently of the broker API.**  
-No API token needed - it replays historical data tick-by-tick.
+No API token needed - it replays historical data bar-by-bar (1-minute bars by default).
 
 Run backtest on last 7 days:
 ```bash
@@ -128,12 +128,18 @@ Generate and save backtest report:
 python main.py --mode backtest --days 30 --report backtest_results.txt
 ```
 
+**Optional: Use tick-by-tick replay for more accurate simulation:**
+```bash
+python main.py --mode backtest --days 7 --use-tick-data
+```
+
 **How it works:**
-1. Loads historical tick and bar data from CSV files
-2. Replays each tick as if it's happening live
-3. Bot executes strategy on historical data
-4. Simulates realistic order fills with slippage
-5. No broker connection needed - 100% offline simulation
+1. **Bar-by-bar mode (default)**: Replays 1-minute bars sequentially
+2. **Tick-by-tick mode (optional)**: Replays each tick as if it's happening live
+3. Loads historical data from CSV files (no broker connection)
+4. Bot executes strategy on historical data
+5. Simulates realistic order fills with slippage
+6. 100% offline simulation - no API needed
 
 ### Generate Sample Data
 

@@ -46,6 +46,7 @@ class BacktestConfig:
     commission_per_contract: float = 2.50  # Round-trip commission
     data_source: str = "csv"  # "csv" for local files (no API needed)
     data_path: str = "./historical_data"
+    use_tick_data: bool = False  # Use tick-by-tick replay (default: bar-by-bar with 1min bars)
     
 
 class HistoricalDataLoader:
@@ -517,36 +518,41 @@ class BacktestEngine:
     
     def _run_symbol_backtest(self, symbol: str, strategy_func: Any) -> None:
         """
-        Run backtest for a single symbol with tick-by-tick replay.
-        Replays historical data as if it's live trading.
+        Run backtest for a single symbol.
+        By default uses bar-by-bar replay with 1-minute bars.
+        Can optionally use tick-by-tick replay if enabled.
         """
         self.logger.info(f"\nBacktesting {symbol}...")
         
-        # Load tick data for tick-by-tick replay
-        ticks = self.data_loader.load_tick_data(symbol)
-        
-        # Also load bar data for VWAP and trend calculations
+        # Load bar data (primary mode)
         bars_1min = self.data_loader.load_bar_data(symbol, "1min")
         bars_15min = self.data_loader.load_bar_data(symbol, "15min")
         
-        if len(ticks) == 0 and len(bars_1min) == 0:
-            self.logger.warning(f"No data available for {symbol}")
+        if len(bars_1min) == 0:
+            self.logger.warning(f"No bar data available for {symbol}")
             return
             
         # Validate data quality
-        if len(bars_1min) > 0:
-            is_valid, issues = self.data_loader.validate_data_quality(bars_1min)
-            if not is_valid:
-                self.logger.warning(f"Data quality issues found:")
-                for issue in issues:
-                    self.logger.warning(f"  - {issue}")
+        is_valid, issues = self.data_loader.validate_data_quality(bars_1min)
+        if not is_valid:
+            self.logger.warning(f"Data quality issues found:")
+            for issue in issues:
+                self.logger.warning(f"  - {issue}")
         
-        # Decide whether to use tick-by-tick or bar-by-bar replay
-        if len(ticks) > 0:
-            self.logger.info(f"Running tick-by-tick replay with {len(ticks)} ticks")
-            self._replay_ticks(symbol, ticks, bars_1min, bars_15min, strategy_func)
+        # Choose replay mode based on configuration
+        if self.config.use_tick_data:
+            # Optional: tick-by-tick replay for more accurate simulation
+            ticks = self.data_loader.load_tick_data(symbol)
+            if len(ticks) > 0:
+                self.logger.info(f"Running tick-by-tick replay with {len(ticks)} ticks")
+                self._replay_ticks(symbol, ticks, bars_1min, bars_15min, strategy_func)
+            else:
+                self.logger.warning(f"Tick data requested but not available, falling back to bar-by-bar")
+                self.logger.info(f"Running bar-by-bar replay with {len(bars_1min)} 1-minute bars")
+                self._replay_bars(symbol, bars_1min, bars_15min, strategy_func)
         else:
-            self.logger.info(f"Running bar-by-bar replay with {len(bars_1min)} bars")
+            # Default: bar-by-bar replay with 1-minute bars
+            self.logger.info(f"Running bar-by-bar replay with {len(bars_1min)} 1-minute bars")
             self._replay_bars(symbol, bars_1min, bars_15min, strategy_func)
     
     def _replay_ticks(self, symbol: str, ticks: List[Dict[str, Any]], 

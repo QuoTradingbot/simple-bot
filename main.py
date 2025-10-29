@@ -30,14 +30,14 @@ Examples:
   # Run in dry-run mode (paper trading)
   python main.py --mode live --dry-run
   
-  # Run backtest for last 30 days
+  # Run backtest for last 30 days (bar-by-bar with 1-minute bars)
   python main.py --mode backtest --days 30
   
   # Run backtest with specific date range
   python main.py --mode backtest --start 2024-01-01 --end 2024-01-31
   
-  # Run backtest with custom data path
-  python main.py --mode backtest --days 7 --data-path ./data
+  # Run backtest with tick-by-tick replay (requires tick data)
+  python main.py --mode backtest --days 7 --use-tick-data
         """
     )
     
@@ -91,6 +91,12 @@ Examples:
         '--report',
         type=str,
         help='Save backtest report to specified file'
+    )
+    
+    parser.add_argument(
+        '--use-tick-data',
+        action='store_true',
+        help='Use tick-by-tick replay instead of bar-by-bar (requires tick data files)'
     )
     
     # Configuration overrides
@@ -161,7 +167,8 @@ def run_backtest(args, bot_config):
         end_date=end_date,
         initial_equity=args.initial_equity,
         symbols=[args.symbol] if args.symbol else [bot_config.instrument],
-        data_path=args.data_path
+        data_path=args.data_path,
+        use_tick_data=args.use_tick_data  # Enable tick-by-tick if requested
     )
     
     logger.info(f"Backtest Configuration:")
@@ -169,6 +176,7 @@ def run_backtest(args, bot_config):
     logger.info(f"  Initial Equity: ${backtest_config.initial_equity:,.2f}")
     logger.info(f"  Symbols: {', '.join(backtest_config.symbols)}")
     logger.info(f"  Data Path: {backtest_config.data_path}")
+    logger.info(f"  Replay Mode: {'Tick-by-tick' if args.use_tick_data else 'Bar-by-bar (1-minute bars)'}")
     
     # Create backtest engine
     bot_config_dict = bot_config.to_dict()

@@ -394,6 +394,11 @@ def on_tick(symbol: str, price: float, volume: int, timestamp_ms: int):
     if symbol not in state:
         initialize_state(symbol)
     
+    # Phase 12: Update last tick time for connection health check
+    tz = pytz.timezone(CONFIG["timezone"])
+    dt = datetime.fromtimestamp(timestamp_ms / 1000.0, tz=tz)
+    bot_status["last_tick_time"] = dt
+    
     # Create tick object
     tick = {
         "price": price,
@@ -404,10 +409,10 @@ def on_tick(symbol: str, price: float, volume: int, timestamp_ms: int):
     # Append to tick storage
     state[symbol]["ticks"].append(tick)
     
-    # Convert timestamp to datetime
-    dt = datetime.fromtimestamp(timestamp_ms / 1000.0, tz=pytz.timezone(CONFIG["timezone"]))
+    # Phase 11: Check for daily reset
+    check_daily_reset(symbol)
     
-    # Check if new trading day
+    # Check if new trading day (backward compatibility with existing reset logic)
     current_day = dt.date()
     if state[symbol]["trading_day"] != current_day:
         reset_daily_state(symbol)
@@ -817,6 +822,12 @@ def execute_entry(symbol: str, side: str, entry_price: float):
         logger.warning("Cannot enter trade - position size is zero")
         return
     
+    # Phase 12: Validate order before placing
+    is_valid, error_msg = validate_order(symbol, side, contracts, entry_price, stop_price)
+    if not is_valid:
+        logger.error(f"Order validation failed: {error_msg}")
+        return
+    
     # Place market order
     order_side = "BUY" if side == "long" else "SELL"
     entry_time = datetime.now(pytz.timezone(CONFIG["timezone"]))
@@ -974,6 +985,9 @@ def execute_exit(symbol: str, exit_price: float, reason: str):
     
     # Update daily P&L
     state[symbol]["daily_pnl"] += pnl
+    
+    # Phase 13: Update session statistics
+    update_session_stats(symbol, pnl)
     
     logger.info(f"Daily P&L: ${state[symbol]['daily_pnl']:+.2f}")
     logger.info(f"Trades today: {state[symbol]['daily_trade_count']}/{CONFIG['max_trades_per_day']}")
@@ -1317,10 +1331,15 @@ def main():
     logger.info(f"Trading Window: {CONFIG['trading_window']['start']} - {CONFIG['trading_window']['end']} ET")
     logger.info(f"Max Trades/Day: {CONFIG['max_trades_per_day']}")
     logger.info(f"Daily Loss Limit: ${CONFIG['daily_loss_limit']}")
+    logger.info(f"Max Drawdown: {CONFIG['max_drawdown_percent']}%")
     logger.info("="*60)
     
     # Initialize SDK
     initialize_sdk()
+    
+    # Phase 12: Record starting equity for drawdown monitoring
+    bot_status["starting_equity"] = get_account_equity()
+    logger.info(f"Starting Equity: ${bot_status['starting_equity']:.2f}")
     
     # Initialize state for instrument
     symbol = CONFIG["instrument"]

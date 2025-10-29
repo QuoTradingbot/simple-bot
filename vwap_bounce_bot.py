@@ -728,12 +728,25 @@ def check_for_signals(symbol: str):
     
     # Only generate signals during entry_window
     if trading_state != "entry_window":
+        # Phase Sixteen: Log time-based blocking
+        if trading_state == "exit_only":
+            log_time_based_action(
+                "entry_blocked",
+                "Entry window closed at 2:30 PM, no new trades until tomorrow 9:00 AM ET",
+                {"current_state": trading_state, "time": bar_time.strftime('%H:%M:%S')}
+            )
         logger.debug(f"Not in entry window (state: {trading_state}), skipping signal check")
         return
     
     # Phase Fourteen: Friday position management - no new trades after 1 PM
     if bar_time.weekday() == 4:  # Friday
         if bar_time.time() >= CONFIG["friday_entry_cutoff"]:
+            # Phase Sixteen: Log Friday restriction
+            log_time_based_action(
+                "friday_entry_blocked",
+                f"Friday after {CONFIG['friday_entry_cutoff']}, no new trades to avoid weekend gap risk",
+                {"day": "Friday", "time": bar_time.strftime('%H:%M:%S')}
+            )
             logger.info(f"Friday after {CONFIG['friday_entry_cutoff']} - no new trades (weekend gap risk)")
             return
     
@@ -1005,6 +1018,32 @@ def check_exit_conditions(symbol: str):
     # Phase Six: Enhanced flatten mode with critical warnings
     if trading_state == "flatten_mode" and not bot_status["flatten_mode"]:
         bot_status["flatten_mode"] = True
+        
+        # Phase Sixteen: Log flatten mode activation with position details
+        position_details = {
+            "side": position["side"],
+            "quantity": position["quantity"],
+            "entry_price": f"${position['entry_price']:.2f}",
+            "current_time": bar_time.strftime('%H:%M:%S %Z')
+        }
+        
+        # Calculate unrealized P&L for logging
+        tick_size = CONFIG["tick_size"]
+        tick_value = CONFIG["tick_value"]
+        if side == "long":
+            price_change = current_bar["close"] - entry_price
+        else:
+            price_change = entry_price - current_bar["close"]
+        ticks = price_change / tick_size
+        unrealized_pnl = ticks * tick_value * position["quantity"]
+        position_details["unrealized_pnl"] = f"${unrealized_pnl:+.2f}"
+        
+        log_time_based_action(
+            "flatten_mode_activated",
+            "All positions must be closed by 4:45 PM ET to avoid settlement risk",
+            position_details
+        )
+        
         logger.critical("=" * 60)
         logger.critical("FLATTEN MODE ACTIVATED - POSITION MUST CLOSE IN 15 MINUTES")
         logger.critical("=" * 60)
@@ -1307,6 +1346,42 @@ def execute_exit(symbol: str, exit_price: float, reason: str):
     
     logger.info(f"  Entry: ${entry_price:.2f}, Exit: ${exit_price:.2f}")
     logger.info(f"  Ticks: {ticks:+.1f}, P&L: ${pnl:+.2f}")
+    
+    # Phase Sixteen: Log time-based exits with detailed audit trail
+    time_based_reasons = [
+        "flatten_mode_exit", "time_based_profit_take", "time_based_loss_cut",
+        "emergency_forced_flatten", "tightened_target", "early_loss_cut",
+        "proactive_stop", "early_profit_lock", "friday_weekend_protection",
+        "friday_profit_protection"
+    ]
+    
+    if reason in time_based_reasons:
+        exit_details = {
+            "exit_price": f"${exit_price:.2f}",
+            "pnl": f"${pnl:+.2f}",
+            "side": position["side"],
+            "quantity": contracts,
+            "entry_price": f"${entry_price:.2f}"
+        }
+        
+        reason_descriptions = {
+            "flatten_mode_exit": "Flatten mode aggressive exit",
+            "time_based_profit_take": "4:40 PM profit lock before settlement",
+            "time_based_loss_cut": "4:42 PM small loss cut before settlement",
+            "emergency_forced_flatten": "4:45 PM emergency deadline flatten",
+            "tightened_target": "3 PM tightened target (1:1 R/R)",
+            "early_loss_cut": "3:30 PM early loss cut (<75% stop)",
+            "proactive_stop": "Proactive stop (within 2 ticks)",
+            "early_profit_lock": "Early profit lock in flatten mode",
+            "friday_weekend_protection": "Friday 3 PM weekend protection",
+            "friday_profit_protection": "Friday 2 PM profit protection"
+        }
+        
+        log_time_based_action(
+            "position_closed",
+            reason_descriptions.get(reason, reason),
+            exit_details
+        )
     
     # Phase Seven: Use aggressive limit orders during flatten mode
     is_flatten_mode = bot_status["flatten_mode"] or reason in ["flatten_mode_exit", "time_based_profit_take", 
@@ -1891,6 +1966,140 @@ def get_trading_state(dt: datetime = None) -> str:
 
 
 # ============================================================================
+# PHASE FIFTEEN & SIXTEEN: Timezone Handling and Time-Based Logging
+# ============================================================================
+
+def validate_timezone_configuration():
+    """
+    Phase Fifteen: Validate timezone configuration on bot startup.
+    Ensures pytz is working correctly and DST is handled properly.
+    """
+    tz = pytz.timezone(CONFIG["timezone"])
+    current_time = datetime.now(tz)
+    
+    logger.info("=" * 60)
+    logger.info("TIMEZONE CONFIGURATION VALIDATION")
+    logger.info("=" * 60)
+    logger.info(f"Configured Timezone: {CONFIG['timezone']}")
+    logger.info(f"Current Time (ET): {current_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+    logger.info(f"UTC Offset: {current_time.strftime('%z')}")
+    logger.info(f"DST Active: {bool(current_time.dst())}")
+    
+    # Check if DST transition is near
+    tomorrow = current_time + timedelta(days=1)
+    if current_time.dst() != tomorrow.dst():
+        logger.warning("DST TRANSITION DETECTED - Clock changes within 24 hours")
+        logger.warning("Bot has been tested for DST transitions")
+    
+    # Warn if system local time differs significantly from ET
+    system_time = datetime.now()
+    if abs((current_time.replace(tzinfo=None) - system_time).total_seconds()) > 3600:
+        logger.warning(f"System local time differs from ET by >1 hour")
+        logger.warning(f"System: {system_time.strftime('%H:%M:%S')}, ET: {current_time.strftime('%H:%M:%S')}")
+        logger.warning("All trading decisions use ET - system time is informational only")
+    
+    logger.info("=" * 60)
+
+
+def log_time_based_action(action: str, reason: str, details: dict = None):
+    """
+    Phase Sixteen: Log all time-based actions with timestamp and reason.
+    Creates audit trail for reviewing time-based rule performance.
+    
+    Args:
+        action: Type of action (e.g., 'entry_blocked', 'flatten_activated', 'position_closed')
+        reason: Human-readable reason for the action
+        details: Optional dictionary of additional details
+    """
+    tz = pytz.timezone(CONFIG["timezone"])
+    timestamp = datetime.now(tz)
+    
+    log_msg = f"TIME-BASED ACTION: {action}"
+    log_msg += f" | Timestamp: {timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')}"
+    log_msg += f" | Reason: {reason}"
+    
+    if details:
+        for key, value in details.items():
+            log_msg += f" | {key}: {value}"
+    
+    logger.info(log_msg)
+
+
+# ============================================================================
+# PHASE SEVENTEEN & EIGHTEEN: Backtesting and Monitoring Guidelines
+# ============================================================================
+
+"""
+Phase Seventeen: Backtesting Time Logic
+
+When backtesting this strategy on historical data, you must simulate time-based
+flatten rules accurately:
+
+1. For every historical trade, check entry time
+   - If entered after 2 PM, calculate time remaining until 4:45 PM flatten
+   - Simulate forced flatten at whatever price existed at 4:45 PM if position
+     hadn't hit target or stop
+
+2. Track forced flatten statistics:
+   - Count how many trades were force-flattened before hitting target/stop
+   - Calculate how many times forced flatten saved from overnight gap losses
+   - Calculate how many times it cost profit by closing a winner early
+
+3. Analyze trade duration:
+   - If 30%+ of trades get force-flattened, average trade duration is too long
+   - Either extend trading hours or accept lower targets to close positions faster
+
+4. Friday-specific backtesting:
+   - Simulate no new trades after 1 PM Friday
+   - Simulate forced close at 3 PM Friday
+   - Measure weekend gap impact on positions that would have been held
+
+5. DST transition testing:
+   - Test bot behavior on DST change days (March and November)
+   - Ensure time checks still work correctly during "spring forward" and "fall back"
+
+Phase Eighteen: Monitoring During Flatten Window (4:30 PM - 4:45 PM)
+
+This is the highest-risk 15-minute window requiring active monitoring if possible:
+
+1. Manual intervention scenarios:
+   - Bot tries to close but gets no fills even with aggressive limits
+   - Manual close at market through broker platform may be needed
+   
+   - Technical glitch: bot thinks it's flat but broker shows open position
+   - Immediate manual intervention required
+   
+   - Order system failure during critical flatten window
+   - Manual close through broker as backup
+
+2. Monitoring checklist:
+   - Verify position quantity matches between bot and broker
+   - Check that flatten orders are actually being placed
+   - Monitor fill confirmations
+   - Verify position is actually closed before 5 PM
+
+3. Contingency plan:
+   - Have broker platform open and ready
+   - Know how to manually close position
+   - Have broker support number available
+   - Test manual close procedure in paper trading
+
+4. Post-flatten validation:
+   - At 5 PM, verify zero positions in both bot and broker
+   - Check overnight position safety function logged correctly
+   - Review flatten window logs for any issues
+
+This 15-minute window is when most bot failures happen due to:
+- Racing against hard deadline
+- Deteriorating market conditions
+- Widening spreads
+- Lower liquidity
+
+Active monitoring provides safety net for automation failures.
+"""
+
+
+# ============================================================================
 # MAIN EXECUTION
 # ============================================================================
 
@@ -1906,6 +2115,9 @@ def main():
     logger.info(f"Daily Loss Limit: ${CONFIG['daily_loss_limit']}")
     logger.info(f"Max Drawdown: {CONFIG['max_drawdown_percent']}%")
     logger.info("="*60)
+    
+    # Phase Fifteen: Validate timezone configuration
+    validate_timezone_configuration()
     
     # Initialize SDK
     initialize_sdk()

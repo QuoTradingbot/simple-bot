@@ -236,6 +236,82 @@ def place_stop_order(symbol: str, side: str, quantity: int, stop_price: float) -
         return None
 
 
+def place_limit_order(symbol: str, side: str, quantity: int, limit_price: float) -> Optional[Dict]:
+    """
+    Place a limit order through the SDK.
+    Phase Seven: Used for aggressive flatten orders to avoid market order slippage.
+    
+    Args:
+        symbol: Instrument symbol
+        side: 'BUY' or 'SELL'
+        quantity: Number of contracts
+        limit_price: Limit price
+    
+    Returns:
+        Order object or None if failed
+    """
+    logger.info(f"{'[DRY RUN] ' if CONFIG['dry_run'] else ''}Limit Order: {side} {quantity} {symbol} @ {limit_price}")
+    
+    if CONFIG["dry_run"]:
+        return {
+            "order_id": f"MOCK_LIMIT_{datetime.now().timestamp()}",
+            "symbol": symbol,
+            "side": side,
+            "quantity": quantity,
+            "type": "LIMIT",
+            "limit_price": limit_price,
+            "status": "PENDING",
+            "dry_run": True
+        }
+    
+    try:
+        # Placeholder for actual SDK call
+        # order = sdk_client.create_limit_order(
+        #     symbol=symbol,
+        #     side=side,
+        #     quantity=quantity,
+        #     limit_price=limit_price
+        # )
+        # return order
+        
+        logger.warning("Live trading not implemented - SDK integration required")
+        return None
+    except Exception as e:
+        logger.error(f"Error placing limit order: {e}")
+        return None
+
+
+def get_position_quantity(symbol: str) -> int:
+    """
+    Query SDK for current position quantity.
+    Phase Eight: Used to check for partial fills.
+    
+    Args:
+        symbol: Instrument symbol
+    
+    Returns:
+        Current position quantity (positive for long, negative for short, 0 for flat)
+    """
+    if CONFIG["dry_run"]:
+        # In dry run mode, use our tracked position
+        if state.get(symbol) and state[symbol]["position"]["active"]:
+            qty = state[symbol]["position"]["quantity"]
+            side = state[symbol]["position"]["side"]
+            return qty if side == "long" else -qty
+        return 0
+    
+    try:
+        # Placeholder for actual SDK call
+        # position = sdk_client.get_position(symbol=symbol)
+        # return position.get('quantity', 0)
+        
+        logger.warning("Live position query not implemented - SDK integration required")
+        return 0
+    except Exception as e:
+        logger.error(f"Error querying position: {e}")
+        return 0
+
+
 def subscribe_market_data(symbol: str, callback: Callable):
     """
     Subscribe to real-time market data for a symbol.
@@ -798,6 +874,7 @@ def calculate_position_size(symbol: str, side: str, entry_price: float) -> Tuple
 def execute_entry(symbol: str, side: str, entry_price: float):
     """
     Execute entry order with stop loss and target.
+    Phase Four: Double time check before placing entry order.
     
     Args:
         symbol: Instrument symbol
@@ -817,9 +894,23 @@ def execute_entry(symbol: str, side: str, entry_price: float):
         logger.error(f"Order validation failed: {error_msg}")
         return
     
+    # Phase Four: Final time check before placing order
+    # Check if we're still in entry window after calculations
+    tz = pytz.timezone(CONFIG["timezone"])
+    entry_time = datetime.now(tz)
+    trading_state = get_trading_state(entry_time)
+    
+    if trading_state != "entry_window":
+        logger.warning("=" * 60)
+        logger.warning("ENTRY ABORTED - No longer in entry window")
+        logger.warning(f"  Current state: {trading_state}")
+        logger.warning(f"  Time: {entry_time.strftime('%H:%M:%S %Z')}")
+        logger.warning(f"  Signal triggered but calculations took too long")
+        logger.warning("=" * 60)
+        return
+    
     # Place market order
     order_side = "BUY" if side == "long" else "SELL"
-    entry_time = datetime.now(pytz.timezone(CONFIG["timezone"]))
     
     logger.info(f"=" * 60)
     logger.info(f"ENTERING {side.upper()} POSITION")
@@ -872,6 +963,8 @@ def check_exit_conditions(symbol: str):
     """
     Check exit conditions for open position on each bar.
     Implements flatten mode for aggressive position closing.
+    Phase Five: Time-based exit tightening after 3 PM.
+    Phase Six: Enhanced flatten mode with minute-by-minute monitoring.
     
     Args:
         symbol: Instrument symbol
@@ -894,19 +987,59 @@ def check_exit_conditions(symbol: str):
     # Phase Two: Check trading state
     trading_state = get_trading_state(bar_time)
     
-    # Update flatten mode flag
+    # Phase Six: Enhanced flatten mode with critical warnings
     if trading_state == "flatten_mode" and not bot_status["flatten_mode"]:
         bot_status["flatten_mode"] = True
-        logger.warning("=" * 60)
-        logger.warning("FLATTEN MODE ACTIVATED - Aggressive exit mode enabled")
-        logger.warning("=" * 60)
+        logger.critical("=" * 60)
+        logger.critical("FLATTEN MODE ACTIVATED - POSITION MUST CLOSE IN 15 MINUTES")
+        logger.critical("=" * 60)
     
-    # Force close at forced_flatten_time
+    # Phase Six: Minute-by-minute status logging during flatten mode
+    if bot_status["flatten_mode"]:
+        tz = pytz.timezone(CONFIG["timezone"])
+        current_time = datetime.now(tz)
+        forced_flatten_time = datetime.combine(current_time.date(), CONFIG["forced_flatten_time"])
+        forced_flatten_time = tz.localize(forced_flatten_time)
+        minutes_remaining = (forced_flatten_time - current_time).total_seconds() / 60.0
+        
+        # Calculate unrealized P&L
+        tick_size = CONFIG["tick_size"]
+        tick_value = CONFIG["tick_value"]
+        if side == "long":
+            price_change = current_bar["close"] - entry_price
+        else:
+            price_change = entry_price - current_bar["close"]
+        ticks = price_change / tick_size
+        unrealized_pnl = ticks * tick_value * position["quantity"]
+        
+        logger.warning(f"Flatten Mode Status: {minutes_remaining:.1f} min remaining, "
+                      f"P&L: ${unrealized_pnl:+.2f}, Side: {side}, Qty: {position['quantity']}")
+        
+        # Phase Six: Time-based forced exits at specific times
+        if current_time.time() >= time(16, 40) and unrealized_pnl > 0:
+            # 4:40 PM - close profitable positions immediately
+            logger.critical("4:40 PM - Closing profitable position immediately")
+            flatten_price = get_flatten_price(symbol, side, current_bar["close"])
+            execute_exit(symbol, flatten_price, "time_based_profit_take")
+            return
+        
+        if current_time.time() >= time(16, 42):
+            # 4:42 PM - close small losses
+            stop_distance = abs(entry_price - stop_price)
+            if unrealized_pnl < 0 and abs(unrealized_pnl) < (stop_distance * tick_value * position["quantity"] / 2):
+                logger.critical("4:42 PM - Cutting small loss before settlement")
+                flatten_price = get_flatten_price(symbol, side, current_bar["close"])
+                execute_exit(symbol, flatten_price, "time_based_loss_cut")
+                return
+    
+    # Force close at forced_flatten_time (4:45 PM)
     if trading_state == "closed":
-        logger.critical("FORCED FLATTEN TIME REACHED - Closing position immediately")
-        # Use current close price with flatten buffer
+        logger.critical("=" * 60)
+        logger.critical("EMERGENCY FORCED FLATTEN - 4:45 PM DEADLINE REACHED")
+        logger.critical("=" * 60)
+        # Phase Seven: Use aggressive limit order for forced flatten
         flatten_price = get_flatten_price(symbol, side, current_bar["close"])
-        execute_exit(symbol, flatten_price, "forced_flatten")
+        execute_exit(symbol, flatten_price, "emergency_forced_flatten")
         return
     
     # Check for stop hit
@@ -929,6 +1062,51 @@ def check_exit_conditions(symbol: str):
             execute_exit(symbol, target_price, "target_reached")
             return
     
+    # Phase Five: Time-based exit tightening after 3 PM
+    if bar_time.time() >= time(15, 0) and not bot_status["flatten_mode"]:
+        # After 3 PM - tighten profit taking to 1:1 R/R
+        stop_distance = abs(entry_price - stop_price)
+        tightened_target_distance = stop_distance  # 1:1 instead of 1.5:1
+        
+        if side == "long":
+            tightened_target = entry_price + tightened_target_distance
+            if current_bar["high"] >= tightened_target:
+                logger.info("Time-based tightened profit target reached (1:1 R/R after 3 PM)")
+                execute_exit(symbol, tightened_target, "tightened_target")
+                return
+        else:  # short
+            tightened_target = entry_price - tightened_target_distance
+            if current_bar["low"] <= tightened_target:
+                logger.info("Time-based tightened profit target reached (1:1 R/R after 3 PM)")
+                execute_exit(symbol, tightened_target, "tightened_target")
+                return
+    
+    # Phase Five: After 3:30 PM - cut losses early if less than 75% of stop distance
+    if bar_time.time() >= time(15, 30) and not bot_status["flatten_mode"]:
+        tick_size = CONFIG["tick_size"]
+        tick_value = CONFIG["tick_value"]
+        
+        if side == "long":
+            current_loss_distance = entry_price - current_bar["close"]
+            stop_distance = entry_price - stop_price
+            
+            if current_loss_distance > 0:  # In a loss
+                loss_percent = current_loss_distance / stop_distance
+                if loss_percent < 0.75:  # Less than 75% of stop distance
+                    logger.warning(f"Time-based early loss cut (3:30 PM+): {loss_percent*100:.1f}% of stop distance")
+                    execute_exit(symbol, current_bar["close"], "early_loss_cut")
+                    return
+        else:  # short
+            current_loss_distance = current_bar["close"] - entry_price
+            stop_distance = stop_price - entry_price
+            
+            if current_loss_distance > 0:  # In a loss
+                loss_percent = current_loss_distance / stop_distance
+                if loss_percent < 0.75:  # Less than 75% of stop distance
+                    logger.warning(f"Time-based early loss cut (3:30 PM+): {loss_percent*100:.1f}% of stop distance")
+                    execute_exit(symbol, current_bar["close"], "early_loss_cut")
+                    return
+    
     # Flatten mode: More aggressive profit taking and loss cutting
     if bot_status["flatten_mode"]:
         # In flatten mode, take any profit or cut losses quickly
@@ -938,7 +1116,8 @@ def check_exit_conditions(symbol: str):
             midpoint = entry_price - (entry_price - stop_price) / 2
             if profit_ticks > 1 or current_bar["close"] < midpoint:
                 logger.info(f"Flatten mode exit: profit_ticks={profit_ticks:.1f}")
-                execute_exit(symbol, current_bar["close"], "flatten_mode_exit")
+                flatten_price = get_flatten_price(symbol, side, current_bar["close"])
+                execute_exit(symbol, flatten_price, "flatten_mode_exit")
                 return
         else:  # short
             profit_ticks = (entry_price - current_bar["close"]) / CONFIG["tick_size"]
@@ -946,7 +1125,8 @@ def check_exit_conditions(symbol: str):
             midpoint = entry_price + (stop_price - entry_price) / 2
             if profit_ticks > 1 or current_bar["close"] > midpoint:
                 logger.info(f"Flatten mode exit: profit_ticks={profit_ticks:.1f}")
-                execute_exit(symbol, current_bar["close"], "flatten_mode_exit")
+                flatten_price = get_flatten_price(symbol, side, current_bar["close"])
+                execute_exit(symbol, flatten_price, "flatten_mode_exit")
                 return
     
     # Check for signal reversal (only when not in flatten mode)
@@ -996,18 +1176,19 @@ def get_flatten_price(symbol: str, side: str, current_price: float) -> float:
 def execute_exit(symbol: str, exit_price: float, reason: str):
     """
     Execute exit order and update P&L.
+    Phase Seven: Use aggressive limit orders during flatten mode.
+    Phase Eight: Handle partial fills with retries.
     
     Args:
         symbol: Instrument symbol
         exit_price: Exit price
-        reason: Reason for exit (stop_loss, target_reached, signal_reversal)
+        reason: Reason for exit (stop_loss, target_reached, signal_reversal, etc.)
     """
     position = state[symbol]["position"]
     
     if not position["active"]:
         return
     
-    # Place closing market order
     order_side = "SELL" if position["side"] == "long" else "BUY"
     exit_time = datetime.now(pytz.timezone(CONFIG["timezone"]))
     
@@ -1033,11 +1214,19 @@ def execute_exit(symbol: str, exit_price: float, reason: str):
     logger.info(f"  Entry: ${entry_price:.2f}, Exit: ${exit_price:.2f}")
     logger.info(f"  Ticks: {ticks:+.1f}, P&L: ${pnl:+.2f}")
     
-    # Place exit order
-    order = place_market_order(symbol, order_side, contracts)
+    # Phase Seven: Use aggressive limit orders during flatten mode
+    is_flatten_mode = bot_status["flatten_mode"] or reason in ["flatten_mode_exit", "time_based_profit_take", 
+                                                                 "time_based_loss_cut", "emergency_forced_flatten"]
     
-    if order:
-        logger.info(f"Exit order placed: {order.get('order_id')}")
+    if is_flatten_mode:
+        logger.info("Using aggressive limit order strategy for flatten")
+        execute_flatten_with_limit_orders(symbol, order_side, contracts, exit_price, reason)
+    else:
+        # Normal exit - use market order
+        order = place_market_order(symbol, order_side, contracts)
+        
+        if order:
+            logger.info(f"Exit order placed: {order.get('order_id')}")
     
     # Update daily P&L
     state[symbol]["daily_pnl"] += pnl
@@ -1059,6 +1248,82 @@ def execute_exit(symbol: str, exit_price: float, reason: str):
         "target_price": None,
         "entry_time": None
     }
+
+
+def execute_flatten_with_limit_orders(symbol: str, order_side: str, contracts: int, 
+                                       base_price: float, reason: str):
+    """
+    Phase Seven & Eight: Execute flatten using aggressive limit orders with partial fill handling.
+    
+    Args:
+        symbol: Instrument symbol
+        order_side: 'BUY' or 'SELL'
+        contracts: Number of contracts to close
+        base_price: Base price for limit orders
+        reason: Exit reason
+    """
+    import time as time_module
+    
+    tick_size = CONFIG["tick_size"]
+    remaining_contracts = contracts
+    attempt = 0
+    max_attempts = 10
+    
+    while remaining_contracts > 0 and attempt < max_attempts:
+        attempt += 1
+        
+        # Calculate aggressive limit price
+        # Start 1 tick aggressive, increase by 1 tick each attempt
+        ticks_aggressive = attempt
+        
+        if order_side == "SELL":
+            # Selling - go below bid
+            limit_price = base_price - (ticks_aggressive * tick_size)
+        else:  # BUY
+            # Buying - go above offer
+            limit_price = base_price + (ticks_aggressive * tick_size)
+        
+        limit_price = round_to_tick(limit_price)
+        
+        logger.info(f"Flatten attempt {attempt}/{max_attempts}: {order_side} {remaining_contracts} @ {limit_price:.2f}")
+        
+        # Place aggressive limit order
+        order = place_limit_order(symbol, order_side, remaining_contracts, limit_price)
+        
+        if order:
+            logger.info(f"Flatten limit order placed: {order.get('order_id')}")
+        
+        # Phase Eight: Wait and check for fills
+        if attempt < max_attempts:
+            wait_seconds = 5 if attempt < 5 else 2  # Shorter waits as we get more urgent
+            logger.debug(f"Waiting {wait_seconds} seconds for fill...")
+            time_module.sleep(wait_seconds)
+            
+            # Check current position
+            current_qty = get_position_quantity(symbol)
+            
+            if current_qty == 0:
+                logger.info("Position fully closed")
+                break
+            else:
+                filled_contracts = contracts - abs(current_qty)
+                if filled_contracts > 0:
+                    logger.warning(f"Partial fill: {filled_contracts} of {contracts} filled, {abs(current_qty)} remaining")
+                    remaining_contracts = abs(current_qty)
+                else:
+                    logger.warning(f"No fill on attempt {attempt}, retrying with more aggressive price")
+        else:
+            # Final attempt - at market price
+            logger.critical(f"Final attempt - placing market order for remaining {remaining_contracts}")
+            order = place_market_order(symbol, order_side, remaining_contracts)
+            if order:
+                logger.info(f"Emergency market order placed: {order.get('order_id')}")
+            break
+    
+    if remaining_contracts > 0:
+        logger.error(f"Failed to fully flatten position - {remaining_contracts} contracts may remain")
+    else:
+        logger.info(f"Successfully flattened {contracts} contracts using aggressive limit orders")
 
 
 # ============================================================================

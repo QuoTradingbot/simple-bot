@@ -146,8 +146,9 @@ The bot maintains state for:
 
 ```
 simple-bot/
-├── vwap_bounce_bot.py      # Main bot implementation (all 10 phases)
-├── test_complete_cycle.py  # Complete trading cycle demonstration
+├── vwap_bounce_bot.py      # Main bot implementation (all 14 phases)
+├── test_complete_cycle.py  # Complete trading cycle demonstration (Phases 1-10)
+├── test_phases_11_14.py    # Safety and monitoring tests (Phases 11-14)
 ├── test_phases_6_10.py     # Phases 6-10 specific tests
 ├── test_bot.py             # Original validation tests
 ├── example_simulation.py   # Basic simulation example
@@ -187,6 +188,34 @@ simple-bot/
 - **Signal reversal**: Counter-movement through opposite bands
 - **P&L tracking**: Tick-based profit/loss calculation
 
+### Phase 11: Daily Reset Logic
+- **Daily reset check**: Monitors date changes at 8 AM ET
+- **Counter resets**: Trade count, daily P&L, VWAP data
+- **Session stats**: Clears and logs previous day summary
+- **Trading re-enable**: Resets daily limit flags for new day
+
+### Phase 12: Safety Mechanisms
+- **Daily loss limit**: $400 with critical alert and trading stop
+- **Maximum drawdown**: 2% of starting equity monitoring
+- **Time-based kill switch**: 4 PM ET market close shutdown
+- **Connection health**: 60-second tick timeout detection
+- **Order validation**: Quantity, stop placement, margin checks
+- **Safety checks**: Executed before every signal evaluation
+
+### Phase 13: Logging and Monitoring
+- **Structured logging**: Timestamps, levels (INFO/WARNING/ERROR/CRITICAL)
+- **Session summary**: Daily stats with win rate, P&L, Sharpe ratio
+- **Trade tracking**: Complete history for each trading session
+- **Alerts**: Approaching limits, connection issues, errors
+- **Statistics**: Variance tracking for performance metrics
+
+### Phase 14: Testing Workflow
+- **Dry run mode**: Default enabled for safe testing
+- **Paper trading**: Minimum 2-week validation recommended
+- **Edge cases**: Market gaps, zero volume, data feed issues
+- **Stress testing**: FOMC days, crashes, safety triggers
+- **Validation**: Comprehensive test suite included
+
 ## SDK Integration Points
 
 The bot includes wrapper functions for TopStep SDK integration:
@@ -206,8 +235,12 @@ The bot implements multiple layers of risk control:
 2. **Max Contracts**: Limited to 1 contract
 3. **Daily Trade Limit**: Maximum 5 trades per day
 4. **Daily Loss Limit**: $400 stop out threshold
-5. **Trading Hours**: Restricted to liquid market hours
-6. **Stop Losses**: Automatic stop placement on every trade
+5. **Maximum Drawdown**: 2% total drawdown emergency stop
+6. **Trading Hours**: Restricted to liquid market hours (10 AM - 3:30 PM ET)
+7. **Market Close**: Hard stop at 4 PM ET
+8. **Connection Health**: 60-second timeout monitoring
+9. **Stop Losses**: Automatic stop placement on every trade
+10. **Order Validation**: Pre-flight checks before every order
 
 ## Logging
 
@@ -216,14 +249,21 @@ All bot activity is logged to:
 - **Log File**: `vwap_bounce_bot.log` for historical review
 
 Log levels:
-- INFO: General operations
-- WARNING: Important notices
+- **INFO**: Bot startup, SDK connection, signals, trades, resets
+- **WARNING**: Rejected signals, approaching limits, connection issues
+- **ERROR**: SDK exceptions, order failures, data processing errors
+- **CRITICAL**: Loss limits breached, drawdown exceeded, emergency stops
+
+Session Summary (logged at end of each day):
+- Total trades, win/loss counts, win rate
+- Total P&L, largest win/loss
+- Sharpe ratio (if sufficient variance data)
 - ERROR: Failures and issues
 - DEBUG: Detailed calculation data
 
 ## Development Status
 
-**Current Phase**: All 10 phases complete and tested ✅
+**Current Phase**: All 14 phases complete and tested ✅
 
 ✅ **Completed**:
 - Phase 1: Project setup and configuration
@@ -236,30 +276,37 @@ Log levels:
 - **Phase 8: Position sizing algorithm**
 - **Phase 9: Entry execution with stops**
 - **Phase 10: Exit management (stop/target/reversal)**
+- **Phase 11: Daily reset logic (8 AM ET)**
+- **Phase 12: Safety mechanisms (loss limits, drawdown, validation)**
+- **Phase 13: Comprehensive logging and monitoring**
+- **Phase 14: Testing workflow and documentation**
 
-🔄 **Pending**:
+🔄 **Recommended Next Steps**:
+- Paper trading for minimum 2 weeks
+- Performance validation and optimization
 - TopStep SDK actual integration (requires SDK package)
 - Live market data feed integration
-- Backtesting framework
-- Performance optimization
 - Production deployment configuration
 
 ## Testing
 
-Run the complete trading cycle test:
+**Run Complete Trading Cycle Test:**
 ```bash
 python3 test_complete_cycle.py
 ```
 
-This demonstrates:
-- Trend establishment with 52 15-minute bars
-- VWAP calculation with 20 1-minute bars
-- Signal generation (bounce off lower band 2)
-- Position entry with stop and target
-- Exit on signal reversal
-- P&L calculation and tracking
+**Run Safety & Monitoring Test:**
+```bash
+python3 test_phases_11_14.py
+```
 
-Expected output shows successful trade execution with all phases working together.
+**Test Coverage:**
+- ✅ Phases 1-10: Complete trading cycle with signal → entry → exit
+- ✅ Phases 11-14: Daily reset, safety mechanisms, session tracking
+- ✅ Edge cases: Loss limits, drawdown, order validation
+- ✅ All tests passing with expected behavior
+
+Expected output shows successful trade execution, safety mechanisms working, and comprehensive session tracking.
 
 ## Safety Notes
 

@@ -1952,12 +1952,7 @@ def check_breakeven_protection(symbol: str, current_price: float) -> None:
     new_stop_price = round_to_tick(new_stop_price)
     
     # Step 5 - Update stop loss
-    # Cancel existing stop order if it exists
-    if position.get("stop_order_id"):
-        # In production, would cancel the old stop order here
-        logger.info(f"Breakeven: Would cancel old stop order {position['stop_order_id']}")
-    
-    # Place new stop at breakeven level
+    # Place new stop at breakeven level (broker will replace existing stop)
     stop_side = "SELL" if side == "long" else "BUY"
     contracts = position["quantity"]
     new_stop_order = place_stop_order(symbol, stop_side, contracts, new_stop_price)

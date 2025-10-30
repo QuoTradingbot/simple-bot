@@ -531,7 +531,32 @@ def initialize_state(symbol: str) -> None:
             "entry_price": None,
             "stop_price": None,
             "target_price": None,
-            "entry_time": None
+            "entry_time": None,
+            # Advanced Exit Management - Breakeven State
+            "breakeven_active": False,
+            "original_stop_price": None,
+            "breakeven_activated_time": None,
+            # Advanced Exit Management - Trailing Stop State
+            "trailing_stop_active": False,
+            "trailing_stop_price": None,
+            "highest_price_reached": None,  # For longs
+            "lowest_price_reached": None,  # For shorts
+            "trailing_activated_time": None,
+            # Advanced Exit Management - Time-Decay State
+            "time_decay_50_triggered": False,
+            "time_decay_75_triggered": False,
+            "time_decay_90_triggered": False,
+            "original_stop_distance_ticks": None,
+            "current_stop_distance_ticks": None,
+            # Advanced Exit Management - Partial Exit State
+            "partial_exit_1_completed": False,
+            "partial_exit_2_completed": False,
+            "partial_exit_3_completed": False,
+            "original_quantity": 0,
+            "remaining_quantity": 0,
+            "partial_exit_history": [],  # List of {"price": float, "quantity": int, "r_multiple": float}
+            # Advanced Exit Management - General
+            "initial_risk_ticks": None,
         },
         
         # Volume history
@@ -1587,6 +1612,9 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
         except Exception as e:
             logger.warning(f"  Could not record trade execution: {e}")
     
+    # Calculate initial risk in ticks
+    stop_distance_ticks = abs(actual_fill_price - stop_price) / CONFIG["tick_size"]
+    
     # Update position tracking
     state[symbol]["position"] = {
         "active": True,
@@ -1597,7 +1625,32 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
         "target_price": target_price,
         "entry_time": entry_time,
         "order_id": order.get("order_id"),
-        "order_type_used": order_type_used  # Track for exit optimization
+        "order_type_used": order_type_used,  # Track for exit optimization
+        # Advanced Exit Management - Breakeven State
+        "breakeven_active": False,
+        "original_stop_price": stop_price,
+        "breakeven_activated_time": None,
+        # Advanced Exit Management - Trailing Stop State
+        "trailing_stop_active": False,
+        "trailing_stop_price": None,
+        "highest_price_reached": actual_fill_price if side == "long" else None,
+        "lowest_price_reached": actual_fill_price if side == "short" else None,
+        "trailing_activated_time": None,
+        # Advanced Exit Management - Time-Decay State
+        "time_decay_50_triggered": False,
+        "time_decay_75_triggered": False,
+        "time_decay_90_triggered": False,
+        "original_stop_distance_ticks": stop_distance_ticks,
+        "current_stop_distance_ticks": stop_distance_ticks,
+        # Advanced Exit Management - Partial Exit State
+        "partial_exit_1_completed": False,
+        "partial_exit_2_completed": False,
+        "partial_exit_3_completed": False,
+        "original_quantity": contracts,
+        "remaining_quantity": contracts,
+        "partial_exit_history": [],
+        # Advanced Exit Management - General
+        "initial_risk_ticks": stop_distance_ticks,
     }
     
     # Place stop loss order
@@ -1849,6 +1902,511 @@ def check_time_based_exits(symbol: str, current_bar: Dict[str, Any], position: D
     return None, None
 
 
+# ============================================================================
+# PHASE THREE: Breakeven Protection Logic
+# ============================================================================
+
+def check_breakeven_protection(symbol: str, current_price: float) -> None:
+    """
+    Check if breakeven protection should be activated and move stop to breakeven.
+    
+    This function runs every bar (or every 5 seconds in live mode) to monitor
+    position profit and activate breakeven protection when threshold is met.
+    
+    Args:
+        symbol: Instrument symbol
+        current_price: Current market price
+    """
+    # Only process if breakeven is enabled in config
+    if not CONFIG.get("breakeven_enabled", True):
+        return
+    
+    position = state[symbol]["position"]
+    
+    # Step 1 - Check eligibility: Only process positions that haven't activated breakeven yet
+    if not position["active"] or position["breakeven_active"]:
+        return
+    
+    side = position["side"]
+    entry_price = position["entry_price"]
+    tick_size = CONFIG["tick_size"]
+    breakeven_threshold_ticks = CONFIG.get("breakeven_profit_threshold_ticks", 8)
+    breakeven_offset_ticks = CONFIG.get("breakeven_stop_offset_ticks", 1)
+    
+    # Step 2 - Calculate current profit in ticks
+    if side == "long":
+        profit_ticks = (current_price - entry_price) / tick_size
+    else:  # short
+        profit_ticks = (entry_price - current_price) / tick_size
+    
+    # Step 3 - Compare to threshold
+    if profit_ticks < breakeven_threshold_ticks:
+        return  # Not enough profit yet
+    
+    # Step 4 - Calculate new breakeven stop price
+    if side == "long":
+        new_stop_price = entry_price + (breakeven_offset_ticks * tick_size)
+    else:  # short
+        new_stop_price = entry_price - (breakeven_offset_ticks * tick_size)
+    
+    new_stop_price = round_to_tick(new_stop_price)
+    
+    # Step 5 - Update stop loss
+    # Place new stop at breakeven level (broker will replace existing stop)
+    stop_side = "SELL" if side == "long" else "BUY"
+    contracts = position["quantity"]
+    new_stop_order = place_stop_order(symbol, stop_side, contracts, new_stop_price)
+    
+    if new_stop_order:
+        # Update position tracking
+        position["breakeven_active"] = True
+        position["breakeven_activated_time"] = get_current_time()
+        original_stop = position["original_stop_price"]
+        position["stop_price"] = new_stop_price
+        if new_stop_order.get("order_id"):
+            position["stop_order_id"] = new_stop_order.get("order_id")
+        
+        # Calculate profit locked in
+        profit_locked_ticks = (new_stop_price - entry_price) / tick_size if side == "long" else (entry_price - new_stop_price) / tick_size
+        profit_locked_dollars = profit_locked_ticks * CONFIG["tick_value"] * contracts
+        
+        # Step 6 - Log activation
+        logger.info("=" * 60)
+        logger.info("BREAKEVEN PROTECTION ACTIVATED")
+        logger.info("=" * 60)
+        logger.info(f"  Current Profit: {profit_ticks:.1f} ticks (threshold: {breakeven_threshold_ticks} ticks)")
+        logger.info(f"  Original Stop: ${original_stop:.2f}")
+        logger.info(f"  New Breakeven Stop: ${new_stop_price:.2f}")
+        logger.info(f"  Profit Locked In: {profit_locked_ticks:.1f} ticks (${profit_locked_dollars:+.2f})")
+        logger.info(f"  Entry Price: ${entry_price:.2f}")
+        logger.info(f"  Current Price: ${current_price:.2f}")
+        logger.info("=" * 60)
+    else:
+        logger.error("Failed to place breakeven stop order")
+
+
+# ============================================================================
+# PHASE FOUR: Trailing Stop Logic
+# ============================================================================
+
+def check_trailing_stop(symbol: str, current_price: float) -> None:
+    """
+    Check and update trailing stop based on price movement.
+    
+    Runs AFTER breakeven check. Only processes positions where breakeven is already active.
+    Continuously updates stop to follow profitable price movement while protecting gains.
+    
+    Args:
+        symbol: Instrument symbol
+        current_price: Current market price
+    """
+    # Only process if trailing stop is enabled in config
+    if not CONFIG.get("trailing_stop_enabled", True):
+        return
+    
+    position = state[symbol]["position"]
+    
+    # Step 1 - Check eligibility: Position must have breakeven active
+    if not position["active"] or not position["breakeven_active"]:
+        return
+    
+    side = position["side"]
+    entry_price = position["entry_price"]
+    tick_size = CONFIG["tick_size"]
+    trailing_distance_ticks = CONFIG.get("trailing_stop_distance_ticks", 8)
+    min_profit_ticks = CONFIG.get("trailing_stop_min_profit_ticks", 12)
+    
+    # Calculate current profit
+    if side == "long":
+        profit_ticks = (current_price - entry_price) / tick_size
+    else:  # short
+        profit_ticks = (entry_price - current_price) / tick_size
+    
+    # Must exceed minimum profit threshold before activating trailing
+    if profit_ticks < min_profit_ticks:
+        return
+    
+    # Step 2 - Track price extremes
+    if side == "long":
+        # Update highest price reached
+        if position["highest_price_reached"] is None:
+            position["highest_price_reached"] = current_price
+        else:
+            position["highest_price_reached"] = max(position["highest_price_reached"], current_price)
+        
+        price_extreme = position["highest_price_reached"]
+    else:  # short
+        # Update lowest price reached
+        if position["lowest_price_reached"] is None:
+            position["lowest_price_reached"] = current_price
+        else:
+            position["lowest_price_reached"] = min(position["lowest_price_reached"], current_price)
+        
+        price_extreme = position["lowest_price_reached"]
+    
+    # Step 3 - Calculate trailing stop
+    if side == "long":
+        new_trailing_stop = price_extreme - (trailing_distance_ticks * tick_size)
+    else:  # short
+        new_trailing_stop = price_extreme + (trailing_distance_ticks * tick_size)
+    
+    new_trailing_stop = round_to_tick(new_trailing_stop)
+    
+    # Step 4 - Compare to current stop (never move stop backwards)
+    current_stop = position["stop_price"]
+    
+    should_update = False
+    if side == "long":
+        # For longs, only update if new stop is HIGHER
+        if new_trailing_stop > current_stop:
+            should_update = True
+    else:  # short
+        # For shorts, only update if new stop is LOWER
+        if new_trailing_stop < current_stop:
+            should_update = True
+    
+    if not should_update:
+        return  # No improvement, don't update
+    
+    # Step 5 - Update stop loss
+    stop_side = "SELL" if side == "long" else "BUY"
+    contracts = position["quantity"]
+    new_stop_order = place_stop_order(symbol, stop_side, contracts, new_trailing_stop)
+    
+    if new_stop_order:
+        # Activate trailing stop flag if not already active
+        if not position["trailing_stop_active"]:
+            position["trailing_stop_active"] = True
+            position["trailing_activated_time"] = get_current_time()
+        
+        # Update position tracking
+        old_stop = position["stop_price"]
+        position["stop_price"] = new_trailing_stop
+        position["trailing_stop_price"] = new_trailing_stop
+        if new_stop_order.get("order_id"):
+            position["stop_order_id"] = new_stop_order.get("order_id")
+        
+        # Calculate profit now locked in
+        profit_locked_ticks = (new_trailing_stop - entry_price) / tick_size if side == "long" else (entry_price - new_trailing_stop) / tick_size
+        profit_locked_dollars = profit_locked_ticks * CONFIG["tick_value"] * contracts
+        
+        # Step 6 - Log updates
+        logger.info("=" * 60)
+        logger.info("TRAILING STOP UPDATED")
+        logger.info("=" * 60)
+        logger.info(f"  Side: {side.upper()}")
+        logger.info(f"  Price Extreme: ${price_extreme:.2f}")
+        logger.info(f"  Old Stop: ${old_stop:.2f}")
+        logger.info(f"  New Stop: ${new_trailing_stop:.2f}")
+        logger.info(f"  Profit Locked: {profit_locked_ticks:.1f} ticks (${profit_locked_dollars:+.2f})")
+        logger.info(f"  Current Price: ${current_price:.2f}")
+        logger.info("=" * 60)
+    else:
+        logger.error("Failed to update trailing stop order")
+
+
+# ============================================================================
+# PHASE FIVE: Time-Decay Tightening Logic
+# ============================================================================
+
+def check_time_decay_tightening(symbol: str, current_time: datetime) -> None:
+    """
+    Tighten stop loss as position ages to reduce risk over time.
+    
+    Applies progressive tightening at 50%, 75%, and 90% of max holding period.
+    Only tightens stops on profitable positions.
+    
+    Args:
+        symbol: Instrument symbol
+        current_time: Current datetime
+    """
+    # Only process if time-decay is enabled in config
+    if not CONFIG.get("time_decay_enabled", True):
+        return
+    
+    position = state[symbol]["position"]
+    
+    # Only process active positions
+    if not position["active"]:
+        return
+    
+    # Get entry time
+    entry_time = position["entry_time"]
+    if entry_time is None:
+        return
+    
+    side = position["side"]
+    entry_price = position["entry_price"]
+    tick_size = CONFIG["tick_size"]
+    tick_value = CONFIG["tick_value"]
+    
+    # Step 1 - Calculate time percentage
+    # Max holding period: use time until flatten mode (conservative)
+    # From entry window end (2:30 PM) to flatten deadline (4:45 PM) = 135 minutes
+    max_holding_minutes = 60  # Conservative 60 minute max hold as mentioned in config
+    
+    time_held = (current_time - entry_time).total_seconds() / 60.0  # minutes
+    time_percentage = (time_held / max_holding_minutes) * 100.0
+    
+    # Step 2 - Determine tightening level
+    tightening_pct = None
+    threshold_flag = None
+    
+    if time_percentage >= 90 and not position["time_decay_90_triggered"]:
+        tightening_pct = CONFIG.get("time_decay_90_percent_tightening", 0.30)
+        threshold_flag = "time_decay_90_triggered"
+    elif time_percentage >= 75 and not position["time_decay_75_triggered"]:
+        tightening_pct = CONFIG.get("time_decay_75_percent_tightening", 0.20)
+        threshold_flag = "time_decay_75_triggered"
+    elif time_percentage >= 50 and not position["time_decay_50_triggered"]:
+        tightening_pct = CONFIG.get("time_decay_50_percent_tightening", 0.10)
+        threshold_flag = "time_decay_50_triggered"
+    
+    # Step 3 - Check if already tightened (handled above with flags)
+    if tightening_pct is None or threshold_flag is None:
+        return  # No tightening needed at this time
+    
+    # Step 6 - Only tighten if profitable
+    current_price = state[symbol]["bars_1min"][-1]["close"] if len(state[symbol]["bars_1min"]) > 0 else entry_price
+    if side == "long":
+        unrealized_profit_ticks = (current_price - entry_price) / tick_size
+    else:  # short
+        unrealized_profit_ticks = (entry_price - current_price) / tick_size
+    
+    if unrealized_profit_ticks <= 0:
+        logger.debug(f"Time-decay skipped: position not profitable ({unrealized_profit_ticks:.1f} ticks)")
+        return
+    
+    # Step 4 - Calculate new stop distance
+    original_stop_distance_ticks = position["original_stop_distance_ticks"]
+    if original_stop_distance_ticks is None:
+        # Calculate from current position if not set
+        original_stop = position["original_stop_price"]
+        original_stop_distance_ticks = abs(entry_price - original_stop) / tick_size
+        position["original_stop_distance_ticks"] = original_stop_distance_ticks
+    
+    new_stop_distance_ticks = original_stop_distance_ticks * (1.0 - tightening_pct)
+    
+    # Step 5 - Calculate new stop price
+    if side == "long":
+        new_stop_price = entry_price - (new_stop_distance_ticks * tick_size)
+    else:  # short
+        new_stop_price = entry_price + (new_stop_distance_ticks * tick_size)
+    
+    new_stop_price = round_to_tick(new_stop_price)
+    
+    # Only update if new stop is better than current stop
+    current_stop = position["stop_price"]
+    should_update = False
+    
+    if side == "long":
+        if new_stop_price > current_stop:
+            should_update = True
+    else:  # short
+        if new_stop_price < current_stop:
+            should_update = True
+    
+    if not should_update:
+        logger.debug(f"Time-decay skipped: new stop ${new_stop_price:.2f} not better than current ${current_stop:.2f}")
+        return
+    
+    # Step 7 - Update stop loss
+    stop_side = "SELL" if side == "long" else "BUY"
+    contracts = position["quantity"]
+    new_stop_order = place_stop_order(symbol, stop_side, contracts, new_stop_price)
+    
+    if new_stop_order:
+        # Update position tracking
+        old_stop = position["stop_price"]
+        position["stop_price"] = new_stop_price
+        position["current_stop_distance_ticks"] = new_stop_distance_ticks
+        position[threshold_flag] = True  # Mark this tightening level as complete
+        if new_stop_order.get("order_id"):
+            position["stop_order_id"] = new_stop_order.get("order_id")
+        
+        # Step 8 - Log tightening
+        logger.info("=" * 60)
+        logger.info("TIME-DECAY TIGHTENING ACTIVATED")
+        logger.info("=" * 60)
+        logger.info(f"  Time Held: {time_held:.1f} minutes ({time_percentage:.1f}% of max)")
+        logger.info(f"  Tightening Applied: {tightening_pct * 100:.0f}%")
+        logger.info(f"  Original Stop Distance: {original_stop_distance_ticks:.1f} ticks")
+        logger.info(f"  New Stop Distance: {new_stop_distance_ticks:.1f} ticks")
+        logger.info(f"  Old Stop: ${old_stop:.2f}")
+        logger.info(f"  New Stop: ${new_stop_price:.2f}")
+        logger.info("=" * 60)
+    else:
+        logger.error("Failed to place time-decay tightened stop order")
+
+
+# ============================================================================
+# PHASE SIX: Partial Exit Logic
+# ============================================================================
+
+def check_partial_exits(symbol: str, current_price: float) -> None:
+    """
+    Execute partial exits at predefined R-multiple thresholds.
+    
+    Scales out of position at 2R, 3R, and 5R to lock in profits while
+    maintaining exposure to further gains.
+    
+    Args:
+        symbol: Instrument symbol
+        current_price: Current market price
+    """
+    # Only process if partial exits are enabled in config
+    if not CONFIG.get("partial_exits_enabled", True):
+        return
+    
+    position = state[symbol]["position"]
+    
+    # Only process active positions
+    if not position["active"]:
+        return
+    
+    side = position["side"]
+    entry_price = position["entry_price"]
+    tick_size = CONFIG["tick_size"]
+    tick_value = CONFIG["tick_value"]
+    
+    # Get initial risk
+    initial_risk_ticks = position["initial_risk_ticks"]
+    if initial_risk_ticks is None or initial_risk_ticks <= 0:
+        logger.warning("Cannot calculate R-multiple: initial risk not set")
+        return
+    
+    # Step 1 - Calculate R-multiple
+    if side == "long":
+        profit_ticks = (current_price - entry_price) / tick_size
+    else:  # short
+        profit_ticks = (entry_price - current_price) / tick_size
+    
+    r_multiple = profit_ticks / initial_risk_ticks
+    
+    # Get original quantity (for calculating partial sizes)
+    original_quantity = position["original_quantity"]
+    if original_quantity <= 1:
+        # Step 10 - Handle edge case: skip partials for single contract
+        logger.debug("Skipping partial exits: only 1 contract")
+        return
+    
+    # Check each partial exit threshold in order
+    
+    # Step 2 & 3 & 4 - First partial (50% at 2.0R)
+    if (r_multiple >= CONFIG.get("partial_exit_1_r_multiple", 2.0) and 
+        not position["partial_exit_1_completed"]):
+        
+        partial_pct = CONFIG.get("partial_exit_1_percentage", 0.50)
+        contracts_to_close = int(original_quantity * partial_pct)
+        
+        if contracts_to_close >= 1:
+            execute_partial_exit(symbol, contracts_to_close, current_price, r_multiple, 
+                                "partial_exit_1_completed", 1, partial_pct)
+            return  # Exit one partial per bar to avoid race conditions
+    
+    # Step 5 & 6 & 7 - Second partial (30% at 3.0R)
+    if (r_multiple >= CONFIG.get("partial_exit_2_r_multiple", 3.0) and 
+        not position["partial_exit_2_completed"]):
+        
+        partial_pct = CONFIG.get("partial_exit_2_percentage", 0.30)
+        contracts_to_close = int(original_quantity * partial_pct)
+        
+        if contracts_to_close >= 1:
+            execute_partial_exit(symbol, contracts_to_close, current_price, r_multiple,
+                                "partial_exit_2_completed", 2, partial_pct)
+            return
+    
+    # Step 8 & 9 - Third partial (remaining 20% at 5.0R)
+    if (r_multiple >= CONFIG.get("partial_exit_3_r_multiple", 5.0) and 
+        not position["partial_exit_3_completed"]):
+        
+        # Close all remaining contracts (the final runner)
+        remaining_quantity = position["remaining_quantity"]
+        
+        if remaining_quantity >= 1:
+            execute_partial_exit(symbol, remaining_quantity, current_price, r_multiple,
+                                "partial_exit_3_completed", 3, 1.0, is_final=True)
+            return
+
+
+def execute_partial_exit(symbol: str, contracts: int, exit_price: float, r_multiple: float,
+                        completion_flag: str, level: int, percentage: float, is_final: bool = False) -> None:
+    """
+    Execute a partial exit and update position tracking.
+    
+    Args:
+        symbol: Instrument symbol
+        contracts: Number of contracts to close
+        exit_price: Exit price
+        r_multiple: Current R-multiple
+        completion_flag: Position flag to mark this partial as complete
+        level: Partial exit level (1, 2, or 3)
+        percentage: Percentage of original position being closed
+        is_final: Whether this is the final exit closing entire position
+    """
+    position = state[symbol]["position"]
+    side = position["side"]
+    tick_size = CONFIG["tick_size"]
+    tick_value = CONFIG["tick_value"]
+    entry_price = position["entry_price"]
+    
+    # Calculate profit for this partial
+    if side == "long":
+        profit_ticks = (exit_price - entry_price) / tick_size
+    else:
+        profit_ticks = (entry_price - exit_price) / tick_size
+    
+    profit_dollars = profit_ticks * tick_value * contracts
+    
+    logger.info("=" * 60)
+    logger.info(f"PARTIAL EXIT #{level} - {percentage * 100:.0f}% @ {r_multiple:.1f}R")
+    logger.info("=" * 60)
+    logger.info(f"  Closing: {contracts} of {position['original_quantity']} contracts")
+    logger.info(f"  Exit Price: ${exit_price:.2f}")
+    logger.info(f"  Profit: {profit_ticks:.1f} ticks (${profit_dollars:+.2f})")
+    logger.info(f"  R-Multiple: {r_multiple:.2f}")
+    
+    # Execute the partial exit
+    order_side = "SELL" if side == "long" else "BUY"
+    order = place_market_order(symbol, order_side, contracts)
+    
+    if order:
+        # Update position tracking
+        position["remaining_quantity"] -= contracts
+        position["quantity"] = position["remaining_quantity"]
+        position[completion_flag] = True
+        
+        # Add to partial exit history
+        position["partial_exit_history"].append({
+            "price": exit_price,
+            "quantity": contracts,
+            "r_multiple": r_multiple,
+            "level": level
+        })
+        
+        # Step 10 - Handle edge case: check if position should be fully closed
+        if position["remaining_quantity"] < 1 or is_final:
+            logger.info("  Position FULLY CLOSED via partial exits")
+            logger.info("=" * 60)
+            
+            # Mark position as inactive
+            position["active"] = False
+            
+            # Update daily P&L
+            state[symbol]["daily_pnl"] += profit_dollars
+            
+            # Update session stats
+            update_session_stats(symbol, profit_dollars)
+        else:
+            logger.info(f"  Remaining: {position['remaining_quantity']} contracts")
+            logger.info("=" * 60)
+            
+            # Update daily P&L for this partial
+            state[symbol]["daily_pnl"] += profit_dollars
+    else:
+        logger.error(f"Failed to execute partial exit #{level}")
+
+
 def check_exit_conditions(symbol: str) -> None:
     """
     Check exit conditions for open position on each bar.
@@ -1926,34 +2484,12 @@ def check_exit_conditions(symbol: str) -> None:
         logger.warning(f"Flatten Mode Status: {minutes_remaining:.1f} min remaining, "
                       f"P&L: ${unrealized_pnl:+.2f}, Side: {side}, Qty: {position['quantity']}")
     
-    # Check stop loss
-    stop_hit, price = check_stop_hit(symbol, current_bar, position)
-    if stop_hit:
-        execute_exit(symbol, price, "stop_loss")
-        return
+    # ========================================================================
+    # PHASE SEVEN: Integration Priority and Execution Order
+    # ========================================================================
+    # Critical execution sequence - order matters!
     
-    # Check proactive stop (during flatten mode)
-    should_close, price = check_proactive_stop(symbol, current_bar, position)
-    if should_close:
-        logger.warning(f"Proactive stop close: within {CONFIG['proactive_stop_buffer_ticks']} ticks of stop")
-        execute_exit(symbol, price, "proactive_stop")
-        return
-    
-    # Check target reached
-    target_hit, price = check_target_reached(symbol, current_bar, position, bar_time)
-    if target_hit:
-        if price == position["target_price"]:
-            execute_exit(symbol, price, "target_reached")
-            # Track successful target wait
-            if bot_status["flatten_mode"]:
-                bot_status["target_wait_wins"] += 1
-        else:
-            # Tightened target
-            logger.info("Time-based tightened profit target reached (1:1 R/R after 3 PM)")
-            execute_exit(symbol, price, "tightened_target")
-        return
-    
-    # Check time-based exits
+    # FIRST - Time-based exit check (highest priority - hard deadline)
     reason, price = check_time_based_exits(symbol, current_bar, position, bar_time)
     if reason:
         # Log specific messages for certain exit types
@@ -1999,7 +2535,46 @@ def check_exit_conditions(symbol: str) -> None:
         execute_exit(symbol, price, reason)
         return
     
-    # Check for signal reversal
+    # SECOND - VWAP target hit check
+    target_hit, price = check_target_reached(symbol, current_bar, position, bar_time)
+    if target_hit:
+        if price == position["target_price"]:
+            execute_exit(symbol, price, "target_reached")
+            # Track successful target wait
+            if bot_status["flatten_mode"]:
+                bot_status["target_wait_wins"] += 1
+        else:
+            # Tightened target
+            logger.info("Time-based tightened profit target reached (1:1 R/R after 3 PM)")
+            execute_exit(symbol, price, "tightened_target")
+        return
+    
+    # THIRD - VWAP stop hit check
+    stop_hit, price = check_stop_hit(symbol, current_bar, position)
+    if stop_hit:
+        execute_exit(symbol, price, "stop_loss")
+        return
+    
+    # Check proactive stop (during flatten mode)
+    should_close, price = check_proactive_stop(symbol, current_bar, position)
+    if should_close:
+        logger.warning(f"Proactive stop close: within {CONFIG['proactive_stop_buffer_ticks']} ticks of stop")
+        execute_exit(symbol, price, "proactive_stop")
+        return
+    
+    # FOURTH - Partial exits (happens before breakeven/trailing because it reduces position size)
+    check_partial_exits(symbol, current_bar["close"])
+    
+    # FIFTH - Breakeven protection (must activate before trailing)
+    check_breakeven_protection(symbol, current_bar["close"])
+    
+    # SIXTH - Trailing stop (only runs if breakeven already active)
+    check_trailing_stop(symbol, current_bar["close"])
+    
+    # SEVENTH - Time-decay tightening (last priority, gradual adjustment)
+    check_time_decay_tightening(symbol, bar_time)
+    
+    # Check for signal reversal (lowest priority)
     reversal, price = check_reversal_signal(symbol, current_bar, position)
     if reversal:
         execute_exit(symbol, price, "signal_reversal")
@@ -2309,7 +2884,32 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
         "entry_price": None,
         "stop_price": None,
         "target_price": None,
-        "entry_time": None
+        "entry_time": None,
+        # Advanced Exit Management - Breakeven State
+        "breakeven_active": False,
+        "original_stop_price": None,
+        "breakeven_activated_time": None,
+        # Advanced Exit Management - Trailing Stop State
+        "trailing_stop_active": False,
+        "trailing_stop_price": None,
+        "highest_price_reached": None,
+        "lowest_price_reached": None,
+        "trailing_activated_time": None,
+        # Advanced Exit Management - Time-Decay State
+        "time_decay_50_triggered": False,
+        "time_decay_75_triggered": False,
+        "time_decay_90_triggered": False,
+        "original_stop_distance_ticks": None,
+        "current_stop_distance_ticks": None,
+        # Advanced Exit Management - Partial Exit State
+        "partial_exit_1_completed": False,
+        "partial_exit_2_completed": False,
+        "partial_exit_3_completed": False,
+        "original_quantity": 0,
+        "remaining_quantity": 0,
+        "partial_exit_history": [],
+        # Advanced Exit Management - General
+        "initial_risk_ticks": None,
     }
 
 

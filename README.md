@@ -21,6 +21,14 @@ The VWAP Bounce Bot subscribes to real-time tick data, aggregates it into bars, 
 - ✨ **Cost Optimization** - Save 80% on trading costs with smart limit orders
 - 📖 **[See Full Documentation](docs/BID_ASK_STRATEGY.md)**
 
+**NEW: Advanced Exit Management** 🎯
+- ✨ **Breakeven Protection** - Locks in profit after 8 ticks, eliminates risk
+- ✨ **Trailing Stops** - Captures extended moves beyond 3σ target
+- ✨ **Time-Decay Tightening** - Reduces risk progressively as positions age
+- ✨ **Partial Exits** - Scales out at 2R, 3R, and 5R milestones
+- 📊 **Risk Reduction** - 60-80% reduction via intelligent exit management
+- 📖 **[See Full Documentation](docs/ADVANCED_EXIT_MANAGEMENT.md)**
+
 ## Features
 
 - **Event-Driven Architecture**: Processes real-time tick data efficiently

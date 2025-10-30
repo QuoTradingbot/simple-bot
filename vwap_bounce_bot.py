@@ -531,7 +531,32 @@ def initialize_state(symbol: str) -> None:
             "entry_price": None,
             "stop_price": None,
             "target_price": None,
-            "entry_time": None
+            "entry_time": None,
+            # Advanced Exit Management - Breakeven State
+            "breakeven_active": False,
+            "original_stop_price": None,
+            "breakeven_activated_time": None,
+            # Advanced Exit Management - Trailing Stop State
+            "trailing_stop_active": False,
+            "trailing_stop_price": None,
+            "highest_price_reached": None,  # For longs
+            "lowest_price_reached": None,  # For shorts
+            "trailing_activated_time": None,
+            # Advanced Exit Management - Time-Decay State
+            "time_decay_50_triggered": False,
+            "time_decay_75_triggered": False,
+            "time_decay_90_triggered": False,
+            "original_stop_distance_ticks": None,
+            "current_stop_distance_ticks": None,
+            # Advanced Exit Management - Partial Exit State
+            "partial_exit_1_completed": False,
+            "partial_exit_2_completed": False,
+            "partial_exit_3_completed": False,
+            "original_quantity": 0,
+            "remaining_quantity": 0,
+            "partial_exit_history": [],  # List of {"price": float, "quantity": int, "r_multiple": float}
+            # Advanced Exit Management - General
+            "initial_risk_ticks": None,
         },
         
         # Volume history
@@ -2309,7 +2334,32 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
         "entry_price": None,
         "stop_price": None,
         "target_price": None,
-        "entry_time": None
+        "entry_time": None,
+        # Advanced Exit Management - Breakeven State
+        "breakeven_active": False,
+        "original_stop_price": None,
+        "breakeven_activated_time": None,
+        # Advanced Exit Management - Trailing Stop State
+        "trailing_stop_active": False,
+        "trailing_stop_price": None,
+        "highest_price_reached": None,
+        "lowest_price_reached": None,
+        "trailing_activated_time": None,
+        # Advanced Exit Management - Time-Decay State
+        "time_decay_50_triggered": False,
+        "time_decay_75_triggered": False,
+        "time_decay_90_triggered": False,
+        "original_stop_distance_ticks": None,
+        "current_stop_distance_ticks": None,
+        # Advanced Exit Management - Partial Exit State
+        "partial_exit_1_completed": False,
+        "partial_exit_2_completed": False,
+        "partial_exit_3_completed": False,
+        "original_quantity": 0,
+        "remaining_quantity": 0,
+        "partial_exit_history": [],
+        # Advanced Exit Management - General
+        "initial_risk_ticks": None,
     }
 
 

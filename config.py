@@ -116,6 +116,32 @@ class BotConfiguration:
     max_transaction_cost_pct: float = 0.15  # Max transaction cost as % of expected profit (15%)
     commission_per_contract: float = 2.50  # Commission per contract round-turn
     
+    # Advanced Exit Management Parameters
+    # Breakeven Protection
+    breakeven_enabled: bool = True  # Enable/disable breakeven protection
+    breakeven_profit_threshold_ticks: int = 8  # Profit in ticks before activating breakeven
+    breakeven_stop_offset_ticks: int = 1  # Ticks above/below entry for breakeven stop
+    
+    # Trailing Stop
+    trailing_stop_enabled: bool = True  # Enable/disable trailing stop
+    trailing_stop_distance_ticks: int = 8  # Distance in ticks to trail behind price
+    trailing_stop_min_profit_ticks: int = 12  # Minimum profit before activating trailing
+    
+    # Time-Decay Tightening
+    time_decay_enabled: bool = True  # Enable/disable time-decay tightening
+    time_decay_50_percent_tightening: float = 0.10  # 10% tightening at 50% of max hold time
+    time_decay_75_percent_tightening: float = 0.20  # 20% tightening at 75% of max hold time
+    time_decay_90_percent_tightening: float = 0.30  # 30% tightening at 90% of max hold time
+    
+    # Partial Exits
+    partial_exits_enabled: bool = True  # Enable/disable partial exits
+    partial_exit_1_percentage: float = 0.50  # 50% exit at first level
+    partial_exit_1_r_multiple: float = 2.0  # Exit at 2.0R
+    partial_exit_2_percentage: float = 0.30  # 30% exit at second level
+    partial_exit_2_r_multiple: float = 3.0  # Exit at 3.0R
+    partial_exit_3_percentage: float = 0.20  # 20% exit at third level
+    partial_exit_3_r_multiple: float = 5.0  # Exit at 5.0R
+    
     # Broker Configuration (only for live trading)
     api_token: Optional[str] = None
     
@@ -233,6 +259,24 @@ class BotConfiguration:
             "dry_run": self.dry_run,
             "log_file": self.log_file,
             "max_bars_storage": self.max_bars_storage,
+            # Advanced Exit Management
+            "breakeven_enabled": self.breakeven_enabled,
+            "breakeven_profit_threshold_ticks": self.breakeven_profit_threshold_ticks,
+            "breakeven_stop_offset_ticks": self.breakeven_stop_offset_ticks,
+            "trailing_stop_enabled": self.trailing_stop_enabled,
+            "trailing_stop_distance_ticks": self.trailing_stop_distance_ticks,
+            "trailing_stop_min_profit_ticks": self.trailing_stop_min_profit_ticks,
+            "time_decay_enabled": self.time_decay_enabled,
+            "time_decay_50_percent_tightening": self.time_decay_50_percent_tightening,
+            "time_decay_75_percent_tightening": self.time_decay_75_percent_tightening,
+            "time_decay_90_percent_tightening": self.time_decay_90_percent_tightening,
+            "partial_exits_enabled": self.partial_exits_enabled,
+            "partial_exit_1_percentage": self.partial_exit_1_percentage,
+            "partial_exit_1_r_multiple": self.partial_exit_1_r_multiple,
+            "partial_exit_2_percentage": self.partial_exit_2_percentage,
+            "partial_exit_2_r_multiple": self.partial_exit_2_r_multiple,
+            "partial_exit_3_percentage": self.partial_exit_3_percentage,
+            "partial_exit_3_r_multiple": self.partial_exit_3_r_multiple,
         }
 
 

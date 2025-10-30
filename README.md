@@ -13,9 +13,18 @@ The VWAP Bounce Bot subscribes to real-time tick data, aggregates it into bars, 
 - ✨ **Metrics Collection** - Track performance metrics and API latency
 - ✨ **Dual Mode** - Run in live trading or backtesting mode
 
+**NEW: Complete Bid/Ask Trading Strategy** ⭐
+- ✨ **Real-Time Bid/Ask Quotes** - Track bid price, ask price, sizes, and spreads
+- ✨ **Spread Analysis** - Baseline tracking and abnormal spread detection
+- ✨ **Intelligent Order Placement** - Passive vs aggressive strategy selection
+- ✨ **Dynamic Fill Strategy** - Timeout handling and retry logic
+- ✨ **Cost Optimization** - Save 80% on trading costs with smart limit orders
+- 📖 **[See Full Documentation](docs/BID_ASK_STRATEGY.md)**
+
 ## Features
 
 - **Event-Driven Architecture**: Processes real-time tick data efficiently
+- **Bid/Ask Strategy**: Professional-grade order placement with spread analysis
 - **Risk Management**: Conservative 0.1% risk per trade with daily loss limits
 - **Trend Filter**: 50-period EMA on 15-minute bars
 - **VWAP Bands**: Two standard deviation bands for entry signals

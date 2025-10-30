@@ -87,6 +87,15 @@ class BotConfiguration:
     log_file: str = "vwap_bounce_bot.log"
     max_bars_storage: int = 200
     
+    # Bid/Ask Trading Strategy Parameters
+    passive_order_timeout: int = 10  # Seconds to wait for passive order fill
+    abnormal_spread_multiplier: float = 2.0  # Multiplier for abnormal spread detection
+    spread_lookback_periods: int = 100  # Number of spread samples to track
+    high_volatility_spread_mult: float = 3.0  # Spread multiplier for high volatility detection
+    calm_market_spread_mult: float = 1.5  # Spread multiplier for calm market detection
+    use_mixed_order_strategy: bool = False  # Enable mixed passive/aggressive orders
+    mixed_passive_ratio: float = 0.5  # Ratio of passive to total when using mixed strategy
+    
     # Broker Configuration (only for live trading)
     api_token: Optional[str] = None
     

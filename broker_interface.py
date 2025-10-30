@@ -118,11 +118,22 @@ class BrokerInterface(ABC):
     @abstractmethod
     def subscribe_market_data(self, symbol: str, callback: Callable[[str, float, int, int], None]) -> None:
         """
-        Subscribe to real-time market data.
+        Subscribe to real-time market data (trades).
         
         Args:
             symbol: Instrument symbol
             callback: Function to call with tick data (symbol, price, volume, timestamp)
+        """
+        pass
+    
+    @abstractmethod
+    def subscribe_quotes(self, symbol: str, callback: Callable[[str, float, float, int, int, float, int], None]) -> None:
+        """
+        Subscribe to real-time bid/ask quotes.
+        
+        Args:
+            symbol: Instrument symbol
+            callback: Function to call with quote data (symbol, bid_price, ask_price, bid_size, ask_size, last_price, timestamp)
         """
         pass
     
@@ -389,7 +400,7 @@ class TopStepBroker(BrokerInterface):
             return None
     
     def subscribe_market_data(self, symbol: str, callback: Callable[[str, float, int, int], None]) -> None:
-        """Subscribe to real-time market data."""
+        """Subscribe to real-time market data (trades)."""
         if not self.connected or not self.sdk_client:
             logger.error("Cannot subscribe: not connected")
             return
@@ -413,6 +424,36 @@ class TopStepBroker(BrokerInterface):
                 logger.error("Failed to get realtime client")
         except Exception as e:
             logger.error(f"Error subscribing to market data: {e}")
+            self._record_failure()
+    
+    def subscribe_quotes(self, symbol: str, callback: Callable[[str, float, float, int, int, float, int], None]) -> None:
+        """Subscribe to real-time bid/ask quotes."""
+        if not self.connected or not self.sdk_client:
+            logger.error("Cannot subscribe to quotes: not connected")
+            return
+        
+        try:
+            # Subscribe to realtime quotes
+            realtime_client = self.sdk_client.get_realtime_client()
+            if realtime_client:
+                # Subscribe to quotes (bid/ask) for the symbol
+                realtime_client.subscribe_quotes(
+                    symbol,
+                    lambda quote: callback(
+                        quote.instrument.symbol,
+                        float(quote.bid_price),
+                        float(quote.ask_price),
+                        int(quote.bid_size),
+                        int(quote.ask_size),
+                        float(quote.last_price) if hasattr(quote, 'last_price') else float(quote.bid_price),
+                        int(quote.timestamp.timestamp() * 1000)
+                    )
+                )
+                logger.info(f"Subscribed to bid/ask quotes for {symbol}")
+            else:
+                logger.error("Failed to get realtime client")
+        except Exception as e:
+            logger.error(f"Error subscribing to quotes: {e}")
             self._record_failure()
     
     def fetch_historical_bars(self, symbol: str, timeframe: str, count: int) -> List[Dict[str, Any]]:

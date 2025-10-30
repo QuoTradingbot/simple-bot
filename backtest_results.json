@@ -1,0 +1,14 @@
+{
+  "total_trades": 14,
+  "total_pnl": 720.0,
+  "win_rate": 50.0,
+  "average_win": 833.5714285714286,
+  "average_loss": -730.7142857142857,
+  "max_drawdown_dollars": 3682.5,
+  "max_drawdown_percent": 7.260449526813881,
+  "sharpe_ratio": 0.8031764637658109,
+  "profit_factor": 1.1407624633431086,
+  "time_in_market_percent": -1.446828395029178,
+  "final_equity": 50720.0,
+  "total_return": 1.4399999999999968
+}

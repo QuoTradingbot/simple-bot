@@ -1,0 +1,519 @@
+{
+  "test_period": {
+    "start": "2025-09-01T00:00:00-04:56",
+    "end": "2025-10-29T00:00:00-04:56",
+    "days": 58
+  },
+  "total_combinations": 162,
+  "successful_runs": 162,
+  "best_by_pnl": {
+    "params": {
+      "vwap_std_dev_2": 1.5,
+      "rsi_oversold": 20,
+      "rsi_overbought": 70,
+      "use_rsi_filter": true,
+      "risk_per_trade": 0.01
+    },
+    "metrics": {
+      "total_trades": 14,
+      "total_pnl": 720.0,
+      "win_rate": 50.0,
+      "average_win": 833.5714285714286,
+      "average_loss": -730.7142857142857,
+      "max_drawdown_dollars": 3682.5,
+      "max_drawdown_percent": 7.260449526813881,
+      "sharpe_ratio": 0.8031764637658109,
+      "profit_factor": 1.1407624633431086,
+      "time_in_market_percent": -1.446649174946731,
+      "final_equity": 50720.0,
+      "total_return": 1.4399999999999968
+    }
+  },
+  "best_by_sharpe": {
+    "params": {
+      "vwap_std_dev_2": 1.5,
+      "rsi_oversold": 20,
+      "rsi_overbought": 70,
+      "use_rsi_filter": true,
+      "risk_per_trade": 0.01
+    },
+    "metrics": {
+      "total_trades": 14,
+      "total_pnl": 720.0,
+      "win_rate": 50.0,
+      "average_win": 833.5714285714286,
+      "average_loss": -730.7142857142857,
+      "max_drawdown_dollars": 3682.5,
+      "max_drawdown_percent": 7.260449526813881,
+      "sharpe_ratio": 0.8031764637658109,
+      "profit_factor": 1.1407624633431086,
+      "time_in_market_percent": -1.446649174946731,
+      "final_equity": 50720.0,
+      "total_return": 1.4399999999999968
+    }
+  },
+  "all_results_by_pnl": [
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "use_rsi_filter": true,
+        "risk_per_trade": 0.01
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.446649174946731,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "use_rsi_filter": true,
+        "risk_per_trade": 0.012
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4466278132552957,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "use_rsi_filter": true,
+        "risk_per_trade": 0.015
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4466076656743618,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "use_rsi_filter": false,
+        "risk_per_trade": 0.01
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4465877265132525,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "use_rsi_filter": false,
+        "risk_per_trade": 0.012
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4465675391312611,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "use_rsi_filter": false,
+        "risk_per_trade": 0.015
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4465477030030705,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 75,
+        "use_rsi_filter": true,
+        "risk_per_trade": 0.01
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.446527930863429,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 75,
+        "use_rsi_filter": true,
+        "risk_per_trade": 0.012
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4465078803188949,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 75,
+        "use_rsi_filter": true,
+        "risk_per_trade": 0.015
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4464882445953413,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 75,
+        "use_rsi_filter": false,
+        "risk_per_trade": 0.01
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4464684465144817,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    }
+  ],
+  "all_results_by_sharpe": [
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "use_rsi_filter": true,
+        "risk_per_trade": 0.01
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.446649174946731,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "use_rsi_filter": true,
+        "risk_per_trade": 0.012
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4466278132552957,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "use_rsi_filter": true,
+        "risk_per_trade": 0.015
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4466076656743618,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "use_rsi_filter": false,
+        "risk_per_trade": 0.01
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4465877265132525,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "use_rsi_filter": false,
+        "risk_per_trade": 0.012
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4465675391312611,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 70,
+        "use_rsi_filter": false,
+        "risk_per_trade": 0.015
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4465477030030705,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 75,
+        "use_rsi_filter": true,
+        "risk_per_trade": 0.01
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.446527930863429,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 75,
+        "use_rsi_filter": true,
+        "risk_per_trade": 0.012
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4465078803188949,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 75,
+        "use_rsi_filter": true,
+        "risk_per_trade": 0.015
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4464882445953413,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    },
+    {
+      "params": {
+        "vwap_std_dev_2": 1.5,
+        "rsi_oversold": 20,
+        "rsi_overbought": 75,
+        "use_rsi_filter": false,
+        "risk_per_trade": 0.01
+      },
+      "metrics": {
+        "total_trades": 14,
+        "total_pnl": 720.0,
+        "win_rate": 50.0,
+        "average_win": 833.5714285714286,
+        "average_loss": -730.7142857142857,
+        "max_drawdown_dollars": 3682.5,
+        "max_drawdown_percent": 7.260449526813881,
+        "sharpe_ratio": 0.8031764637658109,
+        "profit_factor": 1.1407624633431086,
+        "time_in_market_percent": -1.4464684465144817,
+        "final_equity": 50720.0,
+        "total_return": 1.4399999999999968
+      }
+    }
+  ]
+}

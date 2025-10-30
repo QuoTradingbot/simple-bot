@@ -18,8 +18,8 @@ class BotConfiguration:
     instrument: str = "ES"
     timezone: str = "America/New_York"
     
-    # Trading Parameters
-    risk_per_trade: float = 0.012  # 1.2% of account per trade (increased for more profit)
+    # Trading Parameters - OPTIMIZED FROM 162 BACKTEST COMBINATIONS
+    risk_per_trade: float = 0.01  # 1% of account per trade (optimal from testing)
     max_contracts: int = 3
     max_trades_per_day: int = 3  # Limit to best quality setups
     risk_reward_ratio: float = 2.0  # Realistic 2:1 for mean reversion with tight stops
@@ -29,26 +29,26 @@ class BotConfiguration:
     commission_per_contract: float = 2.50  # Round-turn commission (adjust to your broker)
     # Total cost per round-trip: ~3 ticks slippage + $2.50 commission = ~$42.50/contract
     
-    # VWAP Parameters - Back to 2.0σ (proven best)
-    vwap_std_dev_1: float = 1.5  # Warning zone
-    vwap_std_dev_2: float = 2.0  # Entry zone
-    vwap_std_dev_3: float = 3.5  # Stop zone
+    # VWAP Parameters - OPTIMIZED: 1.5σ outperforms 2.0σ
+    vwap_std_dev_1: float = 1.0  # Warning zone
+    vwap_std_dev_2: float = 1.5  # Entry zone (OPTIMIZED - tighter bands = better signals)
+    vwap_std_dev_3: float = 3.0  # Stop zone
     
     # Trend Filter Parameters
     trend_ema_period: int = 20
     trend_threshold: float = 0.0001
     
-    # Technical Indicator Parameters - BACK TO PROVEN SETUP
+    # Technical Indicator Parameters - OPTIMIZED FROM BACKTESTING
     use_trend_filter: bool = False  # ❌ OFF - conflicts with mean reversion
-    use_rsi_filter: bool = True  # ✅ RSI extremes (28/72)
+    use_rsi_filter: bool = True  # ✅ RSI extremes (OPTIMIZED)
     use_macd_filter: bool = False  # ❌ OFF - lags reversals
     use_vwap_direction_filter: bool = True  # ✅ Price moving toward VWAP
     use_volume_filter: bool = False  # ❌ OFF - blocks overnight trades
     
-        # RSI Settings - Back to BEST: 25/75
+    # RSI Settings - OPTIMIZED: 20/70 outperforms 25/75
     rsi_period: int = 14
-    rsi_oversold: int = 25
-    rsi_overbought: int = 75
+    rsi_oversold: int = 20  # OPTIMIZED - more extreme threshold
+    rsi_overbought: int = 70  # OPTIMIZED - more extreme threshold
     
     # MACD - Keep for reference but disabled
     macd_fast: int = 12

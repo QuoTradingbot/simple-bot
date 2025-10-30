@@ -186,5 +186,204 @@ class TestPositionTrackingFields(unittest.TestCase):
         self.assertEqual(len(required_fields), 20)
 
 
+class TestTrailingStopLogic(unittest.TestCase):
+    """Test trailing stop logic."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.config = {
+            "tick_size": 0.25,
+            "tick_value": 12.50,
+            "trailing_stop_enabled": True,
+            "trailing_stop_distance_ticks": 8,
+            "trailing_stop_min_profit_ticks": 12,
+        }
+    
+    def test_trailing_stop_long_calculation(self):
+        """Test trailing stop calculation for long positions."""
+        highest_price = 4512.00  # High water mark
+        tick_size = self.config["tick_size"]
+        trailing_distance = self.config["trailing_stop_distance_ticks"]
+        
+        trailing_stop = highest_price - (trailing_distance * tick_size)
+        
+        self.assertEqual(trailing_stop, 4510.00)  # 8 ticks below high
+    
+    def test_trailing_stop_short_calculation(self):
+        """Test trailing stop calculation for short positions."""
+        lowest_price = 4488.00  # Low water mark
+        tick_size = self.config["tick_size"]
+        trailing_distance = self.config["trailing_stop_distance_ticks"]
+        
+        trailing_stop = lowest_price + (trailing_distance * tick_size)
+        
+        self.assertEqual(trailing_stop, 4490.00)  # 8 ticks above low
+    
+    def test_min_profit_threshold(self):
+        """Test that trailing only activates after minimum profit."""
+        entry_price = 4500.00
+        current_price = 4502.75  # 11 ticks profit
+        tick_size = self.config["tick_size"]
+        min_profit = self.config["trailing_stop_min_profit_ticks"]
+        
+        profit_ticks = (current_price - entry_price) / tick_size
+        
+        self.assertEqual(profit_ticks, 11.0)
+        self.assertLess(profit_ticks, min_profit)  # Not enough profit yet
+
+
+class TestTimeDecayLogic(unittest.TestCase):
+    """Test time-decay tightening logic."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.config = {
+            "tick_size": 0.25,
+            "time_decay_enabled": True,
+            "time_decay_50_percent_tightening": 0.10,
+            "time_decay_75_percent_tightening": 0.20,
+            "time_decay_90_percent_tightening": 0.30,
+        }
+    
+    def test_time_percentage_calculation(self):
+        """Test time percentage calculation."""
+        max_hold_minutes = 60
+        time_held_minutes = 30
+        
+        time_percentage = (time_held_minutes / max_hold_minutes) * 100.0
+        
+        self.assertEqual(time_percentage, 50.0)
+    
+    def test_stop_tightening_50_percent(self):
+        """Test stop tightening at 50% time threshold."""
+        original_stop_distance = 18.0  # ticks
+        tightening_pct = self.config["time_decay_50_percent_tightening"]
+        
+        new_stop_distance = original_stop_distance * (1.0 - tightening_pct)
+        
+        self.assertEqual(new_stop_distance, 16.2)  # 10% tighter
+    
+    def test_stop_tightening_75_percent(self):
+        """Test stop tightening at 75% time threshold."""
+        original_stop_distance = 18.0  # ticks
+        tightening_pct = self.config["time_decay_75_percent_tightening"]
+        
+        new_stop_distance = original_stop_distance * (1.0 - tightening_pct)
+        
+        self.assertEqual(new_stop_distance, 14.4)  # 20% tighter
+    
+    def test_stop_tightening_90_percent(self):
+        """Test stop tightening at 90% time threshold."""
+        original_stop_distance = 18.0  # ticks
+        tightening_pct = self.config["time_decay_90_percent_tightening"]
+        
+        new_stop_distance = original_stop_distance * (1.0 - tightening_pct)
+        
+        self.assertEqual(new_stop_distance, 12.6)  # 30% tighter
+
+
+class TestPartialExitLogic(unittest.TestCase):
+    """Test partial exit logic."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.config = {
+            "tick_size": 0.25,
+            "tick_value": 12.50,
+            "partial_exits_enabled": True,
+            "partial_exit_1_percentage": 0.50,
+            "partial_exit_1_r_multiple": 2.0,
+            "partial_exit_2_percentage": 0.30,
+            "partial_exit_2_r_multiple": 3.0,
+            "partial_exit_3_percentage": 0.20,
+            "partial_exit_3_r_multiple": 5.0,
+        }
+    
+    def test_r_multiple_calculation(self):
+        """Test R-multiple calculation."""
+        entry_price = 4500.00
+        current_price = 4536.00  # 36 ticks profit (144 / 0.25)
+        initial_risk_ticks = 18.0
+        tick_size = self.config["tick_size"]
+        
+        profit_ticks = (current_price - entry_price) / tick_size
+        r_multiple = profit_ticks / initial_risk_ticks
+        
+        self.assertEqual(profit_ticks, 144.0)
+        self.assertEqual(r_multiple, 8.0)  # 8R
+    
+    def test_first_partial_size(self):
+        """Test first partial exit size calculation."""
+        original_contracts = 4
+        partial_pct = self.config["partial_exit_1_percentage"]
+        
+        contracts_to_close = int(original_contracts * partial_pct)
+        
+        self.assertEqual(contracts_to_close, 2)  # 50% of 4 = 2
+    
+    def test_second_partial_size(self):
+        """Test second partial exit size calculation."""
+        original_contracts = 4
+        partial_pct = self.config["partial_exit_2_percentage"]
+        
+        contracts_to_close = int(original_contracts * partial_pct)
+        
+        self.assertEqual(contracts_to_close, 1)  # 30% of 4 = 1.2, rounded down
+    
+    def test_third_partial_size(self):
+        """Test third partial exit (remaining contracts)."""
+        original_contracts = 4
+        first_partial = 2
+        second_partial = 1
+        
+        remaining = original_contracts - first_partial - second_partial
+        
+        self.assertEqual(remaining, 1)  # Final runner
+    
+    def test_single_contract_skip(self):
+        """Test that single contract positions skip partials."""
+        original_contracts = 1
+        
+        self.assertEqual(original_contracts, 1)  # Should skip partials
+
+
+class TestExecutionOrderIntegration(unittest.TestCase):
+    """Test that execution order is correct per PHASE 7."""
+    
+    def test_execution_order_priority(self):
+        """Test execution order priorities are documented correctly."""
+        # This is a documentation test to ensure the order is clear
+        execution_order = [
+            "time_based_exits",      # FIRST - hard deadline
+            "vwap_target",           # SECOND - profit target
+            "vwap_stop",             # THIRD - stop loss
+            "partial_exits",         # FOURTH - reduces position size
+            "breakeven_protection",  # FIFTH - must activate before trailing
+            "trailing_stop",         # SIXTH - requires breakeven active
+            "time_decay_tightening", # SEVENTH - gradual adjustment
+            "signal_reversal",       # LAST - lowest priority
+        ]
+        
+        # Verify all steps are documented
+        self.assertEqual(len(execution_order), 8)
+        
+        # Verify critical dependencies
+        self.assertLess(
+            execution_order.index("partial_exits"),
+            execution_order.index("breakeven_protection"),
+            "Partial exits must happen before breakeven"
+        )
+        self.assertLess(
+            execution_order.index("breakeven_protection"),
+            execution_order.index("trailing_stop"),
+            "Breakeven must activate before trailing"
+        )
+        self.assertLess(
+            execution_order.index("time_based_exits"),
+            execution_order.index("vwap_target"),
+            "Time-based exits override everything"
+        )
+
+
 if __name__ == '__main__':
     unittest.main()

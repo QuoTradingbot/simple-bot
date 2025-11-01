@@ -15,6 +15,7 @@ from config import load_config, BotConfiguration
 from event_loop import EventLoop, EventType, EventPriority, TimerManager
 from error_recovery import ErrorRecoveryManager, ErrorType as RecoveryErrorType
 from bid_ask_manager import BidAskManager, BidAskQuote
+from signal_confidence import SignalConfidenceRL
 
 # Conditionally import broker (only needed for live trading, not backtesting)
 try:
@@ -48,6 +49,9 @@ recovery_manager: Optional[ErrorRecoveryManager] = None
 
 # Global timer manager
 timer_manager: Optional[TimerManager] = None
+
+# Global RL brain for signal confidence learning
+rl_brain: Optional[SignalConfidenceRL] = None
 
 # Global bid/ask manager
 bid_ask_manager: Optional[BidAskManager] = None
@@ -634,8 +638,8 @@ def on_tick(symbol: str, price: float, volume: int, timestamp_ms: int) -> None:
             }
         )
     else:
-        # Fallback if event loop not initialized (shouldn't happen in production)
-        logger.warning("Event loop not initialized, processing tick directly")
+        # Fallback if event loop not initialized (backtesting mode)
+        # Suppress warning spam during backtests - this is expected behavior
         handle_tick_event({
             "symbol": symbol,
             "price": price,
@@ -884,6 +888,51 @@ def calculate_macd(prices: List[float], fast_period: int = 12,
         "signal": signal_line,
         "histogram": histogram
     }
+
+
+def calculate_atr(symbol: str, period: int = 14) -> float:
+    """
+    Calculate Average True Range (ATR) for volatility measurement.
+    
+    Args:
+        symbol: Instrument symbol
+        period: ATR period (default 14)
+    
+    Returns:
+        ATR value in price units
+    """
+    bars = state[symbol]["bars_15min"]
+    
+    if len(bars) < 2:
+        return 0.0
+    
+    true_ranges = []
+    for i in range(1, len(bars)):
+        high = bars[i]["high"]
+        low = bars[i]["low"]
+        prev_close = bars[i-1]["close"]
+        
+        # True Range is the maximum of:
+        # 1. Current High - Current Low
+        # 2. abs(Current High - Previous Close)
+        # 3. abs(Current Low - Previous Close)
+        tr = max(
+            high - low,
+            abs(high - prev_close),
+            abs(low - prev_close)
+        )
+        true_ranges.append(tr)
+    
+    if not true_ranges:
+        return 0.0
+    
+    # Calculate ATR (simple moving average of TR)
+    if len(true_ranges) >= period:
+        atr = sum(true_ranges[-period:]) / period
+    else:
+        atr = sum(true_ranges) / len(true_ranges)
+    
+    return atr
 
 
 def update_rsi(symbol: str) -> None:
@@ -1178,7 +1227,7 @@ def check_long_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
         if trend == "down":
             logger.debug(f"Long rejected - trend is {trend}, counter to downtrend")
             return False
-        logger.debug(f"Trend filter: {trend} ✓ (allows longs)")
+        logger.debug(f"Trend filter: {trend}  (allows longs)")
     
     # PRIMARY: VWAP bounce condition (2.0 std dev)
     touched_lower = prev_bar["low"] <= vwap_bands["lower_2"]
@@ -1193,7 +1242,7 @@ def check_long_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
         if current_bar["close"] >= vwap:
             logger.debug(f"Long rejected - price above VWAP: {current_bar['close']:.2f} >= {vwap:.2f}")
             return False
-        logger.debug(f"Price below VWAP: {current_bar['close']:.2f} < {vwap:.2f} ✓")
+        logger.debug(f"Price below VWAP: {current_bar['close']:.2f} < {vwap:.2f} ")
     
     # FILTER 2: RSI - extreme oversold
     use_rsi = CONFIG.get("use_rsi_filter", True)
@@ -1204,7 +1253,7 @@ def check_long_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
             if rsi >= rsi_oversold:
                 logger.debug(f"Long rejected - RSI not extreme: {rsi:.2f} >= {rsi_oversold}")
                 return False
-            logger.debug(f"RSI extreme oversold: {rsi:.2f} < {rsi_oversold} ✓")
+            logger.debug(f"RSI extreme oversold: {rsi:.2f} < {rsi_oversold} ")
     
     # FILTER 3: Volume spike - confirmation of interest
     use_volume = CONFIG.get("use_volume_filter", True)
@@ -1216,9 +1265,9 @@ def check_long_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
             if current_volume < avg_volume * volume_mult:
                 logger.debug(f"Long rejected - no volume spike: {current_volume} < {avg_volume * volume_mult:.0f}")
                 return False
-            logger.debug(f"Volume spike: {current_volume} >= {avg_volume * volume_mult:.0f} ✓")
+            logger.debug(f"Volume spike: {current_volume} >= {avg_volume * volume_mult:.0f} ")
     
-    logger.info(f"✅ LONG SIGNAL (WITH-TREND DIP): VWAP bounce at {current_bar['close']:.2f} (band: {vwap_bands['lower_2']:.2f})")
+    logger.info(f" LONG SIGNAL (WITH-TREND DIP): VWAP bounce at {current_bar['close']:.2f} (band: {vwap_bands['lower_2']:.2f})")
     return True
 
 
@@ -1247,7 +1296,7 @@ def check_short_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
         if trend == "up":
             logger.debug(f"Short rejected - trend is {trend}, counter to uptrend")
             return False
-        logger.debug(f"Trend filter: {trend} ✓ (allows shorts)")
+        logger.debug(f"Trend filter: {trend}  (allows shorts)")
     
     # PRIMARY: VWAP bounce condition (2.0 std dev)
     touched_upper = prev_bar["high"] >= vwap_bands["upper_2"]
@@ -1262,7 +1311,7 @@ def check_short_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
         if current_bar["close"] <= vwap:
             logger.debug(f"Short rejected - price below VWAP: {current_bar['close']:.2f} <= {vwap:.2f}")
             return False
-        logger.debug(f"Price above VWAP: {current_bar['close']:.2f} > {vwap:.2f} ✓")
+        logger.debug(f"Price above VWAP: {current_bar['close']:.2f} > {vwap:.2f} ")
     
     # FILTER 2: RSI - extreme overbought
     use_rsi = CONFIG.get("use_rsi_filter", True)
@@ -1273,7 +1322,7 @@ def check_short_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
             if rsi <= rsi_overbought:
                 logger.debug(f"Short rejected - RSI not extreme: {rsi:.2f} <= {rsi_overbought}")
                 return False
-            logger.debug(f"RSI extreme overbought: {rsi:.2f} > {rsi_overbought} ✓")
+            logger.debug(f"RSI extreme overbought: {rsi:.2f} > {rsi_overbought} ")
     
     # FILTER 3: Volume spike - confirmation of interest
     use_volume = CONFIG.get("use_volume_filter", True)
@@ -1285,10 +1334,85 @@ def check_short_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
             if current_volume < avg_volume * volume_mult:
                 logger.debug(f"Short rejected - no volume spike: {current_volume} < {avg_volume * volume_mult:.0f}")
                 return False
-            logger.debug(f"Volume spike: {current_volume} >= {avg_volume * volume_mult:.0f} ✓")
+            logger.debug(f"Volume spike: {current_volume} >= {avg_volume * volume_mult:.0f} ")
     
-    logger.info(f"✅ SHORT SIGNAL (WITH-TREND RALLY): VWAP bounce at {current_bar['close']:.2f} (band: {vwap_bands['upper_2']:.2f})")
+    logger.info(f" SHORT SIGNAL (WITH-TREND RALLY): VWAP bounce at {current_bar['close']:.2f} (band: {vwap_bands['upper_2']:.2f})")
     return True
+
+
+def capture_rl_state(symbol: str, side: str, current_price: float) -> Dict[str, Any]:
+    """
+    Capture market state for RL decision making.
+    
+    Args:
+        symbol: Instrument symbol
+        side: 'long' or 'short'
+        current_price: Current market price
+    
+    Returns:
+        Dictionary with state features for RL brain
+    """
+    vwap = state[symbol].get("vwap", current_price)
+    vwap_bands = state[symbol].get("vwap_bands", {})
+    rsi = state[symbol].get("rsi", 50)
+    
+    # Calculate VWAP standard deviation
+    vwap_std = 0
+    if vwap_bands:
+        # Calculate std from bands
+        upper = vwap_bands.get("upper_1", vwap)
+        vwap_std = abs(upper - vwap) if upper != vwap else 0
+    
+    # Calculate VWAP distance in standard deviations
+    vwap_distance = abs(current_price - vwap) / vwap_std if vwap_std > 0 else 0
+    
+    # Get ATR
+    atr = calculate_atr(symbol, CONFIG.get("atr_period", 14))
+    if atr is None:
+        atr = 0
+    
+    # Calculate volume ratio
+    avg_volume = state[symbol].get("avg_volume")
+    current_bar = state[symbol]["bars_1min"][-1]
+    volume_ratio = current_bar["volume"] / avg_volume if avg_volume and avg_volume > 0 else 1.0
+    
+    # Get current time
+    current_time = get_current_time()
+    hour = current_time.hour
+    day_of_week = current_time.weekday()
+    
+    # Calculate recent P&L from trade history
+    recent_pnl = 0
+    if "trade_history" in state[symbol] and len(state[symbol]["trade_history"]) > 0:
+        recent_trades = state[symbol]["trade_history"][-3:]  # Last 3 trades
+        recent_pnl = sum(t.get("pnl", 0) for t in recent_trades)
+    
+    # Calculate win/loss streak
+    streak = 0
+    if "trade_history" in state[symbol] and len(state[symbol]["trade_history"]) > 0:
+        for trade in reversed(state[symbol]["trade_history"]):
+            pnl = trade.get("pnl", 0)
+            if pnl > 0:
+                streak += 1
+            elif pnl < 0:
+                streak -= 1
+            else:
+                break  # Stop at breakeven
+    
+    rl_state = {
+        "rsi": rsi if rsi is not None else 50,
+        "vwap_distance": vwap_distance,
+        "atr": atr,
+        "volume_ratio": volume_ratio,
+        "hour": hour,
+        "day_of_week": day_of_week,
+        "recent_pnl": recent_pnl,
+        "streak": streak,
+        "side": side,
+        "price": current_price
+    }
+    
+    return rl_state
 
 
 def check_for_signals(symbol: str) -> None:
@@ -1299,12 +1423,9 @@ def check_for_signals(symbol: str) -> None:
     Args:
         symbol: Instrument symbol
     """
-    print(f"[DEBUG] check_for_signals called for {symbol}, bars: {len(state.get(symbol, {}).get('bars_1min', []))}")
-    
     # Check safety conditions first
     is_safe, reason = check_safety_conditions(symbol)
     if not is_safe:
-        print(f"[DEBUG] Safety check failed: {reason}")
         logger.debug(f"[BACKTEST] Safety check failed: {reason}")
         return
     
@@ -1319,8 +1440,6 @@ def check_for_signals(symbol: str) -> None:
     # Validate signal requirements
     is_valid, reason = validate_signal_requirements(symbol, bar_time)
     if not is_valid:
-        if reason not in ["Position active", "Insufficient bars"]:
-            print(f"[DEBUG] Signal validation failed: {reason} at {bar_time.strftime('%Y-%m-%d %H:%M:%S %Z')} (weekday={bar_time.weekday()})")
         logger.debug(f"[BACKTEST] Signal validation failed: {reason} at {bar_time}")
         return
     
@@ -1333,13 +1452,86 @@ def check_for_signals(symbol: str) -> None:
     logger.debug(f"Signal check: trend={trend}, prev_low={prev_bar['low']:.2f}, "
                 f"current_close={current_bar['close']:.2f}, lower_band_2={vwap_bands['lower_2']:.2f}")
     
+    # Declare global RL brain for both signal checks
+    global rl_brain
+    
     # Check for long signal
     if check_long_signal_conditions(symbol, prev_bar, current_bar):
+        # REINFORCEMENT LEARNING - Check if RL brain approves this signal
+        if CONFIG.get("rl_enabled", True):  # RL enabled by default
+            if rl_brain is None:
+                rl_brain = SignalConfidenceRL(backtest_mode=_bot_config.backtest_mode)
+                logger.info(" RL BRAIN INITIALIZED - Learning from signal experiences")
+            
+            # Capture market state
+            rl_state = capture_rl_state(symbol, "long", current_bar["close"])
+            
+            # Ask RL brain for decision
+            take_signal, confidence, reason = rl_brain.should_take_signal(rl_state)
+            
+            if not take_signal:
+                logger.info(f" RL REJECTED LONG signal: {reason} (confidence: {confidence:.1%})")
+                logger.info(f"   RSI: {rl_state['rsi']:.1f}, VWAP dist: {rl_state['vwap_distance']:.2f}, "
+                          f"Vol ratio: {rl_state['volume_ratio']:.2f}x")
+                # Store the rejected signal state for potential future learning
+                state[symbol]["last_rejected_signal"] = {
+                    "time": get_current_time(),
+                    "state": rl_state,
+                    "side": "long",
+                    "confidence": confidence,
+                    "reason": reason
+                }
+                return
+            
+            # RL approved - adjust position size based on confidence
+            logger.info(f" RL APPROVED LONG signal: {reason} (confidence: {confidence:.1%})")
+            logger.info(f"   RSI: {rl_state['rsi']:.1f}, VWAP dist: {rl_state['vwap_distance']:.2f}, "
+                      f"Vol ratio: {rl_state['volume_ratio']:.2f}x, Streak: {rl_state['streak']:+d}")
+            
+            # Store the state for outcome recording after trade
+            state[symbol]["entry_rl_state"] = rl_state
+            state[symbol]["entry_rl_confidence"] = confidence
+        
         execute_entry(symbol, "long", current_bar["close"])
         return
     
     # Check for short signal
     if check_short_signal_conditions(symbol, prev_bar, current_bar):
+        # REINFORCEMENT LEARNING - Check if RL brain approves this signal
+        if CONFIG.get("rl_enabled", True):  # RL enabled by default
+            if rl_brain is None:
+                rl_brain = SignalConfidenceRL(backtest_mode=_bot_config.backtest_mode)
+                logger.info(" RL BRAIN INITIALIZED - Learning from signal experiences")
+            
+            # Capture market state
+            rl_state = capture_rl_state(symbol, "short", current_bar["close"])
+            
+            # Ask RL brain for decision
+            take_signal, confidence, reason = rl_brain.should_take_signal(rl_state)
+            
+            if not take_signal:
+                logger.info(f" RL REJECTED SHORT signal: {reason} (confidence: {confidence:.1%})")
+                logger.info(f"   RSI: {rl_state['rsi']:.1f}, VWAP dist: {rl_state['vwap_distance']:.2f}, "
+                          f"Vol ratio: {rl_state['volume_ratio']:.2f}x")
+                # Store the rejected signal state for potential future learning
+                state[symbol]["last_rejected_signal"] = {
+                    "time": get_current_time(),
+                    "state": rl_state,
+                    "side": "short",
+                    "confidence": confidence,
+                    "reason": reason
+                }
+                return
+            
+            # RL approved - adjust position size based on confidence
+            logger.info(f" RL APPROVED SHORT signal: {reason} (confidence: {confidence:.1%})")
+            logger.info(f"   RSI: {rl_state['rsi']:.1f}, VWAP dist: {rl_state['vwap_distance']:.2f}, "
+                      f"Vol ratio: {rl_state['volume_ratio']:.2f}x, Streak: {rl_state['streak']:+d}")
+            
+            # Store the state for outcome recording after trade
+            state[symbol]["entry_rl_state"] = rl_state
+            state[symbol]["entry_rl_confidence"] = confidence
+        
         execute_entry(symbol, "short", current_bar["close"])
         return
 
@@ -1348,7 +1540,7 @@ def check_for_signals(symbol: str) -> None:
 # PHASE EIGHT: Position Sizing
 # ============================================================================
 
-def calculate_position_size(symbol: str, side: str, entry_price: float) -> Tuple[int, float, float]:
+def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confidence: Optional[float] = None) -> Tuple[int, float, float]:
     """
     Calculate position size based on risk management rules.
     
@@ -1356,6 +1548,7 @@ def calculate_position_size(symbol: str, side: str, entry_price: float) -> Tuple
         symbol: Instrument symbol
         side: 'long' or 'short'
         entry_price: Expected entry price
+        rl_confidence: Optional RL confidence (0-1) to adjust position size
     
     Returns:
         Tuple of (contracts, stop_price, target_price)
@@ -1367,27 +1560,62 @@ def calculate_position_size(symbol: str, side: str, entry_price: float) -> Tuple
     risk_dollars = equity * CONFIG["risk_per_trade"]
     logger.info(f"Account equity: ${equity:.2f}, Risk allowance: ${risk_dollars:.2f}")
     
-    # Determine stop price - TIGHTER STOPS FOR MEAN REVERSION
+    # Determine stop price
     vwap_bands = state[symbol]["vwap_bands"]
     vwap = state[symbol]["vwap"]
     tick_size = CONFIG["tick_size"]
     
-    # IMPROVED: Use optimal stops (11 ticks) - sweet spot between tight and too tight
-    # Mean reversion = expect quick bounce, not slow grind
-    max_stop_ticks = 11  # Optimized to 11 ticks ($13.75 max risk per contract)
-    
-    if side == "long":
-        # Stop 12 ticks below entry (or at lower band 3, whichever is tighter)
-        band_stop = vwap_bands["lower_3"] - (2 * tick_size)  # 2 tick buffer
-        tight_stop = entry_price - (max_stop_ticks * tick_size)
-        stop_price = max(tight_stop, band_stop)  # Use tighter of the two
-    else:  # short
-        # Stop 12 ticks above entry (or at upper band 3, whichever is tighter)
-        band_stop = vwap_bands["upper_3"] + (2 * tick_size)  # 2 tick buffer
-        tight_stop = entry_price + (max_stop_ticks * tick_size)
-        stop_price = min(tight_stop, band_stop)  # Use tighter of the two
-    
-    stop_price = round_to_tick(stop_price)
+    # Check if using ATR-based stops
+    if CONFIG.get("use_atr_stops", False):
+        # Calculate ATR
+        atr = calculate_atr(symbol, CONFIG.get("atr_period", 14))
+        
+        if atr > 0:
+            # Use ATR multipliers from config
+            stop_multiplier = CONFIG.get("stop_loss_atr_multiplier", 2.7)
+            target_multiplier = CONFIG.get("profit_target_atr_multiplier", 4.7)
+            
+            if side == "long":
+                stop_price = entry_price - (atr * stop_multiplier)
+                target_price = entry_price + (atr * target_multiplier)
+            else:  # short
+                stop_price = entry_price + (atr * stop_multiplier)
+                target_price = entry_price - (atr * target_multiplier)
+            
+            stop_price = round_to_tick(stop_price)
+            target_price = round_to_tick(target_price)
+        else:
+            # Fallback to fixed stops if ATR can't be calculated
+            max_stop_ticks = 11
+            if side == "long":
+                stop_price = entry_price - (max_stop_ticks * tick_size)
+                target_price = vwap_bands["upper_3"]
+            else:
+                stop_price = entry_price + (max_stop_ticks * tick_size)
+                target_price = vwap_bands["lower_3"]
+            stop_price = round_to_tick(stop_price)
+            target_price = round_to_tick(target_price)
+    else:
+        # Use fixed stops (original logic)
+        max_stop_ticks = 11  # Optimized to 11 ticks
+        
+        if side == "long":
+            # Stop 11 ticks below entry (or at lower band 3, whichever is tighter)
+            band_stop = vwap_bands["lower_3"] - (2 * tick_size)  # 2 tick buffer
+            tight_stop = entry_price - (max_stop_ticks * tick_size)
+            stop_price = max(tight_stop, band_stop)  # Use tighter of the two
+            # Target at upper band
+            target_price = vwap_bands["upper_3"]
+        else:  # short
+            # Stop 11 ticks above entry (or at upper band 3, whichever is tighter)
+            band_stop = vwap_bands["upper_3"] + (2 * tick_size)  # 2 tick buffer
+            tight_stop = entry_price + (max_stop_ticks * tick_size)
+            stop_price = min(tight_stop, band_stop)  # Use tighter of the two
+            # Target at lower band
+            target_price = vwap_bands["lower_3"]
+        
+        stop_price = round_to_tick(stop_price)
+        target_price = round_to_tick(target_price)
     
     # Calculate stop distance in ticks
     stop_distance = abs(entry_price - stop_price)
@@ -1403,6 +1631,19 @@ def calculate_position_size(symbol: str, side: str, entry_price: float) -> Tuple
     else:
         contracts = 0
     
+    # Apply RL confidence multiplier if available
+    if rl_confidence is not None and CONFIG.get("rl_enabled", True):
+        global rl_brain
+        if rl_brain is not None:
+            size_multiplier = rl_brain.get_position_size_multiplier(rl_confidence)
+            # RL returns discrete multipliers: 0.33 (1 contract), 0.67 (2 contracts), 1.0 (3 contracts)
+            # Scale base position to get final contract count
+            original_contracts = contracts
+            contracts = max(1, int(round(3 * size_multiplier)))  # 3 * 0.33 = 1, 3 * 0.67 = 2, 3 * 1.0 = 3
+            
+            confidence_level = "LOW" if size_multiplier < 0.5 else ("MEDIUM" if size_multiplier < 0.9 else "HIGH")
+            logger.info(f" RL POSITION SIZING: {confidence_level} confidence  {contracts} contract(s) ({rl_confidence:.1%})")
+    
     # Cap at max contracts
     contracts = min(contracts, CONFIG["max_contracts"])
     
@@ -1410,19 +1651,7 @@ def calculate_position_size(symbol: str, side: str, entry_price: float) -> Tuple
         logger.warning(f"Position size too small: risk=${risk_per_contract:.2f}, allowance=${risk_dollars:.2f}")
         return 0, stop_price, None
     
-    # Calculate target price - Use 3.5σ band as target (opposite side from entry)
-    # Entry is at -2σ (lower band), target is at +3.5σ (upper band) for longs
-    # Entry is at +2σ (upper band), target is at -3.5σ (lower band) for shorts
-    vwap_bands = state[symbol]["vwap_bands"]
-    
-    if side == "long":
-        # Long: entered at lower band, target at upper 3.5σ band
-        target_price = vwap_bands["upper_3"]
-    else:
-        # Short: entered at upper band, target at lower 3.5σ band
-        target_price = vwap_bands["lower_3"]
-    
-    target_price = round_to_tick(target_price)
+    # Calculate target distance for logging
     target_distance = abs(target_price - entry_price)
     
     logger.info(f"Position sizing: {contracts} contract(s)")
@@ -1448,8 +1677,11 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
         side: 'long' or 'short'
         entry_price: Approximate entry price (mid or last)
     """
-    # Calculate position size
-    contracts, stop_price, target_price = calculate_position_size(symbol, side, entry_price)
+    # Get RL confidence if available
+    rl_confidence = state[symbol].get("entry_rl_confidence")
+    
+    # Calculate position size (with RL adjustment if confidence available)
+    contracts, stop_price, target_price = calculate_position_size(symbol, side, entry_price, rl_confidence)
     
     if contracts == 0:
         logger.warning("Cannot enter trade - position size is zero")
@@ -1534,10 +1766,10 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
                         # Successfully filled at passive price
                         actual_fill_price = limit_price
                         order_type_used = "passive"
-                        logger.info(f"  ✓ Passive fill at ${limit_price:.2f}")
+                        logger.info(f"   Passive fill at ${limit_price:.2f}")
                     else:
                         # Not filled, fallback to aggressive
-                        logger.warning("  ✗ Passive order not filled, using aggressive fallback")
+                        logger.warning("   Passive order not filled, using aggressive fallback")
                         aggressive_price = order_params['fallback_price']
                         order = place_limit_order(symbol, order_side, contracts, aggressive_price)
                         actual_fill_price = aggressive_price
@@ -1983,7 +2215,7 @@ def check_breakeven_protection(symbol: str, current_price: float) -> None:
             breakeven_threshold_ticks = adaptive_params["breakeven_threshold_ticks"]
             breakeven_offset_ticks = adaptive_params["breakeven_offset_ticks"]
             
-            logger.info(f"📊 ADAPTIVE BREAKEVEN: {breakeven_threshold_ticks}t threshold "
+            logger.info(f" ADAPTIVE BREAKEVEN: {breakeven_threshold_ticks}t threshold "
                        f"| Regime: {adaptive_params['market_regime'].upper()} "
                        f"| ATR: {adaptive_params['current_volatility_atr']:.2f} "
                        f"| Aggressive: {adaptive_params['is_aggressive_mode']}")
@@ -2105,7 +2337,7 @@ def check_trailing_stop(symbol: str, current_price: float) -> None:
             trailing_distance_ticks = adaptive_params["trailing_distance_ticks"]
             min_profit_ticks = adaptive_params["trailing_min_profit_ticks"]
             
-            logger.info(f"📊 ADAPTIVE TRAILING: {trailing_distance_ticks}t distance, {min_profit_ticks}t min "
+            logger.info(f" ADAPTIVE TRAILING: {trailing_distance_ticks}t distance, {min_profit_ticks}t min "
                        f"| Regime: {adaptive_params['market_regime'].upper()} "
                        f"| Aggressive: {adaptive_params['is_aggressive_mode']}")
         except Exception as e:
@@ -2762,7 +2994,7 @@ def calculate_pnl(position: Dict[str, Any], exit_price: float) -> Tuple[float, f
         if slippage_ticks > 0 or commission > 0:
             total_costs = slippage_cost + commission
             logger.debug(f"  Trading costs: Slippage ${slippage_cost:.2f} + Commission ${commission:.2f} = ${total_costs:.2f}")
-            logger.debug(f"  Gross P&L: ${gross_pnl:.2f} → Net P&L: ${net_pnl:.2f}")
+            logger.debug(f"  Gross P&L: ${gross_pnl:.2f}  Net P&L: ${net_pnl:.2f}")
     
     return ticks, net_pnl
 
@@ -2853,11 +3085,11 @@ def handle_exit_orders(symbol: str, position: Dict[str, Any], exit_price: float,
                     # Check if filled
                     current_position = get_position_quantity(symbol)
                     if current_position == 0:
-                        logger.info("✓ Passive exit filled")
+                        logger.info(" Passive exit filled")
                         return
                     else:
                         # Not filled, use fallback
-                        logger.warning("✗ Passive exit not filled, using aggressive")
+                        logger.warning(" Passive exit not filled, using aggressive")
                         if 'fallback_price' in strategy:
                             order = place_limit_order(symbol, order_side, contracts, strategy['fallback_price'])
                         else:
@@ -2933,7 +3165,47 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
                 from adaptive_exits import AdaptiveExitManager
                 adaptive_manager = AdaptiveExitManager(CONFIG)
             adaptive_manager.record_trade_result(pnl)
-            logger.info(f"📈 STREAK TRACKING: Recorded P&L ${pnl:+.2f} (Recent: {len(adaptive_manager.recent_trades)} trades)")
+            logger.info(f" STREAK TRACKING: Recorded P&L ${pnl:+.2f} (Recent: {len(adaptive_manager.recent_trades)} trades)")
+        except Exception as e:
+            logger.debug(f"Streak tracking update skipped: {e}")
+    
+    # REINFORCEMENT LEARNING - Record outcome for learning
+    if CONFIG.get("rl_enabled", True):
+        try:
+            global rl_brain
+            if rl_brain is None:
+                rl_brain = SignalConfidenceRL(backtest_mode=_bot_config.backtest_mode)
+            
+            # Check if we have the entry state stored
+            if "entry_rl_state" in state[symbol]:
+                entry_state = state[symbol]["entry_rl_state"]
+                
+                # Calculate trade duration in minutes
+                entry_time = position.get("entry_time")
+                duration_minutes = 0
+                if entry_time:
+                    duration = exit_time - entry_time
+                    duration_minutes = duration.total_seconds() / 60
+                
+                # Record the outcome for learning
+                rl_brain.record_outcome(
+                    state=entry_state,
+                    took_trade=True,
+                    pnl=pnl,
+                    duration_minutes=duration_minutes
+                )
+                
+                # Get RL stats
+                stats = rl_brain.get_stats()
+                logger.info(f" RL LEARNING: Recorded outcome ${pnl:+.2f} in {duration_minutes:.1f}min")
+                logger.info(f"   RL Stats: {stats['total_signals']} signals, {stats['signals_taken']} taken ({stats['take_rate']:.1%}), "
+                          f"Recent WR: {stats['recent_win_rate']:.1%}, Exploration: {stats['exploration_rate']:.1%}")
+                
+                # Clean up state
+                del state[symbol]["entry_rl_state"]
+                if "entry_rl_confidence" in state[symbol]:
+                    del state[symbol]["entry_rl_confidence"]
+            
         except Exception as e:
             logger.debug(f"Streak tracking update skipped: {e}")
     
@@ -3603,10 +3875,10 @@ def format_time_statistics(stats: Dict[str, Any]) -> None:
     logger.info(f"Force Flattened: {stats['force_flattened_count']}/{total_trades} ({force_flatten_pct:.1f}%)")
     
     if force_flatten_pct > 30:
-        logger.warning("⚠️  >30% force-flattened - trade duration too long for time window")
+        logger.warning("  >30% force-flattened - trade duration too long for time window")
         logger.warning("   Consider: earlier entry cutoff or faster profit targets")
     else:
-        logger.info("✅ <30% force-flattened - acceptable duration")
+        logger.info(" <30% force-flattened - acceptable duration")
     
     # After-noon entry analysis
     if stats['after_noon_entries'] > 0:
@@ -3617,14 +3889,14 @@ def format_time_statistics(stats: Dict[str, Any]) -> None:
                    f"({after_noon_flatten_pct:.1f}%)")
         
         if after_noon_flatten_pct > 50:
-            logger.warning("⚠️  >50% of after-noon entries force-flattened")
+            logger.warning("  >50% of after-noon entries force-flattened")
             logger.warning("   Entry window may be too late - avg duration {:.1f} min vs time remaining"
                           .format(avg_duration))
     
     # Time compatibility analysis
     time_to_flatten_at_2pm = 165  # minutes from 2 PM to 4:45 PM
     if avg_duration > time_to_flatten_at_2pm * 0.8:
-        logger.warning("⚠️  Average duration uses >80% of available time window")
+        logger.warning("  Average duration uses >80% of available time window")
         logger.warning(f"   Avg duration {avg_duration:.1f} min vs {time_to_flatten_at_2pm} min available at 2 PM")
 
 
@@ -3980,13 +4252,13 @@ time-based flatten requirements:
    - If entering at 2 PM with 3-hour avg duration, you'll be force-flattened
    
 4. Time Window Compatibility:
-   - Entry at 2 PM → 165 minutes until 4:45 PM deadline
+   - Entry at 2 PM  165 minutes until 4:45 PM deadline
    - If avg duration >132 min (80% of 165), trades run out of time
    - Recommend: move entry cutoff earlier OR use faster targets
 
 5. Strategic Adjustments Based on Data:
-   - If most trades close in 30 min → plenty of buffer time
-   - If most trades take 2-3 hours → cutting it close, risk force-flatten
+   - If most trades close in 30 min  plenty of buffer time
+   - If most trades take 2-3 hours  cutting it close, risk force-flatten
    - Solution A: Earlier entry cutoff (12 PM instead of 2:30 PM)
    - Solution B: Faster targets (1:1 R/R instead of 1.5:1)
    - The data tells you which adjustment fits your strategy

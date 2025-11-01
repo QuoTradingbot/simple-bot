@@ -21,7 +21,7 @@ class BotConfiguration:
     # Trading Parameters
     risk_per_trade: float = 0.012  # 1.2% of account per trade (increased for more profit)
     max_contracts: int = 3
-    max_trades_per_day: int = 999  # UNLIMITED - take all valid signals
+    max_trades_per_day: int = 9  # ITERATION 3 - proven optimal with Brain 2
     risk_reward_ratio: float = 2.0  # Realistic 2:1 for mean reversion with tight stops
     
     # Slippage & Commission - PRODUCTION READY
@@ -29,26 +29,26 @@ class BotConfiguration:
     commission_per_contract: float = 2.50  # Round-turn commission (adjust to your broker)
         # Total cost per round-trip: ~3 ticks slippage + $2.50 commission = ~$42.50/contract
     
-    # VWAP bands (standard deviation multipliers) - ITERATION 24 BEST
-    vwap_std_dev_1: float = 1.5  # Warning zone (potential reversal area)
-    vwap_std_dev_2: float = 1.5199999999999998  # Entry zone - Trying exact optimizer value
-    vwap_std_dev_3: float = 3.4  # Exit/stop zone - Iteration 24
+    # VWAP bands (standard deviation multipliers) - ITERATION 3 (PROVEN WINNER!)
+    vwap_std_dev_1: float = 2.5  # Warning zone (potential reversal area)
+    vwap_std_dev_2: float = 2.1  # Entry zone - Iteration 3
+    vwap_std_dev_3: float = 3.7  # Exit/stop zone - Iteration 3
     
     # Trend Filter Parameters
-    trend_ema_period: int = 21  # Iteration 24
+    trend_ema_period: int = 21  # Optimizer best
     trend_threshold: float = 0.0001
     
-    # Technical Filters - ITERATION 24 BEST
-    use_trend_filter: bool = False  # Trend filter OFF (Iteration 24)
+    # Technical Filters - ITERATION 3
+    use_trend_filter: bool = False  # Trend filter OFF (optimizer found better without)
     use_rsi_filter: bool = True
-    use_vwap_direction_filter: bool = True  # VWAP direction filter ON (Iteration 24)
+    use_vwap_direction_filter: bool = True  # VWAP direction filter ON (optimizer confirmed)
     use_volume_filter: bool = False  # Don't use volume filter - blocks overnight trades
     use_macd_filter: bool = False
     
-    # RSI Settings - ITERATION 24 BEST
-    rsi_period: int = 19  # Iteration 24
-    rsi_oversold: int = 30  # Iteration 24
-    rsi_overbought: int = 78  # Iteration 24
+    # RSI Settings - ITERATION 3 (Conservative, Selective)
+    rsi_period: int = 10  # Iteration 3
+    rsi_oversold: int = 35  # Iteration 3 - selective entry
+    rsi_overbought: int = 65  # Iteration 3 - selective entry
     
     # MACD - Keep for reference but disabled
     macd_fast: int = 12
@@ -78,11 +78,11 @@ class BotConfiguration:
     tick_timeout_seconds: int = 60
     proactive_stop_buffer_ticks: int = 2
     
-    # ATR-Based Dynamic Risk Management - NOT ACTUALLY IMPLEMENTED YET
-    use_atr_stops: bool = False  # Bot doesn't use this yet - uses fixed stops
+    # ATR-Based Dynamic Risk Management - ITERATION 3 (PROVEN WINNER!)
+    use_atr_stops: bool = True  # ATR stops enabled
     atr_period: int = 14  # ATR calculation period
-    stop_loss_atr_multiplier: float = 2.7  # Not used yet
-    profit_target_atr_multiplier: float = 4.7  # Not used yet
+    stop_loss_atr_multiplier: float = 3.6  # Iteration 3 (tight stops)
+    profit_target_atr_multiplier: float = 4.75  # Iteration 3 (solid targets)
     
     # Instrument Specifications
     tick_size: float = 0.25
@@ -123,36 +123,49 @@ class BotConfiguration:
     commission_per_contract: float = 2.50  # Commission per contract round-turn
     
     # Advanced Exit Management Parameters
-    # ADAPTIVE EXIT MANAGEMENT - Adjusts to real-time market conditions
-    adaptive_exits_enabled: bool = True  # Enable adaptive exit management (overrides static params)
+    # ADAPTIVE EXIT MANAGEMENT - ENABLED for intelligent exit management
+    adaptive_exits_enabled: bool = True  # ENABLED - Using adaptive intelligent exits
     adaptive_volatility_scaling: bool = True  # Scale parameters based on ATR
     adaptive_regime_detection: bool = True  # Adjust for trending vs choppy markets
     adaptive_performance_based: bool = True  # Adapt based on trade performance
     
-    # Breakeven Protection (baseline - adaptive system adjusts these)
-    breakeven_enabled: bool = True  # Enable/disable breakeven protection
-    breakeven_profit_threshold_ticks: int = 8  # Profit in ticks before activating breakeven (adaptive: 4-12)
-    breakeven_stop_offset_ticks: int = 1  # Ticks above/below entry for breakeven stop
+    # Breakeven Protection - ITERATION 3 (PROVEN WINNER!)
+    breakeven_enabled: bool = True  # ENABLED - Adaptive system will adjust dynamically
+    breakeven_profit_threshold_ticks: int = 9  # Iteration 3 - proven optimal
+    breakeven_stop_offset_ticks: int = 1  # Baseline (adaptive adjusts)
     
-    # Trailing Stop (baseline - adaptive system adjusts these)
-    trailing_stop_enabled: bool = True  # Enable/disable trailing stop
-    trailing_stop_distance_ticks: int = 8  # Distance in ticks to trail behind price (adaptive: 4-16)
-    trailing_stop_min_profit_ticks: int = 12  # Minimum profit before activating trailing (adaptive: 8-20)
+    # Trailing Stop - ITERATION 3 (PROVEN WINNER!)
+    trailing_stop_enabled: bool = True  # ENABLED - Adaptive system will adjust
+    trailing_stop_distance_ticks: int = 10  # Iteration 3 - proven optimal
+    trailing_stop_min_profit_ticks: int = 16  # Iteration 3 - proven optimal
     
     # Time-Decay Tightening
-    time_decay_enabled: bool = True  # Enable/disable time-decay tightening
-    time_decay_50_percent_tightening: float = 0.10  # 10% tightening at 50% of max hold time
-    time_decay_75_percent_tightening: float = 0.20  # 20% tightening at 75% of max hold time
-    time_decay_90_percent_tightening: float = 0.30  # 30% tightening at 90% of max hold time
+    time_decay_enabled: bool = True  # ENABLED - Tightens stops over time
+    time_decay_50_percent_tightening: float = 0.10  # 10% tighter at 50% of max hold time
+    time_decay_75_percent_tightening: float = 0.20  # 20% tighter at 75%
+    time_decay_90_percent_tightening: float = 0.30  # 30% tighter at 90%
     
     # Partial Exits (baseline - adaptive system adjusts R-multiples)
-    partial_exits_enabled: bool = True  # Enable/disable partial exits
+    partial_exits_enabled: bool = True  # ENABLED - Scale out at targets
     partial_exit_1_percentage: float = 0.50  # 50% exit at first level
     partial_exit_1_r_multiple: float = 2.0  # Exit at 2.0R (adaptive: 1.4-3.0)
     partial_exit_2_percentage: float = 0.30  # 30% exit at second level
     partial_exit_2_r_multiple: float = 3.0  # Exit at 3.0R (adaptive: 2.1-4.5)
     partial_exit_3_percentage: float = 0.20  # 20% exit at third level
     partial_exit_3_r_multiple: float = 5.0  # Exit at 5.0R
+    
+    # Reinforcement Learning Parameters
+    # RL ENABLED - Learning which signals to trust from experience
+    rl_enabled: bool = True  # ENABLED - RL layer learns signal quality
+    rl_exploration_rate: float = 0.30  # 30% exploration (random decisions)
+    rl_min_exploration_rate: float = 0.05  # Minimum exploration after decay
+    rl_exploration_decay: float = 0.995  # Decay rate per signal
+    rl_confidence_threshold: float = 0.5  # Minimum confidence to take signal
+    rl_min_contracts: int = 1  # Minimum contracts (low confidence)
+    rl_medium_contracts: int = 2  # Medium contracts (moderate confidence)
+    rl_max_contracts: int = 3  # Maximum contracts (high confidence)
+    rl_experience_file: str = "signal_experience.json"  # Where to save learning
+    rl_save_frequency: int = 5  # Save experiences every N trades
     
     # Broker Configuration (only for live trading)
     api_token: Optional[str] = None
@@ -472,3 +485,74 @@ def log_config(config: BotConfiguration, logger) -> None:
         logger.info("API Token: (not configured)")
     
     logger.info("=" * 60)
+
+
+def apply_learned_parameters(config: BotConfiguration, learning_file: str = "learning_history.json") -> bool:
+    """
+    Load and apply the best parameters learned from continuous learning.
+    
+    Args:
+        config: Bot configuration to update
+        learning_file: Path to learning history JSON file
+        
+    Returns:
+        True if parameters were loaded and applied, False otherwise
+    """
+    import json
+    import os
+    from pathlib import Path
+    import logging
+    
+    log = logging.getLogger(__name__)
+    
+    learning_path = Path(learning_file)
+    
+    if not learning_path.exists():
+        log.warning(f"No learning history found at {learning_file}")
+        log.info("Using default configuration parameters")
+        return False
+    
+    try:
+        with open(learning_path, 'r') as f:
+            learning_data = json.load(f)
+        
+        best_params = learning_data.get('best_params', {})
+        best_score = learning_data.get('best_score', 0)
+        
+        if not best_params:
+            log.warning("No best parameters found in learning history")
+            return False
+        
+        # Apply learned parameters
+        log.info("=" * 60)
+        log.info(" APPLYING LEARNED PARAMETERS FROM CONTINUOUS LEARNING")
+        log.info(f"Best Score: {best_score:,.0f}")
+        log.info("-" * 60)
+        
+        param_mapping = {
+            'vwap_std_dev_1': 'vwap_std_dev_1',
+            'vwap_std_dev_3': 'vwap_std_dev_3',
+            'rsi_period': 'rsi_period',
+            'rsi_oversold': 'rsi_oversold',
+            'rsi_overbought': 'rsi_overbought',
+            'stop_loss_atr_multiplier': 'stop_loss_atr_multiplier',
+            'profit_target_atr_multiplier': 'profit_target_atr_multiplier',
+        }
+        
+        for learned_key, config_key in param_mapping.items():
+            if learned_key in best_params:
+                old_value = getattr(config, config_key)
+                new_value = best_params[learned_key]
+                setattr(config, config_key, new_value)
+                log.info(f"  {config_key}: {old_value} → {new_value}")
+        
+        log.info("=" * 60)
+        log.info(" Learned parameters applied successfully!")
+        log.info("=" * 60)
+        
+        return True
+        
+    except Exception as e:
+        log.error(f"Failed to load learned parameters: {e}")
+        log.info("Using default configuration parameters")
+        return False

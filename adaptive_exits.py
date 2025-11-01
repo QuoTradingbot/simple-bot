@@ -224,13 +224,13 @@ class AdaptiveExitManager:
         if volume_strength == 'low':
             # Low volume: tighten up, moves may be unreliable
             threshold = int(threshold * 0.8)
-            logger.info(f"📊 ADAPTIVE FACTOR: Low volume → tightened breakeven to {threshold}t")
+            logger.info(f" ADAPTIVE FACTOR: Low volume  tightened breakeven to {threshold}t")
         elif volume_strength == 'high':
             # High volume: give it more room, strong move
             threshold = int(threshold * 1.1)
-            logger.info(f"📊 ADAPTIVE FACTOR: High volume → widened breakeven to {threshold}t")
+            logger.info(f" ADAPTIVE FACTOR: High volume  widened breakeven to {threshold}t")
         else:
-            logger.info(f"📊 ADAPTIVE FACTOR: Normal volume → no adjustment")
+            logger.info(f" ADAPTIVE FACTOR: Normal volume  no adjustment")
         
         # Streak-based adjustment
         streak_length, streak_type = self.get_consecutive_pnl_streak()
@@ -238,30 +238,30 @@ class AdaptiveExitManager:
             if streak_type == 'win':
                 # Hot streak: protect profits faster (avoid giving back gains)
                 threshold = int(threshold * 0.75)
-                logger.info(f"📊 ADAPTIVE FACTOR: Win streak ({streak_length}) → tightened breakeven to {threshold}t")
+                logger.info(f" ADAPTIVE FACTOR: Win streak ({streak_length})  tightened breakeven to {threshold}t")
             elif streak_type == 'loss':
                 # Cold streak: might be choppy period, slightly wider
                 threshold = int(threshold * 1.15)
-                logger.info(f"📊 ADAPTIVE FACTOR: Loss streak ({streak_length}) → widened breakeven to {threshold}t")
+                logger.info(f" ADAPTIVE FACTOR: Loss streak ({streak_length})  widened breakeven to {threshold}t")
         else:
-            logger.info(f"📊 ADAPTIVE FACTOR: No significant streak (length: {streak_length}) → no adjustment")
+            logger.info(f" ADAPTIVE FACTOR: No significant streak (length: {streak_length})  no adjustment")
         
         # Session context (influences exits only, not entries)
         session = self.get_session_context(datetime.now())
         if session == 'asian':
             # Asian session: lower volume, tighter exits
             threshold = int(threshold * 0.9)
-            logger.info(f"📊 ADAPTIVE FACTOR: Asian session → tightened breakeven to {threshold}t")
+            logger.info(f" ADAPTIVE FACTOR: Asian session  tightened breakeven to {threshold}t")
         elif session == 'us_open':
             # US open: high volatility, wider exits
             threshold = int(threshold * 1.1)
-            logger.info(f"📊 ADAPTIVE FACTOR: US open → widened breakeven to {threshold}t")
+            logger.info(f" ADAPTIVE FACTOR: US open  widened breakeven to {threshold}t")
         elif session == 'us_midday':
             # Lunch: low volume, tighter
             threshold = int(threshold * 0.85)
-            logger.info(f"📊 ADAPTIVE FACTOR: US midday → tightened breakeven to {threshold}t")
+            logger.info(f" ADAPTIVE FACTOR: US midday  tightened breakeven to {threshold}t")
         else:
-            logger.info(f"📊 ADAPTIVE FACTOR: Session {session} → no adjustment")
+            logger.info(f" ADAPTIVE FACTOR: Session {session}  no adjustment")
         
         # Ensure reasonable bounds
         threshold = max(3, min(15, threshold))
@@ -283,7 +283,7 @@ class AdaptiveExitManager:
             # If profit > 30 ticks (substantial), override everything - lock it in!
             if profit_ticks > 30:
                 threshold = min(threshold, 5)  # Force tight breakeven
-                logger.info(f"🧠 COMMON SENSE: Deep profit ({profit_ticks:.1f}t) - forcing tight breakeven at {threshold}t")
+                logger.info(f" COMMON SENSE: Deep profit ({profit_ticks:.1f}t) - forcing tight breakeven at {threshold}t")
         
         # Rule 2: Don't be stupid during low volume AND choppy - double danger!
         if len(bars) >= 20:
@@ -293,7 +293,7 @@ class AdaptiveExitManager:
             if regime == 'choppy' and volume == 'low':
                 # Very dangerous condition - be aggressive
                 threshold = min(threshold, 5)
-                logger.info(f"🧠 COMMON SENSE: Choppy + Low volume = DANGER - forcing tight breakeven at {threshold}t")
+                logger.info(f" COMMON SENSE: Choppy + Low volume = DANGER - forcing tight breakeven at {threshold}t")
         
         # Rule 3: If losing streak + currently losing trade, don't make it worse
         streak_length, streak_type = self.get_consecutive_pnl_streak()
@@ -310,13 +310,13 @@ class AdaptiveExitManager:
                 # If we're in a loss streak AND this trade is barely winning, protect it!
                 if 0 < current_profit < 8:
                     threshold = min(threshold, 4)
-                    logger.info(f"🧠 COMMON SENSE: Loss streak ({streak_length}) + small profit - protect at {threshold}t")
+                    logger.info(f" COMMON SENSE: Loss streak ({streak_length}) + small profit - protect at {threshold}t")
         
         # Rule 4: End of day + Friday = GET OUT with profits
         current_time = datetime.now()
         if current_time.hour >= 16 and current_time.weekday() == 4:  # 4pm+ on Friday (more selective)
             threshold = min(threshold, 5)
-            logger.info(f"🧠 COMMON SENSE: Friday late afternoon - forcing tight breakeven at {threshold}t")
+            logger.info(f" COMMON SENSE: Friday late afternoon - forcing tight breakeven at {threshold}t")
         
         return threshold, offset
     
@@ -440,7 +440,7 @@ class AdaptiveExitManager:
             # If profit > 35 ticks (really big), trail TIGHT - we won big, don't blow it
             if profit_ticks > 35:
                 distance = min(distance, 6)
-                logger.info(f"🧠 COMMON SENSE: Big profit ({profit_ticks:.1f}t) - trailing tight at {distance}t")
+                logger.info(f" COMMON SENSE: Big profit ({profit_ticks:.1f}t) - trailing tight at {distance}t")
             
             # If held 4+ hours (very long), probably at risk of reversal
             if position.get("entry_time"):
@@ -450,7 +450,7 @@ class AdaptiveExitManager:
                 
                 if hold_duration_hours >= 4:  # More selective - 4+ hours instead of 3
                     distance = min(distance, 7)
-                    logger.info(f"🧠 COMMON SENSE: Held {hold_duration_hours:.1f}h - trailing tight at {distance}t")
+                    logger.info(f" COMMON SENSE: Held {hold_duration_hours:.1f}h - trailing tight at {distance}t")
         
         # Rule 2: Win streak + choppy market = lock in gains NOW
         if len(bars) >= 20:
@@ -460,7 +460,7 @@ class AdaptiveExitManager:
             if streak_type == 'win' and streak_length >= 4 and regime == 'choppy':  # Need 4+ wins
                 distance = min(distance, 5)
                 min_profit = min(min_profit, 8)
-                logger.info(f"🧠 COMMON SENSE: Hot streak ({streak_length}) in choppy market - protecting at {distance}t")
+                logger.info(f" COMMON SENSE: Hot streak ({streak_length}) in choppy market - protecting at {distance}t")
         
         # Rule 3: Massive volatility spike = danger, trail tight
         if len(bars) >= 14:
@@ -470,7 +470,7 @@ class AdaptiveExitManager:
             # If ATR > 20 ticks (extreme volatility), be defensive
             if atr_ticks > 20:  # More selective - 20 instead of 15
                 distance = min(distance, 8)
-                logger.info(f"🧠 COMMON SENSE: Extreme volatility (ATR {atr_ticks:.1f}t) - tight trail at {distance}t")
+                logger.info(f" COMMON SENSE: Extreme volatility (ATR {atr_ticks:.1f}t) - tight trail at {distance}t")
         
         # Rule 4: End of day + any decent profit = lock it in
         current_time = datetime.now()
@@ -486,7 +486,7 @@ class AdaptiveExitManager:
                 
                 if profit_ticks > 8:  # Decent profit (raised from 5)
                     distance = min(distance, 5)
-                    logger.info(f"🧠 COMMON SENSE: End of day with profit - tight trail at {distance}t")
+                    logger.info(f" COMMON SENSE: End of day with profit - tight trail at {distance}t")
         
         return distance, min_profit
     
@@ -754,16 +754,16 @@ def get_adaptive_exit_params(
     # Rule: Breakeven should NEVER be wider than trailing min profit
     # (That would be stupid - you'd trail before activating breakeven!)
     if breakeven_threshold > trailing_min_profit:
-        logger.warning(f"🧠 CONFLICT DETECTED: Breakeven ({breakeven_threshold}t) > Trailing min ({trailing_min_profit}t)")
+        logger.warning(f" CONFLICT DETECTED: Breakeven ({breakeven_threshold}t) > Trailing min ({trailing_min_profit}t)")
         breakeven_threshold = max(4, trailing_min_profit - 3)
-        logger.info(f"🧠 FIXED: Adjusted breakeven to {breakeven_threshold}t")
+        logger.info(f" FIXED: Adjusted breakeven to {breakeven_threshold}t")
     
     # Rule: Trailing distance should be reasonable relative to min profit
     # (Don't trail 20 ticks when min profit is 8 - you'd never trail!)
     if trailing_distance > trailing_min_profit * 2.0:  # More lenient - 2x instead of 1.5x
-        logger.warning(f"🧠 CONFLICT DETECTED: Trail distance ({trailing_distance}t) too wide for min profit ({trailing_min_profit}t)")
+        logger.warning(f" CONFLICT DETECTED: Trail distance ({trailing_distance}t) too wide for min profit ({trailing_min_profit}t)")
         trailing_distance = int(trailing_min_profit * 1.5)
-        logger.info(f"🧠 FIXED: Adjusted trail distance to {trailing_distance}t")
+        logger.info(f" FIXED: Adjusted trail distance to {trailing_distance}t")
     
     # Rule: If in huge profit, ensure we CAN actually lock it in
     if position["active"]:
@@ -778,9 +778,9 @@ def get_adaptive_exit_params(
         # If profit > 40 ticks (huge!) but breakeven still not active, force it
         if profit_ticks > 40 and not position.get("breakeven_active"):  # More selective - 40 instead of 20
             if breakeven_threshold > 8:
-                logger.warning(f"🧠 CONFLICT: Huge profit ({profit_ticks:.1f}t) but breakeven still at {breakeven_threshold}t!")
+                logger.warning(f" CONFLICT: Huge profit ({profit_ticks:.1f}t) but breakeven still at {breakeven_threshold}t!")
                 breakeven_threshold = 6
-                logger.info(f"🧠 FIXED: Forcing breakeven to {breakeven_threshold}t to lock in gains")
+                logger.info(f" FIXED: Forcing breakeven to {breakeven_threshold}t to lock in gains")
     
     return {
         "breakeven_threshold_ticks": breakeven_threshold,

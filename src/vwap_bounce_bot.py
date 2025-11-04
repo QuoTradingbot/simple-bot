@@ -62,6 +62,9 @@ bid_ask_manager: Optional[BidAskManager] = None
 # Global adaptive exit manager (for streak tracking persistence)
 adaptive_manager: Optional[Any] = None
 
+# Global live data recorder (for tick-by-tick data capture)
+live_recorder: Optional[Any] = None
+
 # State management dictionary
 state: Dict[str, Any] = {}
 
@@ -610,6 +613,17 @@ def on_quote(symbol: str, bid_price: float, ask_price: float, bid_size: int,
             last_price=last_price,
             timestamp=timestamp_ms
         )
+    
+    # Record quote data if recorder is enabled
+    if live_recorder is not None:
+        try:
+            live_recorder.record_tick(
+                bid=bid_price,
+                ask=ask_price,
+                last=last_price
+            )
+        except Exception as e:
+            logger.error(f"Failed to record tick: {e}")
 
 
 def on_tick(symbol: str, price: float, volume: int, timestamp_ms: int) -> None:
@@ -5056,7 +5070,7 @@ VALIDATION:
 
 def main() -> None:
     """Main bot execution with event loop integration"""
-    global event_loop, timer_manager, bid_ask_manager
+    global event_loop, timer_manager, bid_ask_manager, live_recorder
     
     logger.info(SEPARATOR_LINE)
     logger.info("VWAP Bounce Bot Starting")
@@ -5078,6 +5092,31 @@ def main() -> None:
     # Initialize bid/ask manager
     logger.info("Initializing bid/ask manager...")
     bid_ask_manager = BidAskManager(CONFIG)
+    
+    # Initialize live data recorder (if enabled)
+    record_live_data = os.getenv("RECORD_LIVE_DATA", "false").lower() == "true"
+    if record_live_data and not CONFIG["dry_run"]:
+        try:
+            from live_data_recorder import LiveDataRecorder
+            logger.info("Initializing live data recorder...")
+            live_recorder = LiveDataRecorder(
+                output_dir="live_data_recordings",
+                symbol=CONFIG["instrument"],
+                compress=True,
+                max_file_size_mb=100,
+                rotation_interval_minutes=60
+            )
+            logger.info("✅ Live data recorder enabled - saving tick-by-tick data")
+        except Exception as e:
+            logger.warning(f"Failed to initialize live data recorder: {e}")
+            logger.warning("Continuing without data recording")
+            live_recorder = None
+    else:
+        if CONFIG["dry_run"]:
+            logger.info("Data recording disabled (dry run mode)")
+        else:
+            logger.info("Data recording disabled (set RECORD_LIVE_DATA=true to enable)")
+        live_recorder = None
     
     # Initialize broker (replaces initialize_sdk)
     initialize_broker()
@@ -5328,6 +5367,15 @@ def handle_shutdown_event(data: Dict[str, Any]) -> None:
 def cleanup_on_shutdown() -> None:
     """Cleanup tasks on shutdown"""
     logger.info("Running cleanup tasks...")
+    
+    # Close live data recorder
+    if live_recorder:
+        try:
+            logger.info("Closing live data recorder...")
+            live_recorder.close()
+            logger.info("Live data recorder closed")
+        except Exception as e:
+            logger.error(f"Error closing live data recorder: {e}")
     
     # Save state to disk
     if recovery_manager:

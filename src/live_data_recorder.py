@@ -1,6 +1,6 @@
 """
-Live Market Data Recorder - Minimal Tick Recording for Backtesting
-Records only essential data: timestamp, bid, ask, last in CSV format
+Live Market Data Recorder - Full DOM + Price Action Recording
+Records Level 2 data: order book depth, bid/ask sizes, volume
 """
 
 import csv
@@ -15,20 +15,20 @@ logger = logging.getLogger(__name__)
 
 class LiveDataRecorder:
     """
-    Minimal tick-by-tick recorder for realistic backtesting
-    Records: timestamp, bid, ask, last in CSV format
+    Full DOM and price action recorder for realistic backtesting
+    Records: time, bid, ask, last, bid_size, ask_size, volume
     """
     
     def __init__(
         self,
-        output_dir: str = "historical_data",  # Save with historical data
+        output_dir: str = "historical_data",
         symbol: str = "ES",
         compress: bool = True,
         max_file_size_mb: int = 100,
         rotation_interval_minutes: int = 60
     ):
         """
-        Initialize minimal data recorder
+        Initialize DOM recorder
         
         Args:
             output_dir: Directory to save recordings
@@ -78,66 +78,61 @@ class LiveDataRecorder:
         else:
             self.tick_file = open(self.tick_file_path, 'w', encoding='utf-8', newline='')
         
-        # Create CSV writer and write header
+        # Create CSV writer and write header with DOM columns
         self.csv_writer = csv.writer(self.tick_file)
-        self.csv_writer.writerow(['time', 'bid', 'ask', 'last'])
+        self.csv_writer.writerow([
+            'time',        # Unix timestamp
+            'bid',         # Best bid price
+            'ask',         # Best ask price
+            'last',        # Last traded price
+            'bid_size',    # Contracts at best bid (DOM depth)
+            'ask_size',    # Contracts at best ask (DOM depth)
+            'volume'       # Total volume
+        ])
         
         self.tick_file_start_time = time.time()
         logger.info(f"[RECORDER] New tick file: {filename}")
     
-    def record_tick(
-        self,
-        bid: float,
-        ask: float,
-        last: float,
-        **kwargs  # Ignore all other arguments
-    ):
-        """
-        Record a market tick (only essential data)
+    def _should_rotate_tick_file(self) -> bool:
+        """Check if tick file should be rotated"""
+        # Check size
+        if self.tick_file_path.exists():
+            if self.tick_file_path.stat().st_size > self.max_file_size_bytes:
+                return True
         
-        Args:
-            bid: Best bid price
-            ask: Best ask price
-            last: Last traded price
-        """
-        now = time.time()
+        # Check time
+        if time.time() - self.tick_file_start_time > self.rotation_interval_seconds:
+            return True
         
-        # Write CSV row: time, bid, ask, last
-        try:
-            self.csv_writer.writerow([now, bid, ask, last])
-            self.tick_file.flush()  # Ensure data is written immediately
-            self.ticks_recorded += 1
-            
-            # Rotate if needed
-            if self._should_rotate_tick_file():
-                self._rotate_tick_file()
-                
-        except Exception as e:
-            logger.error(f"[RECORDER] Failed to record tick: {e}")
+        return False
     
     def record_tick(
         self,
         bid: float,
         ask: float,
         last: float,
-        action: str = "",  # Optional: 'BUY', 'SELL', '' for regular ticks
+        bid_size: int = 0,
+        ask_size: int = 0,
+        volume: int = 0,
         **kwargs  # Ignore all other arguments
     ):
         """
-        Record a market tick (only essential data)
+        Record a market tick with DOM data
         
         Args:
             bid: Best bid price
             ask: Best ask price
             last: Last traded price
-            action: Optional action taken ('BUY', 'SELL', or empty)
+            bid_size: Contracts at best bid (DOM)
+            ask_size: Contracts at best ask (DOM)
+            volume: Total volume
         """
         now = time.time()
         
-        # Write CSV row: time, bid, ask, last, action
+        # Write CSV row with full DOM data
         try:
-            self.csv_writer.writerow([now, bid, ask, last, action])
-            self.tick_file.flush()  # Ensure data is written immediately
+            self.csv_writer.writerow([now, bid, ask, last, bid_size, ask_size, volume])
+            self.tick_file.flush()
             self.ticks_recorded += 1
             
             # Rotate if needed

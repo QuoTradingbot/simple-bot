@@ -620,7 +620,9 @@ def on_quote(symbol: str, bid_price: float, ask_price: float, bid_size: int,
             live_recorder.record_tick(
                 bid=bid_price,
                 ask=ask_price,
-                last=last_price
+                last=last_price,
+                bid_size=bid_size,
+                ask_size=ask_size
             )
         except Exception as e:
             logger.error(f"Failed to record tick: {e}")

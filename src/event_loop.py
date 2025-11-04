@@ -37,6 +37,7 @@ class EventType(IntEnum):
     ORDER_PARTIAL_FILL = 11
     ORDER_REJECT = 12
     STOP_HIT = 13
+    POSITION_RECONCILIATION = 14  # New: Periodic position sync check
     
     # Medium priority events
     TICK_DATA = 20
@@ -378,6 +379,14 @@ class TimerManager:
                             EventPriority.MEDIUM,
                             {"time": current_time}
                         )
+                
+                # Position reconciliation check (every 5 minutes)
+                if self._should_check("position_reconciliation", current_time, 300):
+                    self.event_loop.post_event(
+                        EventType.POSITION_RECONCILIATION,
+                        EventPriority.HIGH,
+                        {"time": current_time}
+                    )
                 
                 # Check shutdown time (only during maintenance window: 4:50 PM - 6:00 PM ET)
                 shutdown_time = self.config.get("shutdown_time")

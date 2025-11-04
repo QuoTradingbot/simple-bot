@@ -5110,6 +5110,7 @@ def main() -> None:
     event_loop.register_handler(EventType.TIME_CHECK, handle_time_check_event)
     event_loop.register_handler(EventType.VWAP_RESET, handle_vwap_reset_event)
     event_loop.register_handler(EventType.FLATTEN_MODE, handle_flatten_mode_event)
+    event_loop.register_handler(EventType.POSITION_RECONCILIATION, handle_position_reconciliation_event)
     event_loop.register_handler(EventType.SHUTDOWN, handle_shutdown_event)
     
     # Register shutdown handlers for cleanup
@@ -5225,6 +5226,97 @@ def handle_flatten_mode_event(data: Dict[str, Any]) -> None:
     if symbol in state and state[symbol]["position"]["active"]:
         logger.warning(f"Active position detected - executing flatten")
         # The exit conditions check will handle the flatten
+
+
+def handle_position_reconciliation_event(data: Dict[str, Any]) -> None:
+    """
+    Handle periodic position reconciliation check.
+    Verifies bot's position state matches broker's actual position.
+    Runs every 5 minutes to detect and correct any desyncs.
+    """
+    symbol = CONFIG["instrument"]
+    
+    if symbol not in state:
+        return
+    
+    # Skip if in dry run mode (no broker to reconcile with)
+    if CONFIG.get("dry_run", False):
+        return
+    
+    try:
+        # Get broker's actual position
+        broker_position = get_position_quantity(symbol)
+        
+        # Get bot's tracked position
+        bot_active = state[symbol]["position"]["active"]
+        if bot_active:
+            bot_qty = state[symbol]["position"]["quantity"]
+            bot_side = state[symbol]["position"]["side"]
+            bot_position = bot_qty if bot_side == "long" else -bot_qty
+        else:
+            bot_position = 0
+        
+        # Check for mismatch
+        if broker_position != bot_position:
+            logger.error("=" * 60)
+            logger.error("POSITION RECONCILIATION MISMATCH DETECTED!")
+            logger.error("=" * 60)
+            logger.error(f"  Broker Position: {broker_position} contracts")
+            logger.error(f"  Bot Position:    {bot_position} contracts")
+            logger.error(f"  Discrepancy:     {abs(broker_position - bot_position)} contracts")
+            
+            # Determine corrective action
+            if broker_position == 0 and bot_position != 0:
+                # Broker is flat but bot thinks it has a position
+                logger.error("  Cause: Position was closed externally or bot missed exit fill")
+                logger.error("  Action: Clearing bot's position state")
+                state[symbol]["position"]["active"] = False
+                state[symbol]["position"]["quantity"] = 0
+                state[symbol]["position"]["side"] = None
+                state[symbol]["position"]["entry_price"] = None
+                
+            elif broker_position != 0 and bot_position == 0:
+                # Broker has position but bot thinks it's flat
+                logger.error("  Cause: Position opened externally or bot missed entry fill")
+                logger.error("  Action: CLOSING UNEXPECTED POSITION at market")
+                
+                # Emergency flatten the unexpected position
+                side = "sell" if broker_position > 0 else "buy"
+                quantity = abs(broker_position)
+                
+                logger.warning(f"Placing emergency market order: {side} {quantity} {symbol}")
+                broker.place_market_order(symbol, side, quantity)
+                
+            else:
+                # Both have positions but quantities don't match
+                logger.error("  Cause: Partial fill or quantity mismatch")
+                logger.error("  Action: Syncing bot state to match broker")
+                
+                # Update bot state to match broker
+                state[symbol]["position"]["active"] = True if broker_position != 0 else False
+                state[symbol]["position"]["quantity"] = abs(broker_position)
+                state[symbol]["position"]["side"] = "long" if broker_position > 0 else "short"
+            
+            # Save corrected state
+            if recovery_manager:
+                recovery_manager.save_state(state)
+                logger.info("Corrected position state saved to disk")
+            
+            logger.error("=" * 60)
+            
+            # TODO: Send alert notification when implemented
+            # send_telegram_alert(f"Position mismatch: Broker={broker_position}, Bot={bot_position}")
+            
+        else:
+            # Positions match - log success every hour only to avoid spam
+            current_time = time.time()
+            last_log = state[symbol].get("last_reconciliation_log", 0)
+            if current_time - last_log > 3600:  # 1 hour
+                logger.info(f"[RECONCILIATION] Position sync OK: {broker_position} contracts")
+                state[symbol]["last_reconciliation_log"] = current_time
+    
+    except Exception as e:
+        logger.error(f"Error during position reconciliation: {e}", exc_info=True)
 
 
 def handle_shutdown_event(data: Dict[str, Any]) -> None:

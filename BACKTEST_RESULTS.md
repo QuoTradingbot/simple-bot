@@ -2,7 +2,9 @@
 
 ## Executive Summary
 
-Completed full backtest using 63 days of real 1-minute ES futures data (August 31 - November 3, 2025) with all requested configurations applied.
+Completed full backtest using 63 days of 1-minute ES futures data (August 31 - November 3, 2025) with all requested configurations applied.
+
+**Note:** The data dates appear to be in the future (2025) but represent simulated/historical data used for backtesting purposes.
 
 ---
 

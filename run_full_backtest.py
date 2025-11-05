@@ -11,6 +11,7 @@ Runs backtest with:
 
 import sys
 import os
+import csv
 
 # Add src directory to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -27,8 +28,16 @@ load_dotenv()
 from config import load_config, BotConfiguration
 from backtesting import BacktestConfig, BacktestEngine, ReportGenerator
 
+# Import vwap_bounce_bot modules at module level for efficiency
+from vwap_bounce_bot import initialize_state, on_tick, check_for_signals, check_exit_conditions, check_daily_reset, state, inject_complete_bar
+from signal_confidence import SignalConfidenceRL
+from adaptive_exits import AdaptiveExitManager
+
 # Determine project root directory
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
+# Constant for unlimited trades
+UNLIMITED_TRADES = 999
 
 
 def run_full_backtest():
@@ -64,7 +73,7 @@ def run_full_backtest():
     
     # Apply custom settings as per requirements
     bot_config.max_contracts = 3  # Maximum of 3 contracts
-    bot_config.max_trades_per_day = 999  # Remove cap - let bot decide
+    bot_config.max_trades_per_day = UNLIMITED_TRADES  # Remove cap - let bot decide based on signals
     bot_config.rl_confidence_threshold = 0.5  # 50% confidence threshold
     
     # Ensure RL is enabled for dynamic contract sizing
@@ -82,19 +91,23 @@ def run_full_backtest():
     logger.info(f"  RL Confidence Threshold: {bot_config.rl_confidence_threshold}")
     logger.info(f"  RL Contract Sizing: {bot_config.rl_min_contracts}/{bot_config.rl_medium_contracts}/{bot_config.rl_max_contracts}")
     
-    # Determine date range from CSV data
+    # Determine date range from CSV data using csv module
     data_file = os.path.join(PROJECT_ROOT, 'data/historical_data/ES_1min.csv')
     
     if not os.path.exists(data_file):
         logger.error(f"Data file not found: {data_file}")
         return None
     
-    # Read first and last timestamp from CSV
+    # Read first and last timestamp from CSV using csv.reader
     with open(data_file, 'r') as f:
-        lines = f.readlines()
-        # Skip header
-        first_data = lines[1].split(',')[0]
-        last_data = lines[-1].split(',')[0]
+        reader = csv.reader(f)
+        next(reader)  # Skip header
+        first_row = next(reader)
+        first_data = first_row[0]
+        
+        # Read last line efficiently
+        for row in reader:
+            last_data = row[0]
         
     start_date = datetime.fromisoformat(first_data)
     end_date = datetime.fromisoformat(last_data)
@@ -111,7 +124,12 @@ def run_full_backtest():
     logger.info(f"  Start: {start_date}")
     logger.info(f"  End: {end_date}")
     logger.info(f"  Duration: {(end_date - start_date).days} days")
-    logger.info(f"  Total bars: {len(lines) - 1:,}")
+    
+    # Count lines efficiently
+    with open(data_file, 'r') as f:
+        total_bars = sum(1 for line in f) - 1  # -1 for header
+    
+    logger.info(f"  Total bars: {total_bars:,}")
     
     # Create backtest configuration
     backtest_config = BacktestConfig(
@@ -140,10 +158,6 @@ def run_full_backtest():
     # Initialize bot state and components
     logger.info("")
     logger.info("Initializing bot components...")
-    
-    from vwap_bounce_bot import initialize_state, on_tick, check_for_signals, check_exit_conditions, check_daily_reset, state
-    from signal_confidence import SignalConfidenceRL
-    from adaptive_exits import AdaptiveExitManager
     
     # Initialize bot state
     symbol = 'ES'
@@ -206,7 +220,6 @@ def run_full_backtest():
             check_daily_reset(symbol, timestamp_et)
             
             # Inject complete OHLCV bar for ATR calculation
-            from vwap_bounce_bot import inject_complete_bar
             inject_complete_bar(symbol, bar)
             
             # Process tick through actual bot logic

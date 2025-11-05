@@ -13,6 +13,9 @@ import sys
 import os
 import csv
 
+# Set backtest mode BEFORE any other imports
+os.environ['BOT_BACKTEST_MODE'] = 'true'
+
 # Add src directory to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
@@ -28,11 +31,6 @@ load_dotenv()
 from config import load_config, BotConfiguration
 from backtesting import BacktestConfig, BacktestEngine, ReportGenerator
 
-# Import vwap_bounce_bot modules at module level for efficiency
-from vwap_bounce_bot import initialize_state, on_tick, check_for_signals, check_exit_conditions, check_daily_reset, state, inject_complete_bar
-from signal_confidence import SignalConfidenceRL
-from adaptive_exits import AdaptiveExitManager
-
 # Determine project root directory
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -43,8 +41,10 @@ UNLIMITED_TRADES = 999
 def run_full_backtest():
     """Run full backtest with custom configuration"""
     
-    # Set backtest mode environment variable BEFORE importing bot modules
-    os.environ['BOT_BACKTEST_MODE'] = 'true'
+    # Import vwap_bounce_bot modules here (after env var is set)
+    from vwap_bounce_bot import initialize_state, on_tick, check_for_signals, check_exit_conditions, check_daily_reset, state, inject_complete_bar
+    from signal_confidence import SignalConfidenceRL
+    from adaptive_exits import AdaptiveExitManager
     
     # Setup basic logging
     logging.basicConfig(

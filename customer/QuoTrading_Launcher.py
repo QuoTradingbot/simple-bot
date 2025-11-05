@@ -34,10 +34,12 @@ class QuoTradingLauncher:
             'primary': '#1E3A8A',      # Deep blue
             'secondary': '#3B82F6',    # Bright blue
             'success': '#10B981',      # Green
+            'warning': '#F59E0B',      # Orange/yellow warning
             'background': '#1E293B',   # Dark blue-gray background
             'card': '#334155',         # Dark blue card
             'text': '#F1F5F9',         # Light text
             'text_light': '#94A3B8',   # Medium light gray
+            'text_secondary': '#64748B', # Secondary text color
             'border': '#475569'        # Dark border
         }
         
@@ -48,9 +50,6 @@ class QuoTradingLauncher:
         self.config = self.load_config()
         
         # Start with credentials screen
-        self.setup_credentials_screen()
-        
-    # Start with credentials screen
         self.setup_credentials_screen()
     
     def setup_credentials_screen(self):
@@ -1030,6 +1029,12 @@ class QuoTradingLauncher:
         try:
             if hasattr(self, 'auto_calculate_var'):
                 config["auto_calculate_limits"] = self.auto_calculate_var.get()
+        except:
+            pass
+        
+        try:
+            if hasattr(self, 'shadow_mode_var'):
+                config["shadow_mode"] = self.shadow_mode_var.get()
         except:
             pass
         

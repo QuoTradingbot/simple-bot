@@ -34,10 +34,12 @@ class QuoTradingLauncher:
             'primary': '#1E3A8A',      # Deep blue
             'secondary': '#3B82F6',    # Bright blue
             'success': '#10B981',      # Green
+            'warning': '#F59E0B',      # Orange/yellow warning
             'background': '#1E293B',   # Dark blue-gray background
             'card': '#334155',         # Dark blue card
             'text': '#F1F5F9',         # Light text
             'text_light': '#94A3B8',   # Medium light gray
+            'text_secondary': '#64748B', # Secondary text color
             'border': '#475569'        # Dark border
         }
         
@@ -48,9 +50,6 @@ class QuoTradingLauncher:
         self.config = self.load_config()
         
         # Start with credentials screen
-        self.setup_credentials_screen()
-        
-    # Start with credentials screen
         self.setup_credentials_screen()
     
     def setup_credentials_screen(self):
@@ -811,7 +810,7 @@ class QuoTradingLauncher:
         # Shadow mode explanation (small text below)
         shadow_info = tk.Label(
             settings,
-            text="Shadow mode = No broker, signal tracking only (perfect for testing)",
+            text="Shadow mode = Simulates full trading with live data (no account login, tracks positions/P&L locally)",
             font=("Segoe UI", 7, "italic"),
             bg=self.colors['card'],
             fg=self.colors['text_secondary'],
@@ -1033,6 +1032,12 @@ class QuoTradingLauncher:
         except:
             pass
         
+        try:
+            if hasattr(self, 'shadow_mode_var'):
+                config["shadow_mode"] = self.shadow_mode_var.get()
+        except:
+            pass
+        
         with open(self.config_file, 'w') as f:
             json.dump(config, f, indent=2)
     
@@ -1106,29 +1111,31 @@ class QuoTradingLauncher:
             )
             return
         
-        # Step 1: Validate broker credentials (skip in shadow mode)
+        # Step 1: Validate broker credentials (required for both live and shadow mode)
         broker = self.config.get("broker", "TopStep")
         broker_token = self.config.get("broker_token", "")
         broker_username = self.config.get("broker_username", "")
         license_key = self.config.get("quotrading_license", "")
         shadow_mode = self.shadow_mode_var.get()
         
-        # Skip broker validation in shadow mode
-        if not shadow_mode:
-            # Admin key bypasses broker validation
-            if license_key != "QUOTRADING_ADMIN_MASTER_2025":
-                # Validate broker credentials are present
-                if not broker_token or not broker_username:
-                    self.console_log("✗ Error: Missing broker credentials")
-                    messagebox.showerror(
-                        "Missing Broker Credentials",
-                        f"Your {broker} credentials are missing!\n\n"
-                        f"Please go back and enter your API credentials,\n"
-                        f"or enable Shadow Mode to run without a broker."
-                    )
-                    return
-        else:
-            self.console_log("🌙 Shadow mode enabled - skipping broker validation")
+        # Validate broker credentials (required even in shadow mode for live data streaming)
+        # Admin key bypasses broker validation
+        if license_key != "QUOTRADING_ADMIN_MASTER_2025":
+            # Validate broker credentials are present
+            if not broker_token or not broker_username:
+                self.console_log("✗ Error: Missing broker credentials")
+                mode_desc = "simulated trading with live data (no account)" if shadow_mode else "live trading"
+                messagebox.showerror(
+                    "Missing Broker Credentials",
+                    f"Your {broker} credentials are required for {mode_desc}!\n\n"
+                    f"Shadow mode simulates full trading using live market data\n"
+                    f"without logging into your trading account.\n\n"
+                    f"Please go back and enter your API credentials."
+                )
+                return
+        
+        if shadow_mode:
+            self.console_log("🌙 Shadow mode enabled - simulating trades with live data (no account)")
         
         # Step 2: Save final config
         self.console_log("Saving configuration...")
@@ -1140,18 +1147,20 @@ class QuoTradingLauncher:
         
         # Step 4: Show confirmation
         symbols_str = ", ".join(selected_symbols)
-        mode_str = "🌙 Shadow Mode (Signal Tracking)" if shadow_mode else f"{broker} Live Trading"
+        mode_str = "🌙 Shadow Mode (Simulated Trading)" if shadow_mode else f"{broker} Live Trading"
         
         result = messagebox.askyesno(
             "Launch Trading Bot?",
             f"Ready to start bot with these settings:\n\n"
             f"Mode: {mode_str}\n"
+            f"Broker: {broker}\n"
             f"Symbols: {symbols_str}\n"
             f"Max Contracts: {self.contracts_var.get()}\n"
             f"Max Trades/Day: {self.trades_var.get()}\n"
             f"Risk/Trade: {self.risk_var.get()}%\n"
             f"Min R:R Ratio: {self.risk_reward_var.get()}:1\n"
             f"Daily Loss Limit: ${self.daily_loss_var.get()}\n\n"
+            f"{'⚠️ Shadow Mode: Simulates full trading with live data\n(tracks positions/P&L locally without account login).\n\n' if shadow_mode else ''}"
             f"This will open a PowerShell terminal with live logs.\n"
             f"Use the STOP BOT button to stop trading.\n\n"
             f"Continue?"

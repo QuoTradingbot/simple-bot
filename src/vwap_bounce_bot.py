@@ -173,16 +173,13 @@ def initialize_broker() -> None:
     """
     Initialize the broker interface using configuration.
     Uses TopStep broker with error recovery and circuit breaker.
-    SHADOW MODE: Skips broker initialization for signal-only tracking.
+    SHADOW MODE: Simulates full trading with live data (no account login, tracks positions/P&L locally).
     """
     global broker, recovery_manager
     
-    # Skip broker in shadow mode
+    # In shadow mode, simulate trading with live data
     if CONFIG.get("shadow_mode", False):
-        logger.info("🌙 SHADOW MODE - Skipping broker initialization (signal tracking only)")
-        broker = None
-        recovery_manager = None
-        return
+        logger.info("🌙 SHADOW MODE - Simulating trades with live data (no account login)")
     
     logger.info("Initializing broker interface...")
     
@@ -190,6 +187,7 @@ def initialize_broker() -> None:
     recovery_manager = ErrorRecoveryManager(CONFIG)
     
     # Create broker using configuration
+    # In shadow mode, broker streams data but doesn't execute actual orders
     broker = create_broker(_bot_config.api_token, _bot_config.username, CONFIG["instrument"])
     
     # Connect to broker (initial connection doesn't use circuit breaker)
@@ -248,16 +246,18 @@ def get_account_equity() -> float:
     """
     Fetch current account equity from broker.
     Returns account equity/balance with error handling.
-    In backtest mode or shadow mode, returns simulated capital.
+    In backtest mode or shadow mode, returns simulated capital (no account login).
+    In live mode, returns actual account balance from broker.
     """
-    # Shadow mode, backtest mode, or no broker - return simulated capital
-    if CONFIG.get("shadow_mode", False) or _bot_config.backtest_mode or broker is None:
+    # Backtest mode, shadow mode, or no broker - return simulated capital
+    if _bot_config.backtest_mode or CONFIG.get("shadow_mode", False) or broker is None:
         # Use starting_equity from bot_status if available
         if bot_status.get("starting_equity") is not None:
             return bot_status["starting_equity"]
-        # Default starting capital for shadow/backtest
+        # Default starting capital for backtest/shadow mode
         return 50000.0
     
+    # Live mode - get actual balance from broker account
     try:
         # Use circuit breaker for account query
         breaker = recovery_manager.get_circuit_breaker("account_query")
@@ -292,9 +292,10 @@ def place_market_order(symbol: str, side: str, quantity: int) -> Optional[Dict[s
     logger.info(f"{'[DRY RUN] ' if CONFIG['dry_run'] else ''}Market Order: {side} {quantity} {symbol}")
     
     # In backtest or dry-run mode, return simulated order
-    if CONFIG["dry_run"] or _bot_config.backtest_mode:
+    if CONFIG["dry_run"] or _bot_config.backtest_mode or CONFIG.get("shadow_mode", False):
+        mode_label = "SHADOW" if CONFIG.get("shadow_mode", False) else "BACKTEST"
         return {
-            "order_id": f"BACKTEST_{datetime.now().timestamp()}",
+            "order_id": f"{mode_label}_{datetime.now().timestamp()}",
             "symbol": symbol,
             "side": side,
             "quantity": quantity,
@@ -350,11 +351,13 @@ def place_stop_order(symbol: str, side: str, quantity: int, stop_price: float) -
     Returns:
         Order object or None if failed
     """
-    logger.info(f"{'[DRY RUN] ' if CONFIG['dry_run'] else ''}Stop Order: {side} {quantity} {symbol} @ {stop_price}")
+    shadow_or_dry = CONFIG.get("shadow_mode", False) or CONFIG["dry_run"]
+    logger.info(f"{'[SHADOW MODE] ' if CONFIG.get('shadow_mode', False) else '[DRY RUN] ' if CONFIG['dry_run'] else ''}Stop Order: {side} {quantity} {symbol} @ {stop_price}")
     
-    if CONFIG["dry_run"]:
+    if shadow_or_dry:
+        mode_label = "SHADOW" if CONFIG.get("shadow_mode", False) else "DRY_RUN"
         return {
-            "order_id": f"DRY_RUN_STOP_{datetime.now().timestamp()}",
+            "order_id": f"{mode_label}_STOP_{datetime.now().timestamp()}",
             "symbol": symbol,
             "side": side,
             "quantity": quantity,
@@ -405,11 +408,13 @@ def place_limit_order(symbol: str, side: str, quantity: int, limit_price: float)
     Returns:
         Order object or None if failed
     """
-    logger.info(f"{'[DRY RUN] ' if CONFIG['dry_run'] else ''}Limit Order: {side} {quantity} {symbol} @ {limit_price}")
+    shadow_or_dry = CONFIG.get("shadow_mode", False) or CONFIG["dry_run"]
+    logger.info(f"{'[SHADOW MODE] ' if CONFIG.get('shadow_mode', False) else '[DRY RUN] ' if CONFIG['dry_run'] else ''}Limit Order: {side} {quantity} {symbol} @ {limit_price}")
     
-    if CONFIG["dry_run"]:
+    if shadow_or_dry:
+        mode_label = "SHADOW" if CONFIG.get("shadow_mode", False) else "DRY_RUN"
         return {
-            "order_id": f"DRY_RUN_LIMIT_{datetime.now().timestamp()}",
+            "order_id": f"{mode_label}_LIMIT_{datetime.now().timestamp()}",
             "symbol": symbol,
             "side": side,
             "quantity": quantity,
@@ -457,10 +462,12 @@ def cancel_order(symbol: str, order_id: str) -> bool:
     Returns:
         True if cancelled successfully, False otherwise
     """
-    logger.info(f"{'[DRY RUN] ' if CONFIG['dry_run'] else ''}Cancelling Order: {order_id} for {symbol}")
+    shadow_or_dry = CONFIG.get("shadow_mode", False) or CONFIG["dry_run"]
+    mode_label = "[SHADOW MODE] " if CONFIG.get("shadow_mode", False) else "[DRY RUN] " if CONFIG["dry_run"] else ""
+    logger.info(f"{mode_label}Cancelling Order: {order_id} for {symbol}")
     
-    if CONFIG["dry_run"]:
-        logger.info(f"[DRY RUN] Order {order_id} cancelled (simulated)")
+    if shadow_or_dry:
+        logger.info(f"{mode_label}Order {order_id} cancelled (simulated)")
         return True
     
     if broker is None:
@@ -2514,16 +2521,16 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
         side: 'long' or 'short'
         entry_price: Approximate entry price (mid or last)
     """
-    # ===== SHADOW MODE: Track signal without broker =====
+    # ===== SHADOW MODE: Log that we're simulating this trade =====
     if CONFIG.get("shadow_mode", False):
         logger.info(SEPARATOR_LINE)
-        logger.info(f"🌙 SHADOW SIGNAL DETECTED - {side.upper()}")
+        logger.info(f"🌙 SHADOW MODE TRADE - {side.upper()}")
         logger.info(f"  Symbol: {symbol}")
         logger.info(f"  Entry Price: ${entry_price:.2f}")
         logger.info(f"  Time: {get_current_time().strftime('%Y-%m-%d %H:%M:%S %Z')}")
-        logger.info(f"  Mode: Signal tracking only (no broker orders)")
+        logger.info(f"  Mode: Simulating trade (live data, no account)")
         logger.info(SEPARATOR_LINE)
-        return
+        # Continue with full trading logic but orders will be simulated (not sent to broker)
     
     # ===== CRITICAL FIX #1: Position State Validation =====
     # Prevent double positioning if signal fires while already in trade
@@ -5533,8 +5540,8 @@ def main(symbol_override: str = None) -> None:
     
     # Display operating mode
     if CONFIG.get('shadow_mode', False):
-        logger.info(f"[{trading_symbol}] Mode: 🌙 SHADOW MODE (Signal Tracking - No Broker)")
-        logger.info(f"[{trading_symbol}] ⚠️  Shadow mode: Bot will track signals without placing orders")
+        logger.info(f"[{trading_symbol}] Mode: 🌙 SHADOW MODE (Simulated Trading)")
+        logger.info(f"[{trading_symbol}] ⚠️  Shadow mode: Full bot logic with live data, simulated positions/P&L (no account)")
     elif CONFIG['dry_run']:
         logger.info(f"[{trading_symbol}] Mode: DRY RUN (Paper Trading)")
     else:

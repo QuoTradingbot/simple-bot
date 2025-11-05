@@ -136,7 +136,7 @@ logs/
 /data/bot_state.json
 /data/bot_state.json.backup
 /data/*.json.backup
-/data/historical_data/
+# /data/historical_data/  # Commented out to allow CSV files to be committed
 
 # Bot specific - Old locations (to be removed - files created in wrong location)
 /historical_data/

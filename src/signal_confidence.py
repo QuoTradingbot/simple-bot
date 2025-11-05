@@ -74,7 +74,7 @@ class SignalConfidenceRL:
         
         # Log exploration mode
         if self.backtest_mode:
-            logger.info(f" BACKTEST MODE: 5% exploration enabled (learning mode)")
+            logger.info(f" BACKTEST MODE: 30% exploration enabled (aggressive learning mode)")
         else:
             logger.info(f" LIVE MODE: 0% exploration (pure exploitation - NO RANDOM TRADES!)")
     
@@ -120,8 +120,8 @@ class SignalConfidenceRL:
         
         # SMART EXPLORATION: Only in backtest mode!
         # LIVE MODE: 0% exploration (pure exploitation of learned intelligence)
-        # BACKTEST MODE: 5% exploration (keeps learning without hurting performance)
-        effective_exploration = 0.05 if self.backtest_mode else 0.0
+        # BACKTEST MODE: 30% exploration (aggressive learning mode)
+        effective_exploration = 0.30 if self.backtest_mode else 0.0
         
         # ALWAYS calculate confidence from experiences
         confidence, reason = self.calculate_confidence(state)

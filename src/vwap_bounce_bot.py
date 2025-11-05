@@ -3145,6 +3145,8 @@ def check_breakeven_protection(symbol: str, current_price: float) -> None:
         symbol: Instrument symbol
         current_price: Current market price
     """
+    global adaptive_manager
+    
     # Only process if breakeven is enabled in config
     if not CONFIG.get("breakeven_enabled", True):
         return
@@ -3162,7 +3164,7 @@ def check_breakeven_protection(symbol: str, current_price: float) -> None:
     # ========================================================================
     # ADAPTIVE EXIT MANAGEMENT - Calculate dynamic thresholds
     # ========================================================================
-    adaptive_enabled = CONFIG.get("adaptive_exits_enabled", False)
+    adaptive_enabled = CONFIG.get("adaptive_exits_enabled", True)
     
     if adaptive_enabled and adaptive_manager is not None:
         try:
@@ -3264,6 +3266,8 @@ def check_trailing_stop(symbol: str, current_price: float) -> None:
         symbol: Instrument symbol
         current_price: Current market price
     """
+    global adaptive_manager
+    
     # Only process if trailing stop is enabled in config
     if not CONFIG.get("trailing_stop_enabled", True):
         return

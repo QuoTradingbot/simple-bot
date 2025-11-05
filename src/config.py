@@ -72,14 +72,14 @@ class BotConfiguration:
     market_open_time: time = field(default_factory=lambda: time(9, 30))
     entry_start_time: time = field(default_factory=lambda: time(18, 0))  # 6 PM ET - ES futures session opens
     entry_end_time: time = field(default_factory=lambda: time(16, 55))  # 4:55 PM ET next day - before maintenance
-    flatten_time: time = field(default_factory=lambda: time(16, 30))  # 4:30 PM ET - flatten before session close
-    forced_flatten_time: time = field(default_factory=lambda: time(16, 45))  # 4:45 PM ET - forced flatten
-    shutdown_time: time = field(default_factory=lambda: time(16, 50))  # 4:50 PM ET - shutdown for 5-6 PM maintenance
+    flatten_time: time = field(default_factory=lambda: time(16, 45))  # 4:45 PM ET - 15 min before maintenance
+    forced_flatten_time: time = field(default_factory=lambda: time(17, 0))  # 5:00 PM ET - maintenance starts
+    shutdown_time: time = field(default_factory=lambda: time(17, 0))  # 5:00 PM ET - maintenance 5-6 PM daily
     vwap_reset_time: time = field(default_factory=lambda: time(18, 0))  # 6 PM ET - futures daily session reset
     
     # Friday Special Rules - Close before weekend
-    friday_entry_cutoff: time = field(default_factory=lambda: time(16, 0))  # Stop entries 4:00 PM Friday
-    friday_close_target: time = field(default_factory=lambda: time(16, 30))  # Flatten by 4:30 PM Friday
+    friday_entry_cutoff: time = field(default_factory=lambda: time(16, 30))  # Stop entries 4:30 PM Friday
+    friday_close_target: time = field(default_factory=lambda: time(16, 45))  # Flatten by 4:45 PM Friday
     
     # Safety Parameters
     daily_loss_limit: float = 1000.0  # Default - will be calculated from account size

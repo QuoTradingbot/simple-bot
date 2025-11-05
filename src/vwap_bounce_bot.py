@@ -9,20 +9,21 @@ Event-driven bot that trades bounces off VWAP standard deviation bands
 This bot is designed to run continuously and support global users:
 
 ✅ UTC-FIRST DESIGN: All times converted to UTC first, then to exchange timezone
-✅ AUTO-FLATTEN: Automatically closes positions at 4:45 PM Chicago (forced_flatten_time)
-✅ AUTO-RESUME: Automatically resumes trading when market reopens (5 PM Sunday Chicago)
+✅ AUTO-FLATTEN: Automatically closes positions at 4:45 PM ET (15 min before maintenance)
+✅ AUTO-RESUME: Automatically resumes trading when market reopens (6 PM Sunday ET)
 ✅ NO MANUAL SHUTDOWN: Bot runs 24/7, just pauses trading when market closed
 ✅ TIMEZONE SAFE: Works for users in any timezone (UTC → Exchange → User Display)
 
-Trading Hours (ES Futures - Chicago Time):
-- OPEN: Sunday 5:00 PM → Friday 4:45 PM
-- FORCED FLATTEN: 4:45 PM (all positions must be closed)
-- WEEKEND: Friday 4:45 PM → Sunday 5:00 PM
+Trading Hours (ES Futures - Eastern Time):
+- OPEN: Sunday 6:00 PM → Friday 5:00 PM
+- MAINTENANCE: 5:00-6:00 PM ET daily (Monday-Thursday)
+- FLATTEN: 4:45 PM ET (15 min before maintenance)
+- WEEKEND: Friday 5:00 PM → Sunday 6:00 PM
 
 Bot States:
-- entry_window: Market open, trading allowed (before 3 PM)
-- flatten_mode: After 3 PM, aggressively close positions (1hr 45min buffer before 4:45 PM)
-- closed: After 4:45 PM, auto-flatten any positions, wait for reopen
+- entry_window: Market open, trading allowed (6 PM - 4:45 PM)
+- flatten_mode: 4:45-5:00 PM, aggressively close positions (15 min before maintenance)
+- closed: During maintenance (5-6 PM Mon-Thu) or weekend, auto-flatten positions
 
 For Multi-User Subscriptions:
 - Add user_id to state dictionary for data isolation
@@ -1464,7 +1465,7 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
         return False, f"Market closed"
     
     if trading_state == "flatten_mode":
-        logger.debug(f"Flatten mode active (after 4:30 PM), no new entries")
+        logger.debug(f"Flatten mode active (4:45-5:00 PM), no new entries")
         return False, f"Flatten mode - close positions only"
     
     # Trading state is "entry_window" - market is open, proceed with checks
@@ -3061,7 +3062,7 @@ def check_time_based_exits(symbol: str, current_bar: Dict[str, Any], position: D
     ticks = price_change / tick_size
     unrealized_pnl = ticks * tick_value * position["quantity"]
     
-    # Force close at forced_flatten_time (4:45 PM)
+    # Force close at forced_flatten_time (5:00 PM ET - maintenance starts)
     trading_state = get_trading_state(bar_time)
     if trading_state == "closed":
         return "emergency_forced_flatten", get_flatten_price(symbol, side, current_bar["close"])
@@ -3811,7 +3812,7 @@ def check_exit_conditions(symbol: str) -> None:
         
         log_time_based_action(
             "flatten_mode_activated",
-            "All positions must be closed by 4:45 PM ET to avoid settlement risk",
+            "All positions must be closed by 4:45 PM ET (15 min before maintenance)",
             position_details
         )
         
@@ -3850,7 +3851,7 @@ def check_exit_conditions(symbol: str) -> None:
         # Log specific messages for certain exit types
         if reason == "emergency_forced_flatten":
             logger.critical(SEPARATOR_LINE)
-            logger.critical("EMERGENCY FORCED FLATTEN - 4:45 PM DEADLINE REACHED")
+            logger.critical("EMERGENCY FORCED FLATTEN - 4:45 PM FLATTEN WINDOW")
             logger.critical(SEPARATOR_LINE)
         elif reason == "time_based_profit_take":
             logger.critical("4:40 PM - Closing profitable position immediately")
@@ -4382,7 +4383,7 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
             "flatten_mode_exit": "Flatten mode aggressive exit",
             "time_based_profit_take": "4:40 PM profit lock before settlement",
             "time_based_loss_cut": "4:42 PM small loss cut before settlement",
-            "emergency_forced_flatten": "4:45 PM emergency deadline flatten",
+            "emergency_forced_flatten": "4:45 PM flatten before maintenance",
             "tightened_target": "3 PM tightened target (1:1 R/R)",
             "early_loss_cut": "3:30 PM early loss cut (<75% stop)",
             "proactive_stop": "Proactive stop (within 2 ticks)",
@@ -5242,41 +5243,40 @@ def get_trading_state(dt: datetime = None) -> str:
     weekday = local_time.weekday()  # 0=Monday, 6=Sunday
     current_time = local_time.time()
     
-    # ES Futures Hours (Chicago Time):
-    # Sunday 5:00 PM - Friday 4:00 PM (with daily 4-5 PM maintenance)
+    # ES Futures Hours (Eastern Time):
+    # Sunday 6:00 PM - Friday 5:00 PM (with daily 5-6 PM maintenance Mon-Thu)
     
     # CLOSED: Saturday (all day)
     if weekday == 5:  # Saturday
         return 'closed'
     
-    # CLOSED: Sunday before 5:00 PM Chicago
-    if weekday == 6 and current_time < datetime_time(17, 0):
+    # CLOSED: Sunday before 6:00 PM ET
+    if weekday == 6 and current_time < datetime_time(18, 0):
         return 'closed'
     
-    # CLOSED: Friday after 4:45 PM Chicago (weekend starts)
-    # Note: 4:45 PM is forced_flatten_time - positions must be closed by then
-    if weekday == 4 and current_time >= datetime_time(16, 45):
+    # CLOSED: Friday after 5:00 PM ET (weekend starts)
+    if weekday == 4 and current_time >= datetime_time(17, 0):
         return 'closed'
     
     # Get configured trading times from CONFIG (supports 24/5 futures)
-    flatten_time = CONFIG.get("flatten_time", datetime_time(16, 30))
-    forced_flatten_time = CONFIG.get("forced_flatten_time", datetime_time(16, 45))
+    flatten_time = CONFIG.get("flatten_time", datetime_time(16, 45))
+    forced_flatten_time = CONFIG.get("forced_flatten_time", datetime_time(17, 0))
     
-    # CLOSED: Daily maintenance (4:45-5:00 PM Chicago, Monday-Thursday)
-    # Note: Positions should already be flat by 4:45 PM
+    # CLOSED: Daily maintenance (5:00-6:00 PM ET, Monday-Thursday)
     if weekday < 4:  # Monday-Thursday
-        if forced_flatten_time <= current_time < datetime_time(17, 0):
+        if forced_flatten_time <= current_time < datetime_time(18, 0):
             return 'closed'  # Daily settlement period
     
-    # FLATTEN MODE: Approaching end of session
-    # For overnight sessions (18:00 - 16:55), only flatten between 16:30-16:55
-    # Not after 18:00 (that's the start of the next session!)
+    # FLATTEN MODE: 15 minutes before daily maintenance
+    # Only flatten between 4:45-5:00 PM (15 min before maintenance)
+    # Not after 6:00 PM (that's when the next session starts!)
     if flatten_time <= current_time < forced_flatten_time:
         return 'flatten_mode'
     
     # ENTRY WINDOW: Market open, ready to trade
     # For 24/5 futures, we're in entry window if:
-    # - Between 18:00 (6 PM) and 16:30 (4:30 PM next day)
+    # - Between 6:00 PM and 4:45 PM next day (Mon-Thu)
+    # - Between 6:00 PM and 5:00 PM Friday
     # - NOT in closed/flatten periods above
     return 'entry_window'
 
@@ -5374,7 +5374,7 @@ flatten rules accurately:
    - Test bot behavior on DST change days (March and November)
    - Ensure time checks still work correctly during "spring forward" and "fall back"
 
-Phase Eighteen: Monitoring During Flatten Window (4:30 PM - 4:45 PM)
+Phase Eighteen: Monitoring During Flatten Window (4:45 PM - 5:00 PM)
 
 This is the highest-risk 15-minute window requiring active monitoring if possible:
 
@@ -5457,42 +5457,38 @@ Complete Time-Based Logic Summary
 
 Your bot operates in distinct time-based modes controlling all actions:
 
-TIME WINDOWS (All times Eastern Time):
-- Before 9:00 AM: SLEEP - Bot inactive, waiting for market open
-- 9:00 AM - 9:30 AM: PRE-OPEN - Entry allowed, overnight VWAP active
-- 9:30 AM: VWAP RESET - Clears 1-min bars, aligns with stock market open
-- 9:00 AM - 2:30 PM: ENTRY WINDOW - Full signal evaluation and entry allowed
-- 2:30 PM - 4:30 PM: EXIT ONLY - Manage positions, NO new entries
-- 3:00 PM: EXIT TIGHTENING - 1:1 R/R targets instead of 1.5:1
-- 3:30 PM: EARLY LOSS CUTS - Cut losses <75% of stop distance
-- 4:30 PM - 4:45 PM: FLATTEN MODE - Aggressive forced closing, escalating urgency
-- 4:40 PM: FORCE CLOSE PROFITS - Lock in any gain immediately
-- 4:42 PM: FORCE CUT SMALL LOSSES - Accept small loss <50% of stop
-- 4:45 PM: EMERGENCY DEADLINE - Force close ANY remaining position
-- After 4:45 PM: VERIFY FLAT - Check no overnight positions, shut down
-- 5:00 PM: ABSOLUTE DEADLINE - Emergency flatten if position still exists
+TIME WINDOWS (All times Eastern Time - 24/5 Futures Trading):
+- Saturday: CLOSED - Market closed for weekend
+- Sunday before 6:00 PM: CLOSED - Waiting for futures open
+- Sunday 6:00 PM: MARKET OPEN - Trading resumes for the week
+- 6:00 PM - 4:45 PM (next day): ENTRY WINDOW - Full trading allowed 24 hours (Mon-Thu)
+- 4:45 PM - 5:00 PM: FLATTEN MODE - Close positions (15 min before maintenance)
+- 5:00 PM - 6:00 PM: MAINTENANCE - Daily settlement (Mon-Thu), market closed
+- Friday 4:45 PM - 5:00 PM: FLATTEN MODE - Close before weekend
+- Friday 5:00 PM onwards: WEEKEND - Market closed until Sunday 6:00 PM
 
-FRIDAY-SPECIFIC RULES:
-- 1:00 PM: NO new trades (weekend gap protection begins)
-- 2:00 PM: Take ANY profit on existing positions
-- 3:00 PM: FORCE CLOSE all positions (61-hour weekend gap avoidance)
+FLATTEN SCHEDULE (preserves 24-hour trading):
+- Monday-Thursday: Flatten 4:45-5:00 PM (15 min before daily maintenance)
+- Friday: Flatten 4:45-5:00 PM (before weekend close)
+- During flatten mode: Aggressive closing, no new entries
+- After 5:00 PM: Maintenance window (Mon-Thu) or weekend (Fri-Sun)
 
 DAILY RESETS:
+- 6:00 PM ET: Daily session opens (after maintenance window)
 - 9:30 AM: VWAP reset (stock market alignment for equity indexes)
-- 9:30 AM: Daily counters reset on date change (trade count, P&L, loss limits)
-- 15-minute trend bars: NO reset (overnight trend carries forward)
+- Daily counters reset at 6 PM when new session starts
 
-CRITICAL SAFETY RULES:
-1. NO OVERNIGHT POSITIONS - Ever. Zero exceptions. Account-destroying risk.
-2. NO WEEKEND POSITIONS - Force close by 3 PM Friday, 66-hour gap risk.
-3. SETTLEMENT AVOIDANCE - Flatten by 4:45 PM to avoid 4:45-5:00 PM manipulation.
-4. TIMEZONE ENFORCEMENT - All decisions use America/New_York, not system time.
-5. DST AWARENESS - pytz handles spring forward / fall back automatically.
-6. AUDIT TRAIL - Every time-based action logged with timestamp and reason.
+CRITICAL SAFETY RULES (24/5 FUTURES):
+1. FLATTEN BEFORE MAINTENANCE - Close by 4:45 PM daily (15 min buffer before 5 PM)
+2. NO WEEKEND POSITIONS - Force close by 4:45 PM Friday (before 5 PM weekend close)
+3. MAINTENANCE WINDOW - Market closed 5-6 PM Mon-Thu for settlement
+4. TIMEZONE ENFORCEMENT - All decisions use America/New_York (Eastern Time)
+5. DST AWARENESS - pytz handles spring forward / fall back automatically
+6. AUDIT TRAIL - Every time-based action logged with timestamp and reason
 
 WHY THIS MATTERS FOR PROP FIRMS:
 TopStep's rules are designed to fail traders who don't respect:
-- Daily settlement (5 PM ET reset)
+- Daily settlement (5 PM ET reset Mon-Thu, maintenance window)
 - Overnight gap exposure
 - Weekend event risk
 - Daily loss limits (restart at 5 PM, not midnight)

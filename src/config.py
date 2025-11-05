@@ -74,7 +74,7 @@ class BotConfiguration:
     entry_end_time: time = field(default_factory=lambda: time(16, 55))  # 4:55 PM ET next day - before maintenance
     flatten_time: time = field(default_factory=lambda: time(16, 45))  # 4:45 PM ET - 15 min before maintenance
     forced_flatten_time: time = field(default_factory=lambda: time(17, 0))  # 5:00 PM ET - maintenance starts
-    shutdown_time: time = field(default_factory=lambda: time(17, 0))  # 5:00 PM ET - maintenance 5-6 PM daily
+    shutdown_time: time = field(default_factory=lambda: time(18, 0))  # 6:00 PM ET - after maintenance, session restarts
     vwap_reset_time: time = field(default_factory=lambda: time(18, 0))  # 6 PM ET - futures daily session reset
     
     # Friday Special Rules - Close before weekend

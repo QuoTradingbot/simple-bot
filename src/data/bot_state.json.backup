@@ -1,0 +1,13 @@
+{
+  "symbol": "ES",
+  "active": true,
+  "side": "long",
+  "quantity": 3,
+  "entry_price": 4998.0,
+  "stop_price": 4995.0,
+  "target_price": 5060.5,
+  "entry_time": "2025-11-05T11:26:00-05:00",
+  "order_id": "BACKTEST_1762375776.62937",
+  "stop_order_id": null,
+  "last_updated": "2025-11-05T20:49:36.629464"
+}

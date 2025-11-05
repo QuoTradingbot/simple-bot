@@ -51,6 +51,7 @@ SOURCE_FILES = [
     "src/monitoring.py",
     "src/error_recovery.py",
     "src/backtesting.py",
+    "src/symbol_specs.py",  # Multi-symbol specifications (ES, NQ, MES, etc.)
     # NOTE: signal_confidence.py will be modified to use cloud API
 ]
 

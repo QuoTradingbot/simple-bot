@@ -482,14 +482,24 @@ class SignalConfidenceRL:
     
     def load_experience(self):
         """Load past experiences from file."""
+        logger.info(f"[DEBUG] Attempting to load experiences from: {self.experience_file}")
+        logger.info(f"[DEBUG] File exists check: {os.path.exists(self.experience_file)}")
+        
         if os.path.exists(self.experience_file):
             try:
+                logger.info(f"[DEBUG] Opening file...")
                 with open(self.experience_file, 'r') as f:
+                    logger.info(f"[DEBUG] Loading JSON...")
                     data = json.load(f)
+                    logger.info(f"[DEBUG] JSON loaded successfully. Keys: {list(data.keys())}")
                     self.experiences = data.get('experiences', [])
                     logger.info(f" Loaded {len(self.experiences)} past signal experiences")
             except Exception as e:
                 logger.error(f"Failed to load experiences: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+        else:
+            logger.warning(f"[DEBUG] Experience file not found: {self.experience_file}")
     
     def save_experience(self):
         """Save experiences to file."""

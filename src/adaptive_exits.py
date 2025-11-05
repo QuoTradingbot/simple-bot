@@ -42,9 +42,9 @@ class AdaptiveExitManager:
         
         # RL Learning for exit parameters
         self.exit_experiences = []  # All past exit outcomes
-        self.load_experiences()
         
         # Learned optimal parameters per regime (updated from experiences)
+        # MUST be defined BEFORE load_experiences() since it uses it as default
         self.learned_params = {
             'HIGH_VOL_CHOPPY': {'breakeven_mult': 0.75, 'trailing_mult': 0.7},
             'HIGH_VOL_TRENDING': {'breakeven_mult': 0.85, 'trailing_mult': 1.1},
@@ -54,6 +54,9 @@ class AdaptiveExitManager:
             'NORMAL_TRENDING': {'breakeven_mult': 1.0, 'trailing_mult': 1.1},
             'NORMAL_CHOPPY': {'breakeven_mult': 0.95, 'trailing_mult': 0.95}
         }
+        
+        # Load experiences and learned params from file (may override above defaults)
+        self.load_experiences()
         
         logger.info(f"[ADAPTIVE] Exit Manager initialized with RL learning ({len(self.exit_experiences)} past exits)")
     
@@ -168,15 +171,25 @@ class AdaptiveExitManager:
     
     def load_experiences(self):
         """Load past exit experiences from file."""
+        logger.info(f"[DEBUG] Attempting to load exit experiences from: {self.experience_file}")
+        logger.info(f"[DEBUG] File exists check: {os.path.exists(self.experience_file)}")
+        
         if os.path.exists(self.experience_file):
             try:
+                logger.info(f"[DEBUG] Opening exit file...")
                 with open(self.experience_file, 'r') as f:
+                    logger.info(f"[DEBUG] Loading exit JSON...")
                     data = json.load(f)
+                    logger.info(f"[DEBUG] Exit JSON loaded successfully. Keys: {list(data.keys())}")
                     self.exit_experiences = data.get('exit_experiences', [])
                     self.learned_params = data.get('learned_params', self.learned_params)
-                    logger.info(f"📚 Loaded {len(self.exit_experiences)} past exit experiences")
+                    logger.info(f"Loaded {len(self.exit_experiences)} past exit experiences")
             except Exception as e:
                 logger.error(f"Failed to load exit experiences: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
+        else:
+            logger.warning(f"[DEBUG] Exit experience file not found: {self.experience_file}")
     
     def save_experiences(self):
         """Save exit experiences to file."""

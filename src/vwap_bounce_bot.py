@@ -69,6 +69,33 @@ if _backtest_mode or os.getenv("TOPSTEP_API_TOKEN"):
 # Convert BotConfiguration to dictionary for backward compatibility with existing code
 CONFIG: Dict[str, Any] = _bot_config.to_dict()
 
+# Auto-load symbol specifications if available (for multi-symbol support)
+SYMBOL_SPEC = None
+try:
+    from symbol_specs import get_symbol_spec
+    SYMBOL_SPEC = get_symbol_spec(CONFIG["instrument"])
+    
+    # Override config with symbol-specific values if not explicitly set by user
+    if not os.getenv("BOT_TICK_VALUE"):
+        CONFIG["tick_value"] = SYMBOL_SPEC.tick_value
+        _bot_config.tick_value = SYMBOL_SPEC.tick_value
+    
+    if not os.getenv("BOT_TICK_SIZE"):
+        CONFIG["tick_size"] = SYMBOL_SPEC.tick_size
+        _bot_config.tick_size = SYMBOL_SPEC.tick_size
+    
+    if not os.getenv("BOT_SLIPPAGE_TICKS"):
+        CONFIG["slippage_ticks"] = SYMBOL_SPEC.typical_slippage_ticks
+        _bot_config.slippage_ticks = SYMBOL_SPEC.typical_slippage_ticks
+    
+    print(f"✓ Symbol specs loaded: {SYMBOL_SPEC.name} ({SYMBOL_SPEC.symbol})")
+    print(f"  Tick Value: ${SYMBOL_SPEC.tick_value:.2f} | Tick Size: ${SYMBOL_SPEC.tick_size}")
+    print(f"  Slippage: {SYMBOL_SPEC.typical_slippage_ticks} ticks")
+except Exception as e:
+    # Symbol specs not available - will use defaults from config
+    print(f"Symbol specs not loaded (using defaults): {e}")
+    pass
+
 # String constants
 MSG_LIVE_TRADING_NOT_IMPLEMENTED = "Live trading not implemented - SDK integration required"
 SEPARATOR_LINE = "=" * 60
@@ -1248,20 +1275,22 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
         Tuple of (is_valid, reason)
     """
     # Check trading state - block signals when market closed or in flatten mode
-    trading_state = get_trading_state(bar_time)
+    # USE CURRENT TIME, NOT BAR TIME (bar timestamps can be delayed in live feeds)
+    current_time = get_current_time()
+    trading_state = get_trading_state(current_time)
     
     if trading_state == "closed":
         logger.debug(f"Market closed, skipping signal check")
         return False, f"Market closed"
     
     if trading_state == "flatten_mode":
-        logger.debug(f"Flatten mode active (after 3 PM), no new entries")
+        logger.debug(f"Flatten mode active (after 4:30 PM), no new entries")
         return False, f"Flatten mode - close positions only"
     
     # Trading state is "entry_window" - market is open, proceed with checks
     
-    # Friday restriction - close before weekend
-    if bar_time.weekday() == 4 and bar_time.time() >= CONFIG["friday_entry_cutoff"]:
+    # Friday restriction - close before weekend (use current time, not bar time)
+    if current_time.weekday() == 4 and current_time.time() >= CONFIG["friday_entry_cutoff"]:
         log_time_based_action(
             "friday_entry_blocked",
             f"Friday after {CONFIG['friday_entry_cutoff']}, no new trades to avoid weekend gap risk",
@@ -1380,6 +1409,11 @@ def check_long_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
     Returns:
         True if long signal detected
     """
+    # FORCE TEST TRADE - bypass all filters
+    if CONFIG.get("force_test_trade", False):
+        logger.info("[FORCE TEST] Forcing LONG signal for testing - bypassing all filters")
+        return True
+    
     vwap_bands = state[symbol]["vwap_bands"]
     vwap = state[symbol]["vwap"]
     
@@ -1449,6 +1483,11 @@ def check_short_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
     Returns:
         True if short signal detected
     """
+    # FORCE TEST TRADE - bypass all filters (note: we'll force LONG instead of SHORT for safety)
+    if CONFIG.get("force_test_trade", False):
+        logger.debug("[FORCE TEST] Skipping SHORT signal - will use LONG instead")
+        return False
+    
     vwap_bands = state[symbol]["vwap_bands"]
     vwap = state[symbol]["vwap"]
     
@@ -1589,12 +1628,12 @@ def check_for_signals(symbol: str) -> None:
     # Check safety conditions first
     is_safe, reason = check_safety_conditions(symbol)
     if not is_safe:
-        logger.debug(f"[BACKTEST] Safety check failed: {reason}")
+        logger.info(f"[SIGNAL CHECK] Safety check failed: {reason}")
         return
     
     # Get the latest bar
     if len(state[symbol]["bars_1min"]) == 0:
-        logger.debug(f"[BACKTEST] No 1-min bars yet")
+        logger.info(f"[SIGNAL CHECK] No 1-min bars yet")
         return
     
     latest_bar = state[symbol]["bars_1min"][-1]
@@ -1603,7 +1642,7 @@ def check_for_signals(symbol: str) -> None:
     # Validate signal requirements
     is_valid, reason = validate_signal_requirements(symbol, bar_time)
     if not is_valid:
-        logger.debug(f"[BACKTEST] Signal validation failed: {reason} at {bar_time}")
+        logger.info(f"[SIGNAL CHECK] Validation failed: {reason} at {bar_time}")
         return
     
     # Get bars for signal check
@@ -1621,14 +1660,7 @@ def check_for_signals(symbol: str) -> None:
     # Check for long signal
     if check_long_signal_conditions(symbol, prev_bar, current_bar):
         # REINFORCEMENT LEARNING - Check if RL brain approves this signal
-        if CONFIG.get("rl_enabled", True):  # RL enabled by default
-            if rl_brain is None:
-                rl_brain = SignalConfidenceRL(
-                    experience_file="data/signal_experience.json",  # Relative to project root
-                    backtest_mode=_bot_config.backtest_mode
-                )
-                logger.info(" RL BRAIN INITIALIZED - Learning from signal experiences")
-            
+        if CONFIG.get("rl_enabled", True) and rl_brain is not None:
             # Capture market state
             rl_state = capture_rl_state(symbol, "long", current_bar["close"])
             
@@ -1664,14 +1696,7 @@ def check_for_signals(symbol: str) -> None:
     # Check for short signal
     if check_short_signal_conditions(symbol, prev_bar, current_bar):
         # REINFORCEMENT LEARNING - Check if RL brain approves this signal
-        if CONFIG.get("rl_enabled", True):  # RL enabled by default
-            if rl_brain is None:
-                rl_brain = SignalConfidenceRL(
-                    experience_file="signal_experience.json",
-                    backtest_mode=_bot_config.backtest_mode
-                )
-                logger.info(" RL BRAIN INITIALIZED - Learning from signal experiences")
-            
+        if CONFIG.get("rl_enabled", True) and rl_brain is not None:
             # Capture market state
             rl_state = capture_rl_state(symbol, "short", current_bar["close"])
             
@@ -2894,17 +2919,8 @@ def check_breakeven_protection(symbol: str, current_price: float) -> None:
     # ========================================================================
     adaptive_enabled = CONFIG.get("adaptive_exits_enabled", False)
     
-    if adaptive_enabled:
+    if adaptive_enabled and adaptive_manager is not None:
         try:
-            global adaptive_manager
-            if adaptive_manager is None:
-                from adaptive_exits import AdaptiveExitManager
-                adaptive_manager = AdaptiveExitManager(
-                    config=CONFIG,
-                    experience_file="data/exit_experience.json"
-                )
-                logger.info(f"[SUCCESS] Adaptive Exit Manager initialized")
-            
             from adaptive_exits import get_adaptive_exit_params
             
             adaptive_params = get_adaptive_exit_params(
@@ -3020,16 +3036,8 @@ def check_trailing_stop(symbol: str, current_price: float) -> None:
     # ========================================================================
     # ADAPTIVE EXIT MANAGEMENT - Calculate dynamic trailing parameters
     # ========================================================================
-    if CONFIG.get("adaptive_exits_enabled", False):
+    if CONFIG.get("adaptive_exits_enabled", False) and adaptive_manager is not None:
         try:
-            global adaptive_manager
-            if adaptive_manager is None:
-                from adaptive_exits import AdaptiveExitManager
-                adaptive_manager = AdaptiveExitManager(
-                    config=CONFIG,
-                    experience_file="data/exit_experience.json"
-                )
-            
             from adaptive_exits import get_adaptive_exit_params
             
             adaptive_params = get_adaptive_exit_params(
@@ -4018,29 +4026,16 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
     logger.info(f"  Ticks: {ticks:+.1f}, P&L: ${pnl:+.2f}")
     
     # ADAPTIVE EXIT MANAGEMENT - Record trade result for streak tracking
-    if CONFIG.get("adaptive_exits_enabled", False):
+    if CONFIG.get("adaptive_exits_enabled", False) and adaptive_manager is not None:
         try:
-            if adaptive_manager is None:
-                from adaptive_exits import AdaptiveExitManager
-                adaptive_manager = AdaptiveExitManager(
-                    config=CONFIG,
-                    experience_file="data/exit_experience.json"
-                )
             adaptive_manager.record_trade_result(pnl)
             logger.info(f" STREAK TRACKING: Recorded P&L ${pnl:+.2f} (Recent: {len(adaptive_manager.recent_trades)} trades)")
         except Exception as e:
             logger.debug(f"Streak tracking update skipped: {e}")
     
     # REINFORCEMENT LEARNING - Record outcome for learning
-    if CONFIG.get("rl_enabled", True):
+    if CONFIG.get("rl_enabled", True) and rl_brain is not None:
         try:
-            global rl_brain
-            if rl_brain is None:
-                rl_brain = SignalConfidenceRL(
-                    experience_file="data/signal_experience.json",
-                    backtest_mode=_bot_config.backtest_mode
-                )
-            
             # Check if we have the entry state stored
             if "entry_rl_state" in state[symbol]:
                 entry_state = state[symbol]["entry_rl_state"]
@@ -5010,18 +5005,26 @@ def get_trading_state(dt: datetime = None) -> str:
     if weekday == 4 and current_time >= datetime_time(16, 45):
         return 'closed'
     
+    # Get configured trading times from CONFIG (supports 24/5 futures)
+    flatten_time = CONFIG.get("flatten_time", datetime_time(16, 30))
+    forced_flatten_time = CONFIG.get("forced_flatten_time", datetime_time(16, 45))
+    
     # CLOSED: Daily maintenance (4:45-5:00 PM Chicago, Monday-Thursday)
     # Note: Positions should already be flat by 4:45 PM
     if weekday < 4:  # Monday-Thursday
-        if datetime_time(16, 45) <= current_time < datetime_time(17, 0):
+        if forced_flatten_time <= current_time < datetime_time(17, 0):
             return 'closed'  # Daily settlement period
     
-    # FLATTEN MODE: After 3:00 PM Chicago (aggressively close positions)
-    # This gives 1 hour 45 minutes buffer before 4:45 PM forced flatten
-    if current_time >= datetime_time(15, 0):
+    # FLATTEN MODE: Approaching end of session
+    # For overnight sessions (18:00 - 16:55), only flatten between 16:30-16:55
+    # Not after 18:00 (that's the start of the next session!)
+    if flatten_time <= current_time < forced_flatten_time:
         return 'flatten_mode'
     
     # ENTRY WINDOW: Market open, ready to trade
+    # For 24/5 futures, we're in entry window if:
+    # - Between 18:00 (6 PM) and 16:30 (4:30 PM next day)
+    # - NOT in closed/flatten periods above
     return 'entry_window'
 
 
@@ -5270,13 +5273,23 @@ def main() -> None:
     logger.info(SEPARATOR_LINE)
     logger.info("VWAP Bounce Bot Starting")
     logger.info(SEPARATOR_LINE)
+    
+    # Log symbol specifications if loaded
+    if SYMBOL_SPEC:
+        logger.info(f"Symbol: {SYMBOL_SPEC.name} ({SYMBOL_SPEC.symbol})")
+        logger.info(f"  Tick Value: ${SYMBOL_SPEC.tick_value:.2f} | Tick Size: ${SYMBOL_SPEC.tick_size}")
+        logger.info(f"  Slippage: {SYMBOL_SPEC.typical_slippage_ticks} ticks | Volatility: {SYMBOL_SPEC.volatility_factor}x")
+        logger.info(f"  Trading Hours: {SYMBOL_SPEC.session_start} - {SYMBOL_SPEC.session_end} ET")
+    
     logger.info(f"Mode: {'DRY RUN' if CONFIG['dry_run'] else 'LIVE TRADING'}")
     logger.info(f"Instrument: {CONFIG['instrument']}")
     logger.info(f"Entry Window: {CONFIG['entry_start_time']} - {CONFIG['entry_end_time']} ET")
     logger.info(f"Flatten Mode: {CONFIG['flatten_time']} ET")
     logger.info(f"Force Close: {CONFIG['forced_flatten_time']} ET")
     logger.info(f"Shutdown: {CONFIG['shutdown_time']} ET")
+    logger.info(f"Max Contracts: {CONFIG['max_contracts']}")
     logger.info(f"Max Trades/Day: {CONFIG['max_trades_per_day']}")
+    logger.info(f"Risk Per Trade: {CONFIG['risk_per_trade'] * 100:.1f}%")
     logger.info(f"Daily Loss Limit: ${CONFIG['daily_loss_limit']}")
     logger.info(f"Max Drawdown: {CONFIG['max_drawdown_percent']}%")
     logger.info(SEPARATOR_LINE)
@@ -5360,6 +5373,27 @@ def main() -> None:
         except Exception as e:
             logger.warning(f"Failed to subscribe to quotes: {e}")
             logger.warning("Continuing without bid/ask quote data")
+    
+    # Initialize RL brain at startup (not lazy-loaded)
+    global rl_brain
+    if CONFIG.get("rl_enabled", True):  # RL enabled by default
+        logger.info("Initializing RL brain at startup...")
+        rl_brain = SignalConfidenceRL(
+            experience_file="data/signal_experience.json",
+            backtest_mode=_bot_config.backtest_mode
+        )
+        logger.info("[RL] RL BRAIN READY - Ready to evaluate signals with learned intelligence")
+    
+    # Initialize Adaptive Exit Manager at startup (not lazy-loaded)
+    global adaptive_manager
+    if CONFIG.get("adaptive_exits_enabled", True):  # Adaptive exits enabled by default
+        logger.info("Initializing Adaptive Exit Manager at startup...")
+        from adaptive_exits import AdaptiveExitManager
+        adaptive_manager = AdaptiveExitManager(
+            config=CONFIG,
+            experience_file="data/exit_experience.json"
+        )
+        logger.info("[ADAPTIVE] ADAPTIVE EXITS READY - Ready to manage exits with learned intelligence")
     
     logger.info("Bot initialization complete")
     logger.info("Starting event loop...")

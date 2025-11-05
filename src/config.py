@@ -50,6 +50,9 @@ class BotConfiguration:
     use_volume_filter: bool = False  # Don't use volume filter - blocks overnight trades
     use_macd_filter: bool = False
     
+    # Testing/Debug Parameters
+    force_test_trade: bool = True  # Set to True to force a test trade on next bar (ignores all filters)
+    
     # RSI Settings - ITERATION 3 (Conservative, Selective)
     rsi_period: int = 10  # Iteration 3
     rsi_oversold: int = 35  # Iteration 3 - selective entry
@@ -82,7 +85,7 @@ class BotConfiguration:
     max_drawdown_percent: float = 4.0  # Default: 4% (TopStep standard, but user can override)
     daily_loss_percent: float = 2.0  # Default: 2% (TopStep standard, but user can override)
     use_topstep_rules: bool = True  # If False, uses custom daily_loss_percent and max_drawdown_percent
-    tick_timeout_seconds: int = 60
+    tick_timeout_seconds: int = 999999  # Disabled for testing
     proactive_stop_buffer_ticks: int = 2
     flatten_buffer_ticks: int = 2  # Buffer for flatten price calculation
     

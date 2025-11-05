@@ -570,8 +570,8 @@ class QuoTradingLauncher:
         
         tk.Label(settings, text="Max Contracts:", font=("Arial", 11, "bold"), bg="white").grid(row=0, column=2, sticky=tk.W, padx=(30, 0), pady=10)
         self.contracts_var = tk.IntVar(value=self.config.get("max_contracts", 3))
-        contracts_spin = ttk.Spinbox(settings, from_=1, to=10, textvariable=self.contracts_var, width=10)
-        contracts_spin.grid(row=0, column=3, padx=15, pady=10)
+        self.contracts_spin = ttk.Spinbox(settings, from_=1, to=10, textvariable=self.contracts_var, width=10)
+        self.contracts_spin.grid(row=0, column=3, padx=15, pady=10)
         
         # Row 2: Daily Limits
         tk.Label(settings, text="Max Trades/Day:", font=("Arial", 11, "bold"), bg="white").grid(row=1, column=0, sticky=tk.W, pady=10)
@@ -614,54 +614,6 @@ class QuoTradingLauncher:
             fg="gray"
         )
         info_label.pack()
-        
-        self.contracts_spin.grid(row=0, column=3, padx=10, pady=5)
-        
-        # Row 2: Daily Limits
-        ttk.Label(self.settings_frame, text="Max Trades/Day:", font=("Arial", 10, "bold")).grid(row=1, column=0, sticky=tk.W, pady=5)
-        self.trades_var = tk.IntVar(value=self.config.get("max_trades", 9))
-        self.trades_spin = ttk.Spinbox(self.settings_frame, from_=1, to=50, textvariable=self.trades_var, width=10, state="disabled")
-        self.trades_spin.grid(row=1, column=1, sticky=tk.W, padx=10, pady=5)
-        
-        ttk.Label(self.settings_frame, text="Risk per Trade (%):", font=("Arial", 10, "bold")).grid(row=1, column=2, sticky=tk.W, padx=(30, 0), pady=5)
-        self.risk_var = tk.DoubleVar(value=self.config.get("risk_per_trade", 1.2))
-        self.risk_spin = ttk.Spinbox(self.settings_frame, from_=0.5, to=5.0, increment=0.1, textvariable=self.risk_var, width=10, format="%.1f", state="disabled")
-        self.risk_spin.grid(row=1, column=3, padx=10, pady=5)
-        
-        # Row 3: TopStep Rules
-        self.topstep_var = tk.BooleanVar(value=self.config.get("use_topstep_rules", True))
-        self.topstep_check = ttk.Checkbutton(
-            self.settings_frame,
-            text="Use TopStep Rules (Daily loss limits, drawdown protection)",
-            variable=self.topstep_var,
-            state="disabled"
-        )
-        self.topstep_check.grid(row=2, column=0, columnspan=4, sticky=tk.W, pady=(10, 5))
-        
-        # Control Buttons
-        button_frame = tk.Frame(main)
-        button_frame.pack(fill=tk.X, pady=20)
-        
-        self.start_btn = tk.Button(
-            button_frame,
-            text="🚀 START TRADING",
-            font=("Arial", 14, "bold"),
-            bg="#27AE60",
-            fg="white",
-            command=self.start_bot,
-            width=25,
-            height=2,
-            state=tk.NORMAL  # Enabled - validation happens when clicked
-        )
-        self.start_btn.pack(pady=10)
-        
-        info_label = tk.Label(
-            button_frame,
-            text="Bot will launch in PowerShell terminal with live logs",
-            font=("Arial", 9),
-            fg="gray"
-        )
-        info_label.pack()
     
     def load_config(self):
         """Load saved configuration."""
@@ -677,25 +629,55 @@ class QuoTradingLauncher:
         """Save current configuration (only saves what exists)."""
         config = self.config.copy()  # Start with existing config
         
-        # Always save these if they exist
-        if hasattr(self, 'license_entry'):
-            config["quotrading_license"] = self.license_entry.get()
-        if hasattr(self, 'token_entry'):
-            config["broker_token"] = self.token_entry.get()
-        if hasattr(self, 'username_entry'):
-            config["broker_username"] = self.username_entry.get()
+        # Try to save credentials if they still exist (Screen 1)
+        try:
+            if hasattr(self, 'license_entry'):
+                config["quotrading_license"] = self.license_entry.get()
+        except:
+            pass
+        
+        try:
+            if hasattr(self, 'token_entry'):
+                config["broker_token"] = self.token_entry.get()
+        except:
+            pass
+        
+        try:
+            if hasattr(self, 'username_entry'):
+                config["broker_username"] = self.username_entry.get()
+        except:
+            pass
         
         # Save trading settings if they exist (Screen 2)
-        if hasattr(self, 'symbol_var'):
-            config["symbol"] = self.symbol_var.get().split(" - ")[0]
-        if hasattr(self, 'contracts_var'):
-            config["max_contracts"] = self.contracts_var.get()
-        if hasattr(self, 'trades_var'):
-            config["max_trades"] = self.trades_var.get()
-        if hasattr(self, 'risk_var'):
-            config["risk_per_trade"] = self.risk_var.get()
-        if hasattr(self, 'topstep_var'):
-            config["use_topstep_rules"] = self.topstep_var.get()
+        try:
+            if hasattr(self, 'symbol_var'):
+                config["symbol"] = self.symbol_var.get().split(" - ")[0]
+        except:
+            pass
+        
+        try:
+            if hasattr(self, 'contracts_var'):
+                config["max_contracts"] = self.contracts_var.get()
+        except:
+            pass
+        
+        try:
+            if hasattr(self, 'trades_var'):
+                config["max_trades"] = self.trades_var.get()
+        except:
+            pass
+        
+        try:
+            if hasattr(self, 'risk_var'):
+                config["risk_per_trade"] = self.risk_var.get()
+        except:
+            pass
+        
+        try:
+            if hasattr(self, 'topstep_var'):
+                config["use_topstep_rules"] = self.topstep_var.get()
+        except:
+            pass
         
         with open(self.config_file, 'w') as f:
             json.dump(config, f, indent=2)
@@ -757,16 +739,23 @@ class QuoTradingLauncher:
         
         # Launch bot in PowerShell terminal
         try:
+            # Get the parent directory (where run.py is located)
+            bot_dir = Path(__file__).parent.parent.absolute()
+            
             # PowerShell command to run the bot
             ps_command = [
                 "powershell.exe",
                 "-NoExit",  # Keep window open
                 "-Command",
-                f"python run.py"
+                f"cd '{bot_dir}'; python run.py"
             ]
             
-            # Start PowerShell process
-            subprocess.Popen(ps_command, creationflags=subprocess.CREATE_NEW_CONSOLE)
+            # Start PowerShell process in a NEW SYSTEM WINDOW (not in VS Code)
+            subprocess.Popen(
+                ps_command, 
+                creationflags=subprocess.CREATE_NEW_CONSOLE,
+                cwd=str(bot_dir)
+            )
             
             # Success message
             messagebox.showinfo(
@@ -791,6 +780,10 @@ class QuoTradingLauncher:
         """Create .env file from GUI settings."""
         symbol = self.symbol_var.get().split(" - ")[0]  # Extract symbol code (ES, NQ, etc.)
         broker = self.config.get("broker", "TopStep")
+        
+        # Get the bot directory (parent of customer folder)
+        bot_dir = Path(__file__).parent.parent.absolute()
+        env_path = bot_dir / '.env'
         
         env_content = f"""# QuoTrading AI - Auto-generated Configuration
 # Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
@@ -823,7 +816,7 @@ BOT_LOG_LEVEL=INFO
 QUOTRADING_API_URL=https://api.quotrading.com/v1/signals
 """
         
-        with open('.env', 'w') as f:
+        with open(env_path, 'w') as f:
             f.write(env_content)
     
     def run(self):

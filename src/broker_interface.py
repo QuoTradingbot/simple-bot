@@ -561,8 +561,8 @@ class TopStepBroker(BrokerInterface):
                 logger.error(f"Failed to resolve contract ID for {symbol}")
                 return None
             
-            # Convert side to integer (1 = BUY, 2 = SELL)
-            side_int = 1 if side.upper() == "BUY" else 2
+            # Convert side to OrderSide enum
+            order_side = OrderSide.BUY if side.upper() == "BUY" else OrderSide.SELL
             
             logger.info(f"Placing market order: {symbol} ({contract_id}) {side} {quantity}")
             
@@ -573,7 +573,7 @@ class TopStepBroker(BrokerInterface):
                 
                 return await self.trading_suite.orders.place_market_order(
                     contract_id=contract_id,
-                    side=side_int,
+                    side=order_side,
                     size=quantity
                 )
             
@@ -631,8 +631,8 @@ class TopStepBroker(BrokerInterface):
                 logger.error(f"Failed to resolve contract ID for {symbol}")
                 return None
             
-            # Convert side to integer (1 = BUY, 2 = SELL)
-            side_int = 1 if side.upper() == "BUY" else 2
+            # Convert side to OrderSide enum
+            order_side = OrderSide.BUY if side.upper() == "BUY" else OrderSide.SELL
             
             logger.info(f"Placing limit order: {symbol} ({contract_id}) {side} {quantity} @ {limit_price}")
             
@@ -643,7 +643,7 @@ class TopStepBroker(BrokerInterface):
                 
                 return await self.trading_suite.orders.place_limit_order(
                     contract_id=contract_id,
-                    side=side_int,
+                    side=order_side,
                     size=quantity,
                     limit_price=limit_price
                 )

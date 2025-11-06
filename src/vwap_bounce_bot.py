@@ -144,6 +144,8 @@ bot_status: Dict[str, Any] = {
     # PRODUCTION: Track trading costs
     "total_slippage_cost": 0.0,  # Total slippage costs across all trades
     "total_commission": 0.0,  # Total commissions across all trades
+    # Prop Firm Safety Mode: Recovery mode confidence threshold
+    "recovery_confidence_threshold": None,  # Set when in recovery mode
 }
 
 
@@ -1829,6 +1831,21 @@ def check_for_signals(symbol: str) -> None:
             # Ask RL brain for decision
             take_signal, confidence, reason = rl_brain.should_take_signal(rl_state)
             
+            # Check if in recovery mode and need higher confidence
+            if take_signal and bot_status.get("recovery_confidence_threshold"):
+                recovery_threshold = bot_status["recovery_confidence_threshold"]
+                if confidence < recovery_threshold:
+                    logger.info(f" RECOVERY MODE REJECTED LONG signal: confidence {confidence:.1%} below recovery threshold {recovery_threshold:.1%}")
+                    logger.info(f"   Bot is in recovery mode - only taking high-confidence signals")
+                    state[symbol]["last_rejected_signal"] = {
+                        "time": get_current_time(),
+                        "state": rl_state,
+                        "side": "long",
+                        "confidence": confidence,
+                        "reason": f"Recovery mode: {confidence:.1%} < {recovery_threshold:.1%}"
+                    }
+                    return
+            
             if not take_signal:
                 logger.info(f" RL REJECTED LONG signal: {reason} (confidence: {confidence:.1%})")
                 logger.info(f"   RSI: {rl_state['rsi']:.1f}, VWAP dist: {rl_state['vwap_distance']:.2f}, "
@@ -1864,6 +1881,21 @@ def check_for_signals(symbol: str) -> None:
             
             # Ask RL brain for decision
             take_signal, confidence, reason = rl_brain.should_take_signal(rl_state)
+            
+            # Check if in recovery mode and need higher confidence
+            if take_signal and bot_status.get("recovery_confidence_threshold"):
+                recovery_threshold = bot_status["recovery_confidence_threshold"]
+                if confidence < recovery_threshold:
+                    logger.info(f" RECOVERY MODE REJECTED SHORT signal: confidence {confidence:.1%} below recovery threshold {recovery_threshold:.1%}")
+                    logger.info(f"   Bot is in recovery mode - only taking high-confidence signals")
+                    state[symbol]["last_rejected_signal"] = {
+                        "time": get_current_time(),
+                        "state": rl_state,
+                        "side": "short",
+                        "confidence": confidence,
+                        "reason": f"Recovery mode: {confidence:.1%} < {recovery_threshold:.1%}"
+                    }
+                    return
             
             if not take_signal:
                 logger.info(f" RL REJECTED SHORT signal: {reason} (confidence: {confidence:.1%})")
@@ -4797,6 +4829,73 @@ def check_max_drawdown() -> Tuple[bool, Optional[str]]:
     return True, None
 
 
+def check_approaching_failure(symbol: str) -> Tuple[bool, Optional[str], Optional[float]]:
+    """
+    Check if bot is approaching failure thresholds (80% of limits).
+    Used for Prop Firm Safety Mode.
+    
+    Args:
+        symbol: Instrument symbol
+    
+    Returns:
+        Tuple of (is_approaching, reason, severity_level)
+        - is_approaching: True if at 80%+ of any limit
+        - reason: Description of what limit is being approached
+        - severity_level: 0.0-1.0 indicating how close to failure (0.8 = at 80%, 1.0 = at 100%)
+    """
+    max_severity = 0.0
+    reasons = []
+    
+    # Check daily loss limit approach (80% threshold)
+    if state[symbol]["daily_pnl"] <= -CONFIG["daily_loss_limit"] * 0.8:
+        daily_loss_severity = abs(state[symbol]["daily_pnl"]) / CONFIG["daily_loss_limit"]
+        max_severity = max(max_severity, daily_loss_severity)
+        reasons.append(f"Daily loss at {daily_loss_severity*100:.1f}% of limit (${state[symbol]['daily_pnl']:.2f}/${-CONFIG['daily_loss_limit']:.2f})")
+    
+    # Check max drawdown approach (80% threshold)
+    if bot_status["starting_equity"] is not None:
+        current_equity = get_account_equity()
+        drawdown_percent = ((bot_status["starting_equity"] - current_equity) / 
+                           bot_status["starting_equity"] * 100)
+        drawdown_severity = drawdown_percent / CONFIG["max_drawdown_percent"]
+        
+        if drawdown_severity >= 0.8:
+            max_severity = max(max_severity, drawdown_severity)
+            reasons.append(f"Drawdown at {drawdown_severity*100:.1f}% of limit ({drawdown_percent:.2f}%/{CONFIG['max_drawdown_percent']:.2f}%)")
+    
+    if reasons:
+        return True, "; ".join(reasons), max_severity
+    
+    return False, None, 0.0
+
+
+def get_recovery_confidence_threshold(severity_level: float) -> float:
+    """
+    Calculate required confidence threshold for recovery mode.
+    Higher severity = higher confidence requirement.
+    
+    Args:
+        severity_level: How close to failure (0.8 = at 80%, 1.0 = at 100%)
+    
+    Returns:
+        Required confidence threshold (0.0-1.0)
+    """
+    # Base threshold is user's setting
+    base_threshold = CONFIG.get("rl_confidence_threshold", 0.65)
+    
+    # At 80% of limits, require 75% confidence
+    # At 90% of limits, require 85% confidence
+    # At 95%+ of limits, require 90% confidence
+    if severity_level >= 0.95:
+        return 0.90  # Only take absolute best signals
+    elif severity_level >= 0.90:
+        return 0.85  # Very selective
+    elif severity_level >= 0.80:
+        return 0.75  # Selective
+    else:
+        return base_threshold  # Normal operation
+
+
 def check_tick_timeout(current_time: datetime) -> Tuple[bool, Optional[str]]:
     """
     Check if data feed has timed out.
@@ -4899,6 +4998,51 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
     is_safe, reason = check_max_drawdown()
     if not is_safe:
         return False, reason
+    
+    # Check if approaching failure (Prop Firm Safety Mode)
+    is_approaching, approach_reason, severity = check_approaching_failure(symbol)
+    if is_approaching:
+        # Use stop_on_approach setting to determine behavior
+        if CONFIG.get("stop_on_approach", True):
+            # SAFE MODE: Stop trading when approaching failure
+            if bot_status.get("stop_reason") != "approaching_failure":
+                logger.warning("=" * 80)
+                logger.warning("PROP FIRM SAFETY MODE: APPROACHING FAILURE")
+                logger.warning(f"Reason: {approach_reason}")
+                logger.warning(f"Severity: {severity*100:.1f}%")
+                logger.warning("Bot will STOP making NEW trades (existing positions managed normally)")
+                logger.warning("Bot continues running and monitoring - will resume if safe")
+                logger.warning("=" * 80)
+                bot_status["trading_enabled"] = False
+                bot_status["stop_reason"] = "approaching_failure"
+            return False, f"Approaching failure: {approach_reason}"
+        else:
+            # RECOVERY MODE: Continue but with high confidence requirements
+            required_confidence = get_recovery_confidence_threshold(severity)
+            if bot_status.get("stop_reason") != "recovery_mode":
+                logger.warning("=" * 80)
+                logger.warning("RECOVERY MODE: APPROACHING FAILURE BUT CONTINUING")
+                logger.warning(f"Reason: {approach_reason}")
+                logger.warning(f"Severity: {severity*100:.1f}%")
+                logger.warning(f"Required confidence increased to {required_confidence*100:.1f}%")
+                logger.warning("Bot will ONLY take high-confidence signals")
+                logger.warning("⚠️ CAUTION: Higher risk of account failure!")
+                logger.warning("=" * 80)
+                bot_status["stop_reason"] = "recovery_mode"
+            
+            # Store recovery threshold for use in signal evaluation
+            bot_status["recovery_confidence_threshold"] = required_confidence
+            # Don't stop trading, but signal evaluation will use higher threshold
+    else:
+        # Not approaching failure - clear recovery mode if it was set
+        if bot_status.get("stop_reason") in ["approaching_failure", "recovery_mode"]:
+            logger.info("=" * 80)
+            logger.info("SAFE ZONE: Back to normal operation")
+            logger.info("Bot has moved away from failure thresholds")
+            logger.info("=" * 80)
+            bot_status["trading_enabled"] = True
+            bot_status["stop_reason"] = None
+            bot_status["recovery_confidence_threshold"] = None
     
     # Check tick timeout
     is_safe, reason = check_tick_timeout(current_time)

@@ -87,6 +87,7 @@ class BotConfiguration:
     tick_timeout_seconds: int = 999999  # Disabled for testing
     proactive_stop_buffer_ticks: int = 2
     flatten_buffer_ticks: int = 2  # Buffer for flatten price calculation
+    stop_on_approach: bool = True  # USER CONFIGURABLE - Stop trading when approaching failure (80% of limits)
     
     def get_daily_loss_limit(self, account_balance: float) -> float:
         """
@@ -613,6 +614,10 @@ def load_from_env() -> BotConfiguration:
         config.auto_calculate_limits = os.getenv("BOT_AUTO_CALCULATE_LIMITS").lower() in ("true", "1", "yes")
     elif os.getenv("BOT_USE_TOPSTEP_RULES"):  # Legacy support
         config.auto_calculate_limits = os.getenv("BOT_USE_TOPSTEP_RULES").lower() in ("true", "1", "yes")
+    
+    # Stop on approach to failure (Prop Firm Safety Mode)
+    if os.getenv("BOT_STOP_ON_APPROACH"):
+        config.stop_on_approach = os.getenv("BOT_STOP_ON_APPROACH").lower() in ("true", "1", "yes")
     
     if os.getenv("BOT_TICK_SIZE"):
         config.tick_size = float(os.getenv("BOT_TICK_SIZE"))

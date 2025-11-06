@@ -1216,15 +1216,40 @@ class QuoTradingLauncher:
             fg=self.colors['text']
         ).pack(anchor=tk.W, pady=(0, 3))
         
-        # Get account type to set limits
+        # Get account type to set recommended limits (but allow up to 25)
         account_type = self.config.get("broker_type", "Prop Firm")
-        max_allowed = 5 if account_type == "Prop Firm" else 10
+        recommended_max = 5 if account_type == "Prop Firm" else 10
         
-        self.contracts_var = tk.IntVar(value=min(self.config.get("max_contracts", 3), max_allowed))
+        # Store recommended max for validation
+        self.recommended_contract_limit = recommended_max
+        self.account_type = account_type
+        
+        self.contracts_var = tk.IntVar(value=min(self.config.get("max_contracts", 3), recommended_max))
+        
+        # Add validation command to check if user exceeds recommended limit
+        def validate_contracts(*args):
+            try:
+                value = self.contracts_var.get()
+                if value > self.recommended_contract_limit:
+                    # Show warning and info
+                    contracts_info.config(
+                        text=f"⚠ Exceeds recommended max ({self.recommended_contract_limit} for {self.account_type})",
+                        fg=self.colors['warning'] if hasattr(self.colors, '__getitem__') and 'warning' in self.colors else '#FFA500'
+                    )
+                else:
+                    contracts_info.config(
+                        text=f"Recommended max: {self.recommended_contract_limit} for {self.account_type}",
+                        fg=self.colors['text_secondary']
+                    )
+            except:
+                pass
+        
+        self.contracts_var.trace_add('write', validate_contracts)
+        
         contracts_spin = ttk.Spinbox(
             contracts_frame,
             from_=1,
-            to=max_allowed,
+            to=25,  # Allow up to 25 contracts
             textvariable=self.contracts_var,
             width=12
         )
@@ -1233,7 +1258,7 @@ class QuoTradingLauncher:
         # Info label showing contract limit
         contracts_info = tk.Label(
             contracts_frame,
-            text=f"Max {max_allowed} for {account_type}",
+            text=f"Recommended max: {recommended_max} for {account_type}",
             font=("Arial", 7),
             bg=self.colors['card'],
             fg=self.colors['text_secondary']
@@ -1351,7 +1376,7 @@ class QuoTradingLauncher:
         # Info label for dynamic contract mode
         dynamic_info = tk.Label(
             dynamic_row,
-            text="Uses signal confidence to determine contract size dynamically",
+            text="Uses signal confidence to scale contracts (1 to your max) dynamically",
             font=("Arial", 7),
             bg=self.colors['card'],
             fg=self.colors['text_secondary']

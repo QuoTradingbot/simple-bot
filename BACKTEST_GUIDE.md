@@ -10,7 +10,7 @@ The backtesting system in `src/main.py` is fully functional and all RL component
 
 ### Basic Command (Recommended)
 ```bash
-cd /home/runner/work/simple-bot/simple-bot
+# From your project root directory
 python3 src/main.py --mode backtest --days 30 --symbol ES
 ```
 
@@ -255,10 +255,13 @@ Based on recent test runs:
 
 ### Run with Different Symbols
 ```bash
-# Test on MES (micro contract)
+# Note: Ensure historical data files exist for the symbol before running
+# Check data/historical_data/ for available symbols
+
+# Test on MES (micro contract) - requires MES_1min.csv
 python3 src/main.py --mode backtest --days 30 --symbol MES
 
-# Test on NQ (Nasdaq)
+# Test on NQ (Nasdaq) - requires NQ_1min.csv
 python3 src/main.py --mode backtest --days 30 --symbol NQ
 ```
 

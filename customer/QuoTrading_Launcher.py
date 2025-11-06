@@ -1149,29 +1149,86 @@ class QuoTradingLauncher:
         self.account_entry.pack(fill=tk.X, ipady=4, padx=2)
         self.account_entry.insert(0, self.config.get("account_size", "10000"))
         
-        # Risk Per Trade
-        risk_frame = tk.Frame(settings_row, bg=self.colors['card'])
-        risk_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+        # Max Drawdown with account awareness
+        drawdown_frame = tk.Frame(settings_row, bg=self.colors['card'])
+        drawdown_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
         
         tk.Label(
-            risk_frame,
-            text="Risk per Trade (%):",
+            drawdown_frame,
+            text="Max Drawdown (%):",
             font=("Arial", 9, "bold"),
             bg=self.colors['card'],
             fg=self.colors['text']
         ).pack(anchor=tk.W, pady=(0, 3))
         
-        self.risk_var = tk.DoubleVar(value=self.config.get("risk_per_trade", 1.0))
-        risk_spin = ttk.Spinbox(
-            risk_frame,
-            from_=0.5,
-            to=5.0,
-            increment=0.1,
-            textvariable=self.risk_var,
+        # Get account type for drawdown validation
+        account_type = self.config.get("broker_type", "Prop Firm")
+        default_drawdown = 8.0 if account_type == "Prop Firm" else 15.0
+        
+        self.drawdown_var = tk.DoubleVar(value=self.config.get("max_drawdown", default_drawdown))
+        
+        # Add validation to warn if exceeding safe limits
+        def validate_drawdown(*args):
+            try:
+                value = self.drawdown_var.get()
+                account_type = self.config.get("broker_type", "Prop Firm")
+                
+                if account_type == "Prop Firm":
+                    # Most prop firms fail at 10% drawdown
+                    if value > 10.0:
+                        drawdown_info.config(
+                            text="⚠ Exceeds prop firm limit (10%) - Will cause account failure!",
+                            fg='#FF0000'  # Red warning
+                        )
+                    elif value > 8.0:
+                        drawdown_info.config(
+                            text="⚠ Caution: Very close to prop firm failure threshold (10%)",
+                            fg=self.colors.get('warning', '#FFA500')
+                        )
+                    else:
+                        drawdown_info.config(
+                            text=f"Safe zone for {account_type} (under 8%)",
+                            fg=self.colors['text_secondary']
+                        )
+                else:  # Live Broker
+                    if value > 20.0:
+                        drawdown_info.config(
+                            text="⚠ High drawdown risk - Consider reducing",
+                            fg=self.colors.get('warning', '#FFA500')
+                        )
+                    else:
+                        drawdown_info.config(
+                            text=f"Drawdown limit for {account_type}",
+                            fg=self.colors['text_secondary']
+                        )
+            except:
+                pass
+        
+        self.drawdown_var.trace_add('write', validate_drawdown)
+        
+        drawdown_spin = ttk.Spinbox(
+            drawdown_frame,
+            from_=1.0,
+            to=25.0,
+            increment=0.5,
+            textvariable=self.drawdown_var,
             width=12,
             format="%.1f"
         )
-        risk_spin.pack(fill=tk.X, ipady=2)
+        drawdown_spin.pack(fill=tk.X, ipady=2)
+        
+        # Info label for drawdown warnings
+        drawdown_info = tk.Label(
+            drawdown_frame,
+            text=f"Safe zone for {account_type}",
+            font=("Arial", 7),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary']
+        )
+        drawdown_info.pack(anchor=tk.W, pady=(2, 0))
+        
+        # Trigger initial validation
+        validate_drawdown()
         
         # Daily Loss Limit
         loss_frame = tk.Frame(settings_row, bg=self.colors['card'])
@@ -1560,7 +1617,7 @@ class QuoTradingLauncher:
         thread.start()
     
     def auto_adjust_parameters(self):
-        """Auto-adjust trading parameters based on sophisticated risk management analysis."""
+        """Auto-adjust trading parameters based on account balance and type."""
         # Check if account info has been fetched
         accounts = self.config.get("accounts", [])
         if not accounts:
@@ -1579,7 +1636,7 @@ class QuoTradingLauncher:
         account_type = self.config.get("broker_type", "Prop Firm")
         account_size = self.config.get("account_size", "50k")
         
-        # Parse account size for sophisticated calculations
+        # Parse account size for calculations
         size_num = int(account_size.replace("k", "000"))
         
         # Calculate drawdown percentage (how far from starting balance)
@@ -1606,16 +1663,6 @@ class QuoTradingLauncher:
             
             daily_loss_limit = equity * daily_loss_pct
             
-            # Risk per trade: More conservative as drawdown increases
-            if distance_to_failure > 7:
-                risk_per_trade = 0.75
-            elif distance_to_failure > 5:
-                risk_per_trade = 0.5
-            elif distance_to_failure > 3:
-                risk_per_trade = 0.35
-            else:
-                risk_per_trade = 0.25  # Very conservative in danger zone
-            
             # Contracts: Strategic based on account size and drawdown
             # Never max out contracts - leave room for error
             if drawdown_pct < 2:  # Very safe
@@ -1632,9 +1679,6 @@ class QuoTradingLauncher:
                 max_trades = 8  # Very selective when in drawdown
                 
         else:  # Live Broker - More flexible but still strategic
-            # Calculate based on account size and equity
-            equity_pct = (equity / size_num) * 100 if size_num > 0 else 100
-            
             # Daily loss limit: 2-4% based on account size
             if equity < 25000:
                 daily_loss_limit = equity * 0.02  # 2%
@@ -1644,16 +1688,6 @@ class QuoTradingLauncher:
                 daily_loss_limit = equity * 0.03  # 3%
             else:
                 daily_loss_limit = equity * 0.035  # 3.5%
-            
-            # Risk per trade: Scale with account size
-            if equity < 25000:
-                risk_per_trade = 1.0
-            elif equity < 50000:
-                risk_per_trade = 0.85
-            elif equity < 100000:
-                risk_per_trade = 0.75
-            else:
-                risk_per_trade = 0.6
             
             # Contracts: Strategic based on equity
             max_contracts = max(1, min(10, int(equity / 20000)))
@@ -1666,22 +1700,21 @@ class QuoTradingLauncher:
             else:
                 max_trades = 20
         
-        # Apply the calculated settings
+        # Apply the calculated settings (only these 3 parameters)
         self.loss_entry.delete(0, tk.END)
         self.loss_entry.insert(0, f"{daily_loss_limit:.2f}")
-        self.risk_var.set(risk_per_trade)
         self.contracts_var.set(max_contracts)
         self.trades_var.set(max_trades)
         
         # Update info label with detailed feedback
         if account_type == "Prop Firm":
             self.auto_adjust_info_label.config(
-                text=f"✓ Strategic settings for ${equity:,.2f} equity ({drawdown_pct:.1f}% drawdown) - Optimized for prop firm rules",
+                text=f"✓ Settings for ${equity:,.2f} equity ({drawdown_pct:.1f}% drawdown) - {max_contracts} contracts, ${daily_loss_limit:.0f} daily limit, {max_trades} trades/day",
                 fg=self.colors['success']
             )
         else:
             self.auto_adjust_info_label.config(
-                text=f"✓ Settings optimized for ${equity:,.2f} equity ({account_type}) - You can adjust as needed",
+                text=f"✓ Settings for ${equity:,.2f} equity - {max_contracts} contracts, ${daily_loss_limit:.0f} daily limit, {max_trades} trades/day",
                 fg=self.colors['success']
             )
     
@@ -1724,7 +1757,7 @@ class QuoTradingLauncher:
         # Save all settings
         self.config["symbols"] = selected_symbols
         self.config["account_size"] = account_size
-        self.config["risk_per_trade"] = self.risk_var.get()
+        self.config["max_drawdown"] = self.drawdown_var.get()
         self.config["daily_loss_limit"] = loss_limit
         self.config["max_contracts"] = self.contracts_var.get()
         self.config["max_trades"] = self.trades_var.get()
@@ -1745,8 +1778,8 @@ class QuoTradingLauncher:
         confirmation_text += f"Broker: {broker}\n"
         confirmation_text += f"Account: {self.account_dropdown_var.get()}\n"
         confirmation_text += f"Symbols: {symbols_str}\n"
-        confirmation_text += f"Max Contracts: {self.contracts_var.get()}\n"
-        confirmation_text += f"Risk/Trade: {self.risk_var.get()}%\n"
+        confirmation_text += f"Contracts Per Trade: {self.contracts_var.get()}\n"
+        confirmation_text += f"Max Drawdown: {self.drawdown_var.get()}%\n"
         confirmation_text += f"Daily Loss Limit: ${loss_limit}\n"
         confirmation_text += f"  → Bot stays on but will NOT execute trades if limit is hit\n"
         confirmation_text += f"  → Resets daily after market maintenance\n"
@@ -1853,7 +1886,8 @@ BOT_INSTRUMENTS={symbols_str}
 BOT_MAX_CONTRACTS={self.contracts_var.get()}
 BOT_MAX_TRADES_PER_DAY={self.trades_var.get()}
 # Bot stays on but will NOT execute trades after reaching max (resets daily after market maintenance)
-BOT_RISK_PER_TRADE={self.risk_var.get() / 100}
+BOT_MAX_DRAWDOWN={self.drawdown_var.get()}
+# Maximum drawdown percentage before bot stops trading (account type aware)
 BOT_DAILY_LOSS_LIMIT={self.loss_entry.get()}
 # Bot stays on but will NOT execute trades if this limit (in dollars) is hit (resets daily after market maintenance)
 
@@ -1861,7 +1895,7 @@ BOT_DAILY_LOSS_LIMIT={self.loss_entry.get()}
 BOT_CONFIDENCE_THRESHOLD={self.confidence_var.get()}
 # Bot only takes signals above this confidence threshold
 BOT_DYNAMIC_CONTRACTS={'true' if self.dynamic_contracts_var.get() else 'false'}
-# Uses signal confidence to determine contract size dynamically
+# Uses signal confidence to determine contract size dynamically (bot uses adaptive exits)
 
 # Trading Mode
 BOT_SHADOW_MODE={'true' if self.shadow_mode_var.get() else 'false'}

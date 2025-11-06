@@ -4,6 +4,17 @@ Test Navigation Flow
 Tests the GUI navigation flow without actually running the GUI.
 This validates the logic and method structure.
 """
+import os
+from pathlib import Path
+
+
+def get_launcher_path():
+    """Get the path to the launcher file."""
+    # Get the directory of this test file
+    test_dir = Path(__file__).parent
+    # Launcher is in customer subdirectory
+    return test_dir / 'customer' / 'QuoTrading_Launcher.py'
+
 
 def test_launcher_structure():
     """Test that QuoTradingLauncher has all required methods."""
@@ -11,9 +22,14 @@ def test_launcher_structure():
     print("TEST 1: QuoTrading Launcher Structure")
     print("=" * 60)
     
+    launcher_path = get_launcher_path()
+    if not launcher_path.exists():
+        print(f"❌ Launcher file not found at {launcher_path}")
+        return False
+    
     # Check required methods by examining the file directly
     # (We can't import because tkinter might not be available)
-    with open('customer/QuoTrading_Launcher.py', 'r') as f:
+    with open(launcher_path, 'r') as f:
         content = f.read()
     
     # Check if class exists
@@ -57,7 +73,8 @@ def test_navigation_flow_logic():
     print("TEST 2: Navigation Flow Logic")
     print("=" * 60)
     
-    with open('customer/QuoTrading_Launcher.py', 'r') as f:
+    launcher_path = get_launcher_path()
+    with open(launcher_path, 'r') as f:
         content = f.read()
     
     # Test flow: Screen 0 -> Screen 1 -> Screen 2 -> Screen 3 -> Screen 4
@@ -96,7 +113,8 @@ def test_button_existence():
     print("TEST 3: Navigation Buttons")
     print("=" * 60)
     
-    with open('customer/QuoTrading_Launcher.py', 'r') as f:
+    launcher_path = get_launcher_path()
+    with open(launcher_path, 'r') as f:
         content = f.read()
     
     button_checks = [
@@ -171,7 +189,8 @@ def test_screen_flow_documentation():
     print("TEST 4: Documentation")
     print("=" * 60)
     
-    with open('customer/QuoTrading_Launcher.py', 'r') as f:
+    launcher_path = get_launcher_path()
+    with open(launcher_path, 'r') as f:
         lines = f.readlines()
     
     # Check first 20 lines for flow documentation

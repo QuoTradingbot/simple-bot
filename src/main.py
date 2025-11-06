@@ -9,7 +9,7 @@ import sys
 import os
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple, Optional
 import pytz
 import pandas as pd
 from dotenv import load_dotenv
@@ -171,20 +171,23 @@ Examples:
     return parser.parse_args()
 
 
-def initialize_rl_brains_for_backtest():
+def initialize_rl_brains_for_backtest() -> Tuple[Any, Any]:
     """
     Initialize RL brains (signal confidence and adaptive exits) for backtest mode.
     This ensures experience files are loaded before the backtest runs.
     
+    Note: Imports are done locally as these modules must be imported after 
+    other bot components are initialized.
+    
     Returns:
-        Tuple of (rl_brain, adaptive_manager) instances
+        Tuple[SignalConfidenceRL, AdaptiveExitManager]: The initialized RL brain instances
     """
     logger = logging.getLogger('main')
     import vwap_bounce_bot
     from signal_confidence import SignalConfidenceRL
     from adaptive_exits import AdaptiveExitManager
     
-    # Initialize RL brain with experience file FROM PARENT DIRECTORY (not src/)
+    # Initialize RL brain with experience file using PROJECT_ROOT
     if vwap_bounce_bot.rl_brain is None:
         signal_exp_file = os.path.join(PROJECT_ROOT, "data/signal_experience.json")
         vwap_bounce_bot.rl_brain = SignalConfidenceRL(
@@ -193,7 +196,7 @@ def initialize_rl_brains_for_backtest():
         )
         logger.info(f"✓ RL BRAIN INITIALIZED for backtest - {len(vwap_bounce_bot.rl_brain.experiences)} signal experiences loaded")
     
-    # Initialize adaptive exit manager FROM PARENT DIRECTORY
+    # Initialize adaptive exit manager using PROJECT_ROOT
     if vwap_bounce_bot.adaptive_manager is None:
         exit_exp_file = os.path.join(PROJECT_ROOT, "data/exit_experience.json")
         vwap_bounce_bot.adaptive_manager = AdaptiveExitManager(
@@ -303,10 +306,7 @@ def run_backtest_with_params(symbol, days, initial_equity, params, return_bars=F
         initialize_state(symbol)
         
         # Initialize RL brains (signal confidence and adaptive exits) for backtest
-        initialize_rl_brains_for_backtest()
-        
-        # Now import the initialized objects
-        from vwap_bounce_bot import rl_brain, adaptive_manager
+        rl_brain, adaptive_manager = initialize_rl_brains_for_backtest()
         
         # Track starting experience counts
         starting_signal_count = len(rl_brain.experiences) if rl_brain else 0

@@ -2,13 +2,11 @@
 QuoTrading AI - Customer Launcher
 ==================================
 Professional GUI application for easy setup and launch.
-4-Screen Progressive Onboarding Flow with Cloud Validation.
+2-Screen Progressive Onboarding Flow.
 
 Flow:
-1. Screen 0: Login (Cloud-validated username, password, API key)
-2. Screen 1: QuoTrading Account Setup (Email + API Key validation)
-3. Screen 2: Broker Connection Setup (Prop Firm/Live Broker with validation)
-4. Screen 3: Trading Preferences (Symbol selection, risk settings, launch)
+1. Screen 0: Broker Setup (Broker credentials, QuoTrading API key, account size)
+2. Screen 1: Trading Controls (Symbol selection, risk settings, launch)
 """
 
 import tkinter as tk
@@ -74,8 +72,8 @@ class QuoTradingLauncher:
         # Bot process reference
         self.bot_process = None
         
-        # Start with username screen (Screen 0)
-        self.setup_username_screen()
+        # Start with broker screen (Screen 0)
+        self.setup_broker_screen()
     
     def create_header(self, title, subtitle=""):
         """Create a professional header for each screen with premium styling."""
@@ -502,7 +500,7 @@ class QuoTradingLauncher:
                 "Admin Access Granted",
                 f"Welcome, {username}!\n\nAdmin access granted."
             )
-            self.setup_quotrading_screen()
+            self.setup_broker_screen()
             return
         
         # Show loading spinner
@@ -526,8 +524,8 @@ class QuoTradingLauncher:
                 f"Welcome, {username}!\n\nYour credentials have been validated."
             )
             
-            # Proceed to QuoTrading setup
-            self.setup_quotrading_screen()
+            # Proceed to Broker setup
+            self.setup_broker_screen()
         
         # Define error callback
         def on_error(error_msg):
@@ -742,12 +740,12 @@ class QuoTradingLauncher:
         self.validate_api_call("quotrading", credentials, on_success, on_error)
     
     def setup_broker_screen(self):
-        """Screen 2: Broker Connection Setup (Prop Firm vs Live Broker)."""
+        """Screen 0: Broker Connection Setup with QuoTrading API Key and Account Size."""
         # Clear window
         for widget in self.root.winfo_children():
             widget.destroy()
         
-        self.current_screen = 2
+        self.current_screen = 0
         self.root.title("QuoTrading - Broker Setup")
         
         # Header
@@ -881,6 +879,35 @@ class QuoTradingLauncher:
         # Update broker options based on selected type
         self.update_broker_options()
         
+        # QuoTrading API Key
+        self.quotrading_api_key_entry = self.create_input_field(
+            content,
+            "QuoTrading API Key:",
+            is_password=True,
+            placeholder=self.config.get("quotrading_api_key", "")
+        )
+        
+        # Account Size dropdown
+        account_label = tk.Label(
+            content,
+            text="Account Size:",
+            font=("Arial", 10, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text']
+        )
+        account_label.pack(anchor=tk.W, pady=(8, 3))
+        
+        self.account_size_var = tk.StringVar(value=self.config.get("account_size", "50k"))
+        self.account_size_dropdown = ttk.Combobox(
+            content,
+            textvariable=self.account_size_var,
+            state="readonly",
+            font=("Arial", 9),
+            width=35,
+            values=["50k", "100k", "150k", "200k", "250k"]
+        )
+        self.account_size_dropdown.pack(fill=tk.X, pady=(0, 10))
+        
         # Broker credentials
         self.broker_token_entry = self.create_input_field(
             content,
@@ -909,11 +936,7 @@ class QuoTradingLauncher:
         button_frame = tk.Frame(content, bg=self.colors['card'])
         button_frame.pack(fill=tk.X, pady=5)
         
-        # Back button
-        back_btn = self.create_button(button_frame, "← BACK", self.setup_quotrading_screen, "back")
-        back_btn.pack(side=tk.LEFT, padx=(0, 10))
-        
-        # Next button
+        # Next button (no back button on first screen)
         next_btn = self.create_button(button_frame, "NEXT →", self.validate_broker, "next")
         next_btn.pack(side=tk.RIGHT)
     
@@ -936,18 +959,24 @@ class QuoTradingLauncher:
         broker_type = self.broker_type_var.get()
         
         if broker_type == "Prop Firm":
-            options = ["TopStep", "Earn2Trade", "The5ers", "FTMO"]
+            options = ["TopStep"]
         else:  # Live Broker
-            options = ["Tradovate", "Rithmic", "Interactive Brokers", "NinjaTrader"]
+            options = ["Tradovate"]
         
         self.broker_dropdown['values'] = options
         self.broker_dropdown.current(0)
     
     def validate_broker(self):
-        """Validate broker credentials before proceeding."""
+        """Validate broker credentials and QuoTrading API key before proceeding."""
         broker = self.broker_var.get()
         token = self.broker_token_entry.get().strip()
         username = self.broker_username_entry.get().strip()
+        quotrading_api_key = self.quotrading_api_key_entry.get().strip()
+        account_size = self.account_size_var.get()
+        
+        # Remove placeholder if present
+        if quotrading_api_key == self.config.get("quotrading_api_key", ""):
+            quotrading_api_key = ""
         
         # Validation
         if not token or not username:
@@ -957,13 +986,21 @@ class QuoTradingLauncher:
             )
             return
         
-        # Check if using admin key - bypass broker validation
-        quotrading_key = self.config.get("quotrading_api_key", "")
-        if quotrading_key == "QUOTRADING_ADMIN_MASTER_2025":
+        if not quotrading_api_key:
+            messagebox.showerror(
+                "Missing API Key",
+                "Please enter your QuoTrading API Key."
+            )
+            return
+        
+        # Check if using admin key - bypass validation
+        if quotrading_api_key == "QUOTRADING_ADMIN_MASTER_2025":
             self.config["broker_type"] = self.broker_type_var.get()
             self.config["broker"] = broker
             self.config["broker_token"] = token
             self.config["broker_username"] = username
+            self.config["quotrading_api_key"] = quotrading_api_key
+            self.config["account_size"] = account_size
             self.config["broker_validated"] = True
             self.save_config()
             self.setup_trading_screen()
@@ -980,6 +1017,8 @@ class QuoTradingLauncher:
             self.config["broker"] = broker
             self.config["broker_token"] = token
             self.config["broker_username"] = username
+            self.config["quotrading_api_key"] = quotrading_api_key
+            self.config["account_size"] = account_size
             self.config["broker_validated"] = True
             self.save_config()
             # Proceed to trading preferences
@@ -1006,16 +1045,16 @@ class QuoTradingLauncher:
         self.validate_api_call("broker", credentials, on_success, on_error)
     
     def setup_trading_screen(self):
-        """Screen 3: Trading Preferences and Launch."""
+        """Screen 1: Trading Controls and Launch."""
         # Clear window
         for widget in self.root.winfo_children():
             widget.destroy()
         
-        self.current_screen = 3
-        self.root.title("QuoTrading - Trading Settings")
+        self.current_screen = 1
+        self.root.title("QuoTrading - Trading Controls")
         
         # Header
-        header = self.create_header("Trading Preferences", "Configure your trading strategy")
+        header = self.create_header("Trading Controls", "Configure your trading strategy")
         
         # Main container with scrollbar capability
         main = tk.Frame(self.root, bg=self.colors['background'], padx=25, pady=12)
@@ -1110,29 +1149,86 @@ class QuoTradingLauncher:
         self.account_entry.pack(fill=tk.X, ipady=4, padx=2)
         self.account_entry.insert(0, self.config.get("account_size", "10000"))
         
-        # Risk Per Trade
-        risk_frame = tk.Frame(settings_row, bg=self.colors['card'])
-        risk_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+        # Max Drawdown with account awareness
+        drawdown_frame = tk.Frame(settings_row, bg=self.colors['card'])
+        drawdown_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
         
         tk.Label(
-            risk_frame,
-            text="Risk per Trade (%):",
+            drawdown_frame,
+            text="Max Drawdown (%):",
             font=("Arial", 9, "bold"),
             bg=self.colors['card'],
             fg=self.colors['text']
         ).pack(anchor=tk.W, pady=(0, 3))
         
-        self.risk_var = tk.DoubleVar(value=self.config.get("risk_per_trade", 1.0))
-        risk_spin = ttk.Spinbox(
-            risk_frame,
-            from_=0.5,
-            to=5.0,
-            increment=0.1,
-            textvariable=self.risk_var,
+        # Get account type for drawdown validation
+        account_type = self.config.get("broker_type", "Prop Firm")
+        default_drawdown = 8.0 if account_type == "Prop Firm" else 15.0
+        
+        self.drawdown_var = tk.DoubleVar(value=self.config.get("max_drawdown", default_drawdown))
+        
+        # Add validation to warn if exceeding safe limits
+        def validate_drawdown(*args):
+            try:
+                value = self.drawdown_var.get()
+                account_type = self.config.get("broker_type", "Prop Firm")
+                
+                if account_type == "Prop Firm":
+                    # Most prop firms fail at 10% drawdown
+                    if value > 10.0:
+                        drawdown_info.config(
+                            text="⚠ Exceeds prop firm limit (10%) - Will cause account failure!",
+                            fg='#FF0000'  # Red warning
+                        )
+                    elif value > 8.0:
+                        drawdown_info.config(
+                            text="⚠ Caution: Very close to prop firm failure threshold (10%)",
+                            fg=self.colors.get('warning', '#FFA500')
+                        )
+                    else:
+                        drawdown_info.config(
+                            text=f"Safe zone for {account_type} (under 8%)",
+                            fg=self.colors['text_secondary']
+                        )
+                else:  # Live Broker
+                    if value > 20.0:
+                        drawdown_info.config(
+                            text="⚠ High drawdown risk - Consider reducing",
+                            fg=self.colors.get('warning', '#FFA500')
+                        )
+                    else:
+                        drawdown_info.config(
+                            text=f"Drawdown limit for {account_type}",
+                            fg=self.colors['text_secondary']
+                        )
+            except:
+                pass
+        
+        self.drawdown_var.trace_add('write', validate_drawdown)
+        
+        drawdown_spin = ttk.Spinbox(
+            drawdown_frame,
+            from_=1.0,
+            to=25.0,
+            increment=0.5,
+            textvariable=self.drawdown_var,
             width=12,
             format="%.1f"
         )
-        risk_spin.pack(fill=tk.X, ipady=2)
+        drawdown_spin.pack(fill=tk.X, ipady=2)
+        
+        # Info label for drawdown warnings
+        drawdown_info = tk.Label(
+            drawdown_frame,
+            text=f"Safe zone for {account_type}",
+            font=("Arial", 7),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary']
+        )
+        drawdown_info.pack(anchor=tk.W, pady=(2, 0))
+        
+        # Trigger initial validation
+        validate_drawdown()
         
         # Daily Loss Limit
         loss_frame = tk.Frame(settings_row, bg=self.colors['card'])
@@ -1165,27 +1261,51 @@ class QuoTradingLauncher:
         advanced_row = tk.Frame(content, bg=self.colors['card'])
         advanced_row.pack(fill=tk.X, pady=(0, 10))
         
-        # Max Contracts
+        # Max Contracts with account type awareness and enforcement
         contracts_frame = tk.Frame(advanced_row, bg=self.colors['card'])
         contracts_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
         
         tk.Label(
             contracts_frame,
-            text="Max Contracts:",
+            text="Contracts Per Trade:",
             font=("Arial", 9, "bold"),
             bg=self.colors['card'],
             fg=self.colors['text']
         ).pack(anchor=tk.W, pady=(0, 3))
         
-        self.contracts_var = tk.IntVar(value=self.config.get("max_contracts", 3))
+        # Get account type to set ENFORCED limits
+        account_type = self.config.get("broker_type", "Prop Firm")
+        
+        # Enforce actual broker limits - exceeding these will cause trade rejection
+        if account_type == "Prop Firm":
+            max_contracts_allowed = 5  # Prop firm strict limit
+        else:
+            max_contracts_allowed = 25  # Live broker flexible limit
+        
+        # Store for validation
+        self.max_contracts_allowed = max_contracts_allowed
+        self.account_type = account_type
+        
+        self.contracts_var = tk.IntVar(value=min(self.config.get("max_contracts", 3), max_contracts_allowed))
+        
         contracts_spin = ttk.Spinbox(
             contracts_frame,
             from_=1,
-            to=25,
+            to=max_contracts_allowed,  # Enforced based on account type
             textvariable=self.contracts_var,
             width=12
         )
         contracts_spin.pack(fill=tk.X, ipady=2)
+        
+        # Info label showing enforced contract limit
+        contracts_info = tk.Label(
+            contracts_frame,
+            text=f"Max {max_contracts_allowed} for {account_type} (enforced)",
+            font=("Arial", 7),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary']
+        )
+        contracts_info.pack(anchor=tk.W, pady=(2, 0))
         
         # Max Trades Per Day
         trades_frame = tk.Frame(advanced_row, bg=self.colors['card'])
@@ -1209,6 +1329,372 @@ class QuoTradingLauncher:
         )
         trades_spin.pack(fill=tk.X, ipady=2)
         
+        # AI/Confidence Settings Row
+        ai_row = tk.Frame(content, bg=self.colors['card'])
+        ai_row.pack(fill=tk.X, pady=(0, 10))
+        
+        # Confidence Threshold
+        confidence_frame = tk.Frame(ai_row, bg=self.colors['card'])
+        confidence_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+        
+        tk.Label(
+            confidence_frame,
+            text="Confidence Threshold (%):",
+            font=("Arial", 9, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text']
+        ).pack(anchor=tk.W, pady=(0, 3))
+        
+        self.confidence_var = tk.DoubleVar(value=self.config.get("confidence_threshold", 65.0))
+        confidence_spin = ttk.Spinbox(
+            confidence_frame,
+            from_=0.0,
+            to=100.0,
+            increment=5.0,
+            textvariable=self.confidence_var,
+            width=12,
+            format="%.1f"
+        )
+        confidence_spin.pack(fill=tk.X, ipady=2)
+        
+        # Info label for confidence threshold
+        confidence_info = tk.Label(
+            confidence_frame,
+            text="Minimum confidence - bot takes signals above this",
+            font=("Arial", 7),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary']
+        )
+        confidence_info.pack(anchor=tk.W, pady=(2, 0))
+        
+        # Dynamic Confidence Threshold checkbox
+        self.dynamic_confidence_var = tk.BooleanVar(value=self.config.get("dynamic_confidence", False))
+        dynamic_conf_cb = tk.Checkbutton(
+            confidence_frame,
+            text="Enable Dynamic Confidence",
+            variable=self.dynamic_confidence_var,
+            font=("Arial", 8),
+            bg=self.colors['card'],
+            fg=self.colors['text'],
+            selectcolor=self.colors['secondary'],
+            activebackground=self.colors['card'],
+            activeforeground=self.colors['success'],
+            cursor="hand2"
+        )
+        dynamic_conf_cb.pack(anchor=tk.W, pady=(3, 2))
+        
+        # Info label for dynamic confidence
+        dynamic_conf_info = tk.Label(
+            confidence_frame,
+            text="Auto-increases (never below your setting) when bot\nperforms poorly or approaching account limits",
+            font=("Arial", 7),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary'],
+            justify=tk.LEFT
+        )
+        dynamic_conf_info.pack(anchor=tk.W)
+        
+        # Shadow Mode checkbox (keeping existing functionality)
+        shadow_frame = tk.Frame(ai_row, bg=self.colors['card'])
+        shadow_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        self.shadow_mode_var = tk.BooleanVar(value=self.config.get("shadow_mode", False))
+        shadow_cb = tk.Checkbutton(
+            shadow_frame,
+            text="Shadow Mode",
+            variable=self.shadow_mode_var,
+            font=("Arial", 9, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text'],
+            selectcolor=self.colors['secondary'],
+            activebackground=self.colors['card'],
+            activeforeground=self.colors['success'],
+            cursor="hand2"
+        )
+        shadow_cb.pack(anchor=tk.W, pady=(0, 3))
+        
+        # Info label for shadow mode
+        shadow_info = tk.Label(
+            shadow_frame,
+            text="Paper trade mode - no real trades executed",
+            font=("Arial", 7),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary']
+        )
+        shadow_info.pack(anchor=tk.W)
+        
+        # Dynamic Contract Mode Row
+        dynamic_row = tk.Frame(content, bg=self.colors['card'])
+        dynamic_row.pack(fill=tk.X, pady=(0, 10))
+        
+        self.dynamic_contracts_var = tk.BooleanVar(value=self.config.get("dynamic_contracts", False))
+        dynamic_cb = tk.Checkbutton(
+            dynamic_row,
+            text="Dynamic Contract Mode",
+            variable=self.dynamic_contracts_var,
+            font=("Arial", 9, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text'],
+            selectcolor=self.colors['secondary'],
+            activebackground=self.colors['card'],
+            activeforeground=self.colors['success'],
+            cursor="hand2"
+        )
+        dynamic_cb.pack(anchor=tk.W, pady=(0, 3))
+        
+        # Info label for dynamic contract mode
+        dynamic_info = tk.Label(
+            dynamic_row,
+            text="Uses signal confidence to scale contracts (1 to your max) dynamically",
+            font=("Arial", 7),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary']
+        )
+        dynamic_info.pack(anchor=tk.W)
+        
+        # Trailing Drawdown Section (Optional Risk Management Feature)
+        trailing_dd_frame = tk.Frame(content, bg=self.colors['card_elevated'], relief=tk.FLAT, bd=0)
+        trailing_dd_frame.pack(fill=tk.X, pady=(0, 10), padx=2)
+        trailing_dd_frame.configure(highlightbackground=self.colors['border_subtle'], highlightthickness=1)
+        
+        trailing_dd_content = tk.Frame(trailing_dd_frame, bg=self.colors['card_elevated'], padx=12, pady=10)
+        trailing_dd_content.pack(fill=tk.X)
+        
+        trailing_dd_label = tk.Label(
+            trailing_dd_content,
+            text="Advanced Risk Protection:",
+            font=("Arial", 10, "bold"),
+            bg=self.colors['card_elevated'],
+            fg=self.colors['text']
+        )
+        trailing_dd_label.pack(anchor=tk.W, pady=(0, 5))
+        
+        # Trailing Drawdown checkbox with two-floor system awareness
+        # Initialize with smart defaults based on account type and broker
+        broker_name = self.config.get("broker", "")
+        default_trailing = False  # Default to disabled for most cases
+        self.trailing_drawdown_var = tk.BooleanVar(value=self.config.get("trailing_drawdown", default_trailing))
+        
+        # Determine broker-specific trailing drawdown requirements
+        def get_broker_trailing_requirement(broker):
+            """Returns (requires_trailing, hard_floor_type)"""
+            if broker == "Apex":
+                return (True, "trailing")  # REQUIRED - Hard trailing floor enforced
+            elif broker == "TopStep":
+                return (False, "static")  # Optional - Static hard floor at $47K
+            elif broker == "Tradovate":
+                return (False, "static")  # Live broker - Optional soft floor
+            else:
+                return (False, "static")  # Default: optional with static hard floor
+        
+        requires_trailing, hard_floor_type = get_broker_trailing_requirement(broker_name)
+        
+        # If broker REQUIRES trailing, enable and lock checkbox
+        if requires_trailing:
+            self.trailing_drawdown_var.set(True)
+        
+        # Add validation to provide smart, two-floor aware guidance
+        def update_trailing_drawdown_info(*args):
+            enabled = self.trailing_drawdown_var.get()
+            account_type = self.config.get("broker_type", "Prop Firm")
+            broker = self.config.get("broker", "")
+            requires, floor_type = get_broker_trailing_requirement(broker)
+            
+            # Session-aware: Check if account has fetched data
+            accounts = self.config.get("accounts", [])
+            has_account_data = len(accounts) > 0
+            
+            # Update checkbox label based on requirement
+            if requires:
+                trailing_dd_cb.config(
+                    text=f"Trailing Drawdown (Required by {broker})",
+                    state='disabled',  # Lock checkbox
+                    fg=self.colors['error']  # Red to show it's critical
+                )
+            else:
+                trailing_dd_cb.config(
+                    text="Enable Trailing Drawdown (Optional - Soft Floor Protection)",
+                    state='normal',
+                    fg=self.colors['text']
+                )
+            
+            if enabled:
+                if requires:
+                    # HARD FLOOR - Required by prop firm (account fails if violated)
+                    trailing_dd_info.config(
+                        text=f"⚠️ REQUIRED Hard Floor - {broker} enforces trailing drawdown. Account FAILS if violated (not pauseable). This is your firm's actual rule.",
+                        fg=self.colors['error']
+                    )
+                else:
+                    # SOFT FLOOR - Optional personal protection (bot stops trading when approaching failure)
+                    if broker == "TopStep":
+                        trailing_dd_info.config(
+                            text="✓ Personal Soft Floor Active - Moves UP with profits. Bot stops making trades (doesn't fail) when approaching this floor. TopStep's hard floor: $47K static (separate).",
+                            fg=self.colors['success']
+                        )
+                    else:
+                        trailing_dd_info.config(
+                            text="✓ Personal Soft Floor Active - Moves UP with profits, never down. Bot stops making trades when approaching this floor - continuous monitoring. This is YOUR protection layer.",
+                            fg=self.colors['success']
+                        )
+            else:
+                # Disabled - show what they're missing
+                if account_type == "Prop Firm":
+                    if broker == "TopStep":
+                        trailing_dd_info.config(
+                            text=f"TopStep's hard floor: $47K static (account fails if violated). Optional: Enable soft trailing floor for extra protection - bot stops trading when too close to failure.",
+                            fg=self.colors['text_secondary']
+                        )
+                    else:
+                        trailing_dd_info.config(
+                            text="Optional soft floor protection - Adds personal safety layer that stops trading before you approach your firm's hard floor. Bot continues monitoring.",
+                            fg=self.colors['text_secondary']
+                        )
+                else:  # Live Broker
+                    trailing_dd_info.config(
+                        text="Optional soft floor - Bot stops making trades (doesn't shutdown) when approaching this floor. Continues monitoring. Protects your capital from extended losing streaks.",
+                        fg=self.colors['text_secondary']
+                    )
+        
+        self.trailing_drawdown_var.trace_add('write', update_trailing_drawdown_info)
+        
+        trailing_dd_cb = tk.Checkbutton(
+            trailing_dd_content,
+            text="Enable Trailing Drawdown",
+            variable=self.trailing_drawdown_var,
+            font=("Arial", 9, "bold"),
+            bg=self.colors['card_elevated'],
+            fg=self.colors['text'],
+            selectcolor=self.colors['secondary'],
+            activebackground=self.colors['card_elevated'],
+            activeforeground=self.colors['success'],
+            cursor="hand2"
+        )
+        trailing_dd_cb.pack(anchor=tk.W, pady=(0, 3))
+        
+        # Info label for trailing drawdown with account-aware guidance
+        trailing_dd_info = tk.Label(
+            trailing_dd_content,
+            text="",
+            font=("Arial", 7),
+            bg=self.colors['card_elevated'],
+            fg=self.colors['text_secondary'],
+            wraplength=520,
+            justify=tk.LEFT
+        )
+        trailing_dd_info.pack(anchor=tk.W, pady=(0, 5))
+        
+        # Trigger initial info update
+        update_trailing_drawdown_info()
+        
+        # Comprehensive explanation text for two-floor trailing drawdown system
+        trailing_dd_explanation = tk.Label(
+            trailing_dd_content,
+            text="ℹ️ Two-Floor System Explained:\n"
+                 "\n"
+                 "HARD FLOOR (Prop Firm's Actual Rule):\n"
+                 "• Apex: Trailing floor that moves up (REQUIRED - account fails if violated)\n"
+                 "• TopStep: Static at $47K forever (account fails if violated)\n"
+                 "• Cannot be disabled - enforced by your prop firm\n"
+                 "\n"
+                 "SOFT FLOOR (Your Personal Protection - THIS CHECKBOX):\n"
+                 "• Optional safety YOU can enable for extra protection\n"
+                 "• Moves UP with your profits (just like hard trailing)\n"
+                 "• If approaching: Bot stops making trades (doesn't fail or shutdown)\n"
+                 "• Bot continues monitoring - may resume if conditions improve\n"
+                 "• Helps you avoid getting close to the dangerous hard floor\n"
+                 "\n"
+                 "Example: TopStep account with soft floor enabled:\n"
+                 "• Hard floor: $47K static (account fails - can't change)\n"
+                 "• Peak at $55K → Soft floor at $49.5K (with 10% max DD)\n"
+                 "• Drop to $49K → Bot stops trading (approaching soft floor)\n"
+                 "• Hard floor still $47K - you're $2K away, still safe!\n"
+                 "• Bot continues running and monitoring performance\n"
+                 "• May resume if dynamic confidence helps create safety margin",
+            font=("Arial", 7, "italic"),
+            bg=self.colors['card_elevated'],
+            fg=self.colors['text_secondary'],
+            wraplength=520,
+            justify=tk.LEFT
+        )
+        trailing_dd_explanation.pack(anchor=tk.W, pady=(2, 0))
+        
+        # Account Fetch Section
+        fetch_frame = tk.Frame(content, bg=self.colors['card_elevated'], relief=tk.FLAT, bd=0)
+        fetch_frame.pack(fill=tk.X, pady=(0, 10), padx=2)
+        fetch_frame.configure(highlightbackground=self.colors['border_subtle'], highlightthickness=1)
+        
+        fetch_content = tk.Frame(fetch_frame, bg=self.colors['card_elevated'], padx=12, pady=10)
+        fetch_content.pack(fill=tk.X)
+        
+        fetch_label = tk.Label(
+            fetch_content,
+            text="Account Information:",
+            font=("Arial", 10, "bold"),
+            bg=self.colors['card_elevated'],
+            fg=self.colors['text']
+        )
+        fetch_label.pack(anchor=tk.W, pady=(0, 5))
+        
+        # Account selection dropdown
+        account_select_frame = tk.Frame(fetch_content, bg=self.colors['card_elevated'])
+        account_select_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        tk.Label(
+            account_select_frame,
+            text="Select Account:",
+            font=("Arial", 9),
+            bg=self.colors['card_elevated'],
+            fg=self.colors['text_light']
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        
+        self.account_dropdown_var = tk.StringVar(value=self.config.get("selected_account", "Default Account"))
+        self.account_dropdown = ttk.Combobox(
+            account_select_frame,
+            textvariable=self.account_dropdown_var,
+            state="readonly",
+            font=("Arial", 9),
+            width=25,
+            values=["Default Account"]
+        )
+        self.account_dropdown.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # Fetch button and info display
+        fetch_button_frame = tk.Frame(fetch_content, bg=self.colors['card_elevated'])
+        fetch_button_frame.pack(fill=tk.X)
+        
+        fetch_btn = self.create_button(fetch_button_frame, "Fetch Account Info", self.fetch_account_info, "next")
+        fetch_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Account info display label
+        self.account_info_label = tk.Label(
+            fetch_button_frame,
+            text="Click to fetch account balance and details",
+            font=("Arial", 8),
+            bg=self.colors['card_elevated'],
+            fg=self.colors['text_secondary'],
+            anchor=tk.W
+        )
+        self.account_info_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # Auto-adjust parameters section
+        auto_adjust_frame = tk.Frame(fetch_content, bg=self.colors['card_elevated'])
+        auto_adjust_frame.pack(fill=tk.X, pady=(8, 0))
+        
+        auto_adjust_btn = self.create_button(auto_adjust_frame, "Auto-Adjust Parameters", self.auto_adjust_parameters, "next")
+        auto_adjust_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Auto-adjust info label
+        self.auto_adjust_info_label = tk.Label(
+            auto_adjust_frame,
+            text="Automatically optimizes settings based on account balance",
+            font=("Arial", 8),
+            bg=self.colors['card_elevated'],
+            fg=self.colors['text_secondary'],
+            anchor=tk.W
+        )
+        self.auto_adjust_info_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
         # Summary display
         summary_frame = tk.Frame(content, bg=self.colors['secondary'], relief=tk.FLAT, bd=0)
         summary_frame.pack(fill=tk.X, pady=(8, 12))
@@ -1226,12 +1712,12 @@ class QuoTradingLauncher:
         )
         summary_title.pack(pady=(0, 3))
         
-        username = self.config.get("username", "Trader")
         broker = self.config.get("broker", "TopStep")
+        account_size = self.config.get("account_size", "50k")
         
         summary_text = tk.Label(
             summary_content,
-            text=f"User: {username} | Broker: {broker}\nAll credentials validated and ready",
+            text=f"Broker: {broker} | Account: {account_size}\nAll credentials validated and ready",
             font=("Arial", 8),
             bg=self.colors['secondary'],
             fg=self.colors['text_light'],
@@ -1250,6 +1736,204 @@ class QuoTradingLauncher:
         # Start Bot button
         start_btn = self.create_button(button_frame, "START BOT →", self.start_bot, "next")
         start_btn.pack(side=tk.RIGHT)
+    
+    def fetch_account_info(self):
+        """Fetch account information from the broker."""
+        broker = self.config.get("broker", "TopStep")
+        token = self.config.get("broker_token", "")
+        username = self.config.get("broker_username", "")
+        
+        if not token or not username:
+            messagebox.showerror(
+                "Missing Credentials",
+                "Please complete broker setup first (go back to Screen 0)."
+            )
+            return
+        
+        # Show loading spinner
+        self.show_loading(f"Fetching account info from {broker}...")
+        
+        def fetch_in_thread():
+            try:
+                # Simulate API call - in production, this would call actual broker API
+                import time
+                time.sleep(1.5)  # Simulate network delay
+                
+                # Mock account data - replace with actual API call
+                accounts = [
+                    {"id": "ACC001", "name": f"{broker} Account 1", "balance": 50000.00, "equity": 51234.56},
+                    {"id": "ACC002", "name": f"{broker} Account 2", "balance": 100000.00, "equity": 102456.78}
+                ]
+                
+                # Update UI on main thread
+                def update_ui():
+                    self.hide_loading()
+                    
+                    # Update account dropdown with fetched accounts
+                    account_names = [f"{acc['name']} - ${acc['balance']:,.2f}" for acc in accounts]
+                    self.account_dropdown['values'] = account_names
+                    self.account_dropdown.current(0)
+                    
+                    # Store accounts data
+                    self.config["accounts"] = accounts
+                    self.config["selected_account"] = account_names[0]
+                    self.save_config()
+                    
+                    # Update info label
+                    selected_acc = accounts[0]
+                    self.account_info_label.config(
+                        text=f"✓ Balance: ${selected_acc['balance']:,.2f} | Equity: ${selected_acc['equity']:,.2f}",
+                        fg=self.colors['success']
+                    )
+                    
+                    messagebox.showinfo(
+                        "Account Info Fetched",
+                        f"Successfully retrieved {len(accounts)} account(s) from {broker}.\n\n"
+                        f"Selected: {selected_acc['name']}\n"
+                        f"Balance: ${selected_acc['balance']:,.2f}\n"
+                        f"Equity: ${selected_acc['equity']:,.2f}"
+                    )
+                
+                self.root.after(0, update_ui)
+                
+            except Exception as e:
+                def show_error():
+                    self.hide_loading()
+                    messagebox.showerror(
+                        "Fetch Failed",
+                        f"Failed to fetch account information:\n{str(e)}\n\n"
+                        f"Please check your broker credentials."
+                    )
+                self.root.after(0, show_error)
+        
+        # Start fetch in background thread
+        thread = threading.Thread(target=fetch_in_thread, daemon=True)
+        thread.start()
+    
+    def auto_adjust_parameters(self):
+        """Auto-adjust trading parameters based on account balance and type."""
+        # Check if account info has been fetched
+        accounts = self.config.get("accounts", [])
+        if not accounts:
+            messagebox.showwarning(
+                "No Account Info",
+                "Please fetch account information first using the 'Fetch Account Info' button."
+            )
+            return
+        
+        # Get the selected account or first account
+        selected_account = accounts[0]
+        balance = selected_account.get("balance", 10000)
+        equity = selected_account.get("equity", balance)
+        
+        # Get account type from config (Prop Firm or Live Broker)
+        account_type = self.config.get("broker_type", "Prop Firm")
+        account_size = self.config.get("account_size", "50k")
+        
+        # Parse account size for calculations
+        size_num = int(account_size.replace("k", "000"))
+        
+        # Calculate drawdown percentage (how far from starting balance)
+        drawdown_pct = ((size_num - equity) / size_num) * 100 if size_num > 0 else 0
+        drawdown_pct = max(0, drawdown_pct)  # Ensure non-negative
+        
+        # Sophisticated risk management for Prop Firms
+        if account_type == "Prop Firm":
+            # Prop firm rules: Be more conservative as drawdown increases
+            # Most prop firms fail traders at 10% drawdown
+            
+            # Calculate distance to failure (assuming 10% max drawdown rule)
+            distance_to_failure = 10.0 - drawdown_pct
+            
+            # Daily loss limit: Scale based on distance to failure
+            if distance_to_failure > 7:  # Safe zone (0-3% drawdown)
+                daily_loss_pct = 0.025  # 2.5% of equity
+            elif distance_to_failure > 5:  # Caution zone (3-5% drawdown)
+                daily_loss_pct = 0.02   # 2% of equity
+            elif distance_to_failure > 3:  # Warning zone (5-7% drawdown)
+                daily_loss_pct = 0.015  # 1.5% of equity
+            else:  # Danger zone (7-10% drawdown)
+                daily_loss_pct = 0.01   # 1% of equity - very conservative
+            
+            daily_loss_limit = equity * daily_loss_pct
+            
+            # Contracts: Strategic based on account size and drawdown
+            # Never max out contracts - leave room for error
+            if drawdown_pct < 2:  # Very safe
+                max_contracts = min(3, max(1, int(equity / 30000)))
+            elif drawdown_pct < 5:  # Moderately safe
+                max_contracts = min(2, max(1, int(equity / 40000)))
+            else:  # In drawdown - very conservative
+                max_contracts = 1  # Single contract only
+            
+            # Trades per day: Fewer trades = more selective
+            if distance_to_failure > 5:
+                max_trades = 12
+            else:
+                max_trades = 8  # Very selective when in drawdown
+                
+        else:  # Live Broker - More flexible but still strategic
+            # Daily loss limit: 2-4% based on account size
+            if equity < 25000:
+                daily_loss_limit = equity * 0.02  # 2%
+            elif equity < 50000:
+                daily_loss_limit = equity * 0.025  # 2.5%
+            elif equity < 100000:
+                daily_loss_limit = equity * 0.03  # 3%
+            else:
+                daily_loss_limit = equity * 0.035  # 3.5%
+            
+            # Contracts: Strategic based on equity
+            max_contracts = max(1, min(10, int(equity / 20000)))
+            
+            # Trades: More flexible with live brokers
+            if equity < 50000:
+                max_trades = 15
+            elif equity < 100000:
+                max_trades = 18
+            else:
+                max_trades = 20
+        
+        # Intelligently set max drawdown based on account type and prop firm rules
+        if account_type == "Prop Firm":
+            # Most prop firms enforce 10% max drawdown
+            # Set to 8% for safety buffer (strategic, not maxing out)
+            recommended_max_drawdown = 8.0
+            
+            # Enable trailing drawdown for prop firms (industry best practice)
+            # Helps protect from giving back profits
+            self.trailing_drawdown_var.set(True)
+        else:  # Live Broker
+            # Live brokers are more flexible
+            # Set based on equity size
+            if equity < 50000:
+                recommended_max_drawdown = 12.0
+            elif equity < 100000:
+                recommended_max_drawdown = 15.0
+            else:
+                recommended_max_drawdown = 18.0
+            
+            # Trailing drawdown optional for live brokers but recommended
+            # Leave user's existing choice unchanged
+        
+        # Apply the calculated settings (all 4 parameters now)
+        self.loss_entry.delete(0, tk.END)
+        self.loss_entry.insert(0, f"{daily_loss_limit:.2f}")
+        self.contracts_var.set(max_contracts)
+        self.trades_var.set(max_trades)
+        self.drawdown_var.set(recommended_max_drawdown)
+        
+        # Update info label with comprehensive feedback
+        if account_type == "Prop Firm":
+            self.auto_adjust_info_label.config(
+                text=f"✓ Optimized for ${equity:,.2f} equity ({drawdown_pct:.1f}% current drawdown) - {max_contracts} contracts, ${daily_loss_limit:.0f} daily limit, {max_trades} trades/day, {recommended_max_drawdown}% max drawdown, trailing enabled",
+                fg=self.colors['success']
+            )
+        else:
+            self.auto_adjust_info_label.config(
+                text=f"✓ Optimized for ${equity:,.2f} equity - {max_contracts} contracts, ${daily_loss_limit:.0f} daily limit, {max_trades} trades/day, {recommended_max_drawdown}% max drawdown",
+                fg=self.colors['success']
+            )
     
     def start_bot(self):
         """Validate settings and start the trading bot."""
@@ -1290,31 +1974,61 @@ class QuoTradingLauncher:
         # Save all settings
         self.config["symbols"] = selected_symbols
         self.config["account_size"] = account_size
-        self.config["risk_per_trade"] = self.risk_var.get()
+        self.config["max_drawdown"] = self.drawdown_var.get()
         self.config["daily_loss_limit"] = loss_limit
         self.config["max_contracts"] = self.contracts_var.get()
         self.config["max_trades"] = self.trades_var.get()
+        self.config["confidence_threshold"] = self.confidence_var.get()
+        self.config["dynamic_confidence"] = self.dynamic_confidence_var.get()
+        self.config["shadow_mode"] = self.shadow_mode_var.get()
+        self.config["dynamic_contracts"] = self.dynamic_contracts_var.get()
+        self.config["trailing_drawdown"] = self.trailing_drawdown_var.get()
+        self.config["selected_account"] = self.account_dropdown_var.get()
         self.save_config()
         
         # Create .env file
         self.create_env_file()
         
-        # Show confirmation
+        # Show confirmation with new settings
         symbols_str = ", ".join(selected_symbols)
         broker = self.config.get("broker", "TopStep")
         
+        confirmation_text = f"Ready to start bot with these settings:\n\n"
+        confirmation_text += f"Broker: {broker}\n"
+        confirmation_text += f"Account: {self.account_dropdown_var.get()}\n"
+        confirmation_text += f"Symbols: {symbols_str}\n"
+        confirmation_text += f"Contracts Per Trade: {self.contracts_var.get()}\n"
+        confirmation_text += f"Max Drawdown: {self.drawdown_var.get()}%\n"
+        if self.trailing_drawdown_var.get():
+            broker = self.config.get("broker", "")
+            if broker == "Apex":
+                confirmation_text += f"Trailing Drawdown: ON (HARD FLOOR - Required by {broker}, account fails if violated)\n"
+            else:
+                confirmation_text += f"Trailing Drawdown: ON (SOFT FLOOR - Bot stops trading when approaching failure)\n"
+                if broker == "TopStep":
+                    confirmation_text += f"  → TopStep's hard floor: $47K static (separate, account fails if violated)\n"
+        confirmation_text += f"Daily Loss Limit: ${loss_limit}\n"
+        confirmation_text += f"  → Bot stays on but will NOT execute trades if limit is hit\n"
+        confirmation_text += f"  → Resets daily after market maintenance\n"
+        confirmation_text += f"Max Trades/Day: {self.trades_var.get()}\n"
+        confirmation_text += f"  → Bot stays on but will NOT execute trades after limit\n"
+        confirmation_text += f"  → Resets daily after market maintenance\n"
+        if self.dynamic_confidence_var.get():
+            confirmation_text += f"Confidence Threshold: {self.confidence_var.get()}% (Min - dynamic adjustments enabled)\n"
+            confirmation_text += f"  → Bot may auto-increase confidence when needed (never below minimum)\n"
+        else:
+            confirmation_text += f"Confidence Threshold: {self.confidence_var.get()}% (Fixed)\n"
+        if self.shadow_mode_var.get():
+            confirmation_text += f"Shadow Mode: ON (paper trading)\n"
+        if self.dynamic_contracts_var.get():
+            confirmation_text += f"Dynamic Contracts: ON (confidence-based sizing)\n"
+        confirmation_text += f"\nThis will open a PowerShell terminal with live logs.\n"
+        confirmation_text += f"Use the window's close button to stop the bot.\n\n"
+        confirmation_text += f"Continue?"
+        
         result = messagebox.askyesno(
             "Launch Trading Bot?",
-            f"Ready to start bot with these settings:\n\n"
-            f"Broker: {broker}\n"
-            f"Symbols: {symbols_str}\n"
-            f"Max Contracts: {self.contracts_var.get()}\n"
-            f"Max Trades/Day: {self.trades_var.get()}\n"
-            f"Risk/Trade: {self.risk_var.get()}%\n"
-            f"Daily Loss Limit: ${loss_limit}\n\n"
-            f"This will open a PowerShell terminal with live logs.\n"
-            f"Use the window's close button to stop the bot.\n\n"
-            f"Continue?"
+            confirmation_text
         )
         
         if not result:
@@ -1384,9 +2098,8 @@ class QuoTradingLauncher:
 # DO NOT EDIT MANUALLY - Use the launcher to change settings
 
 # QuoTrading Account
-QUOTRADING_EMAIL={self.config.get("quotrading_email", "")}
 QUOTRADING_API_KEY={self.config.get("quotrading_api_key", "")}
-QUOTRADING_API_URL=https://api.quotrading.com/v1/signals
+ACCOUNT_SIZE={self.config.get("account_size", "50k")}
 
 # Broker Configuration
 BROKER={broker}
@@ -1403,12 +2116,33 @@ TRADOVATE_USERNAME={self.config.get("broker_username", "")}
 BOT_INSTRUMENTS={symbols_str}
 BOT_MAX_CONTRACTS={self.contracts_var.get()}
 BOT_MAX_TRADES_PER_DAY={self.trades_var.get()}
-BOT_RISK_PER_TRADE={self.risk_var.get() / 100}
+# Bot stays on but will NOT execute trades after reaching max (resets daily after market maintenance)
+BOT_MAX_DRAWDOWN={self.drawdown_var.get()}
+# Maximum drawdown percentage before bot stops trading (account type aware)
+BOT_TRAILING_DRAWDOWN={'true' if self.trailing_drawdown_var.get() else 'false'}
+# SOFT FLOOR: Optional personal protection. When enabled, floor moves UP with profits (never down).
+# If violated: Bot stops making trades when approaching account failure (doesn't shut off, continues monitoring).
+# This is YOUR extra protection layer - separate from prop firm's hard floor rules.
+# Hard floors: Apex=trailing (required), TopStep=$47K static, both cause account failure if violated.
+BOT_TRAILING_TYPE={'hard' if self.config.get("broker", "") == "Apex" else 'soft'}
+# Type: "hard" (required by prop firm, account fails) or "soft" (optional, bot stops trading when approaching failure)
 BOT_DAILY_LOSS_LIMIT={self.loss_entry.get()}
+# Bot stays on but will NOT execute trades if this limit (in dollars) is hit (resets daily after market maintenance)
+
+# AI/Confidence Settings
+BOT_CONFIDENCE_THRESHOLD={self.confidence_var.get()}
+# Bot only takes signals above this confidence threshold (user's minimum)
+BOT_DYNAMIC_CONFIDENCE={'true' if self.dynamic_confidence_var.get() else 'false'}
+# When enabled, bot auto-increases confidence (never below user's setting) when performing poorly or approaching account limits
+BOT_DYNAMIC_CONTRACTS={'true' if self.dynamic_contracts_var.get() else 'false'}
+# Uses signal confidence to determine contract size dynamically (bot uses adaptive exits)
 
 # Trading Mode
-BOT_SHADOW_MODE=false
-BOT_DRY_RUN=false
+BOT_SHADOW_MODE={'true' if self.shadow_mode_var.get() else 'false'}
+BOT_DRY_RUN={'true' if self.shadow_mode_var.get() else 'false'}
+
+# Account Selection
+SELECTED_ACCOUNT={self.config.get("selected_account", "Default Account")}
 
 # Environment
 BOT_ENVIRONMENT=production

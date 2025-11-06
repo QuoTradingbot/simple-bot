@@ -2,12 +2,13 @@
 QuoTrading AI - Customer Launcher
 ==================================
 Professional GUI application for easy setup and launch.
-Customers enter credentials, configure settings, and start trading.
+4-Screen Progressive Onboarding Flow with Validation.
 
 Flow:
-1. EXE opens → Clean GUI for credentials & settings
-2. Click START → Saves config, closes GUI
-3. PowerShell terminal opens → Shows live bot logs
+1. Screen 0: Username Creation
+2. Screen 1: QuoTrading Account Setup (Email + API Key validation)
+3. Screen 2: Broker Connection Setup (Prop Firm/Live Broker with validation)
+4. Screen 3: Trading Preferences (Symbol selection, risk settings, launch)
 """
 
 import tkinter as tk
@@ -18,27 +19,33 @@ from pathlib import Path
 from datetime import datetime
 import sys
 import subprocess
+import re
 
 
 class QuoTradingLauncher:
-    """Professional GUI launcher for QuoTrading AI bot."""
+    """Professional GUI launcher for QuoTrading AI bot - Green/Black Theme."""
     
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("QuoTrading AI - Professional Trading Platform")
-        self.root.geometry("650x580")  # Rectangle: wider than tall, full content visible
+        self.root.title("QuoTrading - Professional Trading Platform")
+        self.root.geometry("700x650")
         self.root.resizable(False, False)
         
-        # Dark blue color scheme
+        # Green and Black color scheme
         self.colors = {
-            'primary': '#1E3A8A',      # Deep blue
-            'secondary': '#3B82F6',    # Bright blue
-            'success': '#10B981',      # Green
-            'background': '#1E293B',   # Dark blue-gray background
-            'card': '#334155',         # Dark blue card
-            'text': '#F1F5F9',         # Light text
-            'text_light': '#94A3B8',   # Medium light gray
-            'border': '#475569'        # Dark border
+            'primary': '#000000',        # Pure black background
+            'secondary': '#0A0A0A',      # Near black for cards
+            'success': '#00FF41',        # Matrix green (bright)
+            'success_dark': '#00B82E',   # Darker green for buttons
+            'error': '#FF0000',          # Red for errors
+            'background': '#000000',     # Black background
+            'card': '#0F0F0F',           # Dark gray card
+            'text': '#00FF41',           # Bright green text
+            'text_light': '#00CC33',     # Medium green
+            'text_secondary': '#008822', # Dark green
+            'border': '#00FF41',         # Green border
+            'input_bg': '#1A1A1A',       # Dark input background
+            'button_hover': '#00DD38'    # Button hover color
         }
         
         self.root.configure(bg=self.colors['background'])
@@ -47,708 +54,920 @@ class QuoTradingLauncher:
         self.config_file = Path("config.json")
         self.config = self.load_config()
         
-        # Start with credentials screen
-        self.setup_credentials_screen()
+        # Current screen tracker
+        self.current_screen = 0
         
-    # Start with credentials screen
-        self.setup_credentials_screen()
+        # Bot process reference
+        self.bot_process = None
+        
+        # Start with username screen (Screen 0)
+        self.setup_username_screen()
     
-    def setup_credentials_screen(self):
-        """Setup the credentials entry screen (Screen 1)."""
-        # Clear window
-        for widget in self.root.winfo_children():
-            widget.destroy()
-        
-        self.root.title("QuoTrading AI - Broker Setup")
-        
-        # Modern gradient-style header - compact
-        header = tk.Frame(self.root, bg=self.colors['primary'], height=90)
+    def create_header(self, title, subtitle=""):
+        """Create a professional header for each screen."""
+        header = tk.Frame(self.root, bg=self.colors['success_dark'], height=100)
         header.pack(fill=tk.X)
         header.pack_propagate(False)
         
-        # Logo/Title section - centered
-        title = tk.Label(
+        title_label = tk.Label(
             header,
-            text="QuoTrading AI",
-            font=("Segoe UI", 18, "bold"),
-            bg=self.colors['primary'],
-            fg="white"
+            text=title,
+            font=("Arial", 24, "bold"),
+            bg=self.colors['success_dark'],
+            fg=self.colors['background']
         )
-        title.pack(pady=(12, 0))
+        title_label.pack(pady=(20, 5))
         
-        subtitle = tk.Label(
-            header,
-            text="Professional AI Trading",
-            font=("Segoe UI", 10),
-            bg=self.colors['primary'],
-            fg="#93C5FD"
-        )
-        subtitle.pack(pady=(4, 16))
-        
-        # Main content area with minimal padding
-        main_container = tk.Frame(self.root, bg=self.colors['background'])
-        main_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=15)
-        
-        # Main card - minimal padding
-        main = tk.Frame(main_container, bg=self.colors['card'], relief=tk.FLAT, bd=0)
-        main.pack(fill=tk.BOTH, expand=True)
-        main.configure(highlightbackground=self.colors['border'], highlightthickness=1)
-        
-        # Card content with minimal padding
-        card_content = tk.Frame(main, bg=self.colors['card'])
-        card_content.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
-        
-        # Section: QuoTrading License - very compact
-        tk.Label(
-            card_content,
-            text="QuoTrading License",
-            font=("Segoe UI", 10, "bold"),
-            bg=self.colors['card'],
-            fg=self.colors['text']
-        ).pack(anchor=tk.W, pady=(0, 2))
-        
-        tk.Label(
-            card_content,
-            text="Enter your license key (received via email)",
-            font=("Segoe UI", 7),
-            bg=self.colors['card'],
-            fg=self.colors['text_light']
-        ).pack(anchor=tk.W, pady=(0, 4))
-        
-        # Modern entry field - very compact
-        license_frame = tk.Frame(card_content, bg=self.colors['card'])
-        license_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        self.license_entry = tk.Entry(
-            license_frame,
-            font=("Segoe UI", 8),
-            relief=tk.SOLID,
-            bd=1,
-            highlightthickness=2,
-            highlightbackground=self.colors['border'],
-            highlightcolor=self.colors['secondary']
-        )
-        self.license_entry.pack(fill=tk.X, ipady=3)
-        self.license_entry.insert(0, self.config.get("quotrading_license", ""))
-        
-        # Divider - very thin
-        tk.Frame(card_content, height=1, bg=self.colors['border']).pack(fill=tk.X, pady=8)
-        
-        # Section: Market & Broker Selection - category-based
-        tk.Label(
-            card_content,
-            text="Select Market Type",
-            font=("Segoe UI", 10, "bold"),
-            bg=self.colors['card'],
-            fg=self.colors['text']
-        ).pack(anchor=tk.W, pady=(0, 6))
-        
-        # Market type selection (Futures, Forex, Crypto) - centered
-        self.market_var = tk.StringVar(value=self.config.get("market_type", "Futures"))
-        market_container = tk.Frame(card_content, bg=self.colors['card'])
-        market_container.pack(pady=(0, 8))
-        
-        # Create centered frame for market options
-        market_options_frame = tk.Frame(market_container, bg=self.colors['card'])
-        market_options_frame.pack()
-        
-        # Market type radio buttons - centered with Options added
-        markets = ["Futures", "Forex", "Crypto", "Options"]
-        for market in markets:
-            market_radio = tk.Radiobutton(
-                market_options_frame,
-                text=market,
-                variable=self.market_var,
-                value=market,
-                bg=self.colors['card'],
-                fg=self.colors['text'],
-                activebackground=self.colors['card'],
-                activeforeground=self.colors['text'],
-                selectcolor=self.colors['secondary'],
-                font=("Segoe UI", 8, "bold"),
-                command=self.update_broker_dropdown
+        if subtitle:
+            subtitle_label = tk.Label(
+                header,
+                text=subtitle,
+                font=("Arial", 11),
+                bg=self.colors['success_dark'],
+                fg=self.colors['background']
             )
-            market_radio.pack(side=tk.LEFT, padx=10)
+            subtitle_label.pack()
         
-        # Broker dropdown (changes based on market type)
-        tk.Label(
-            card_content,
-            text="Select Broker:",
-            font=("Segoe UI", 8, "bold"),
-            bg=self.colors['card'],
-            fg=self.colors['text']
-        ).pack(anchor=tk.W, pady=(8, 3))
+        return header
+    
+    def create_input_field(self, parent, label_text, is_password=False, placeholder=""):
+        """Create a styled input field with label."""
+        container = tk.Frame(parent, bg=self.colors['card'])
+        container.pack(fill=tk.X, pady=10)
         
-        self.broker_var = tk.StringVar(value=self.config.get("broker", "TopStep"))
-        self.broker_dropdown = ttk.Combobox(
-            card_content,
-            textvariable=self.broker_var,
-            state="readonly",
-            font=("Segoe UI", 8),
-            width=35
-        )
-        self.broker_dropdown.pack(fill=tk.X, pady=(0, 10))
-        self.broker_dropdown.bind('<<ComboboxSelected>>', lambda e: self.update_broker_fields())
-        
-        # Divider - very thin
-        tk.Frame(card_content, height=1, bg=self.colors['border']).pack(fill=tk.X, pady=8)
-        
-        # Section: Broker Credentials - very compact
-        tk.Label(
-            card_content,
-            text="Broker Credentials",
-            font=("Segoe UI", 10, "bold"),
-            bg=self.colors['card'],
-            fg=self.colors['text']
-        ).pack(anchor=tk.W, pady=(0, 6))
-        
-        # API Token field - very compact
-        self.token_label = tk.Label(
-            card_content,
-            text="TopStep API Token:",
-            font=("Segoe UI", 8, "bold"),
+        label = tk.Label(
+            container,
+            text=label_text,
+            font=("Arial", 12, "bold"),
             bg=self.colors['card'],
             fg=self.colors['text']
         )
-        self.token_label.pack(anchor=tk.W, pady=(0, 2))
+        label.pack(anchor=tk.W, pady=(0, 5))
         
-        token_frame = tk.Frame(card_content, bg=self.colors['card'])
-        token_frame.pack(fill=tk.X, pady=(0, 6))
-        
-        self.token_entry = tk.Entry(
-            token_frame,
-            font=("Segoe UI", 8),
-            show="●",
-            relief=tk.SOLID,
-            bd=1,
-            highlightthickness=2,
-            highlightbackground=self.colors['border'],
-            highlightcolor=self.colors['secondary']
-        )
-        self.token_entry.pack(fill=tk.X, ipady=3)
-        self.token_entry.insert(0, self.config.get("broker_token", ""))
-        
-        # Username field - very compact
-        self.username_label = tk.Label(
-            card_content,
-            text="TopStep Username/Email:",
-            font=("Segoe UI", 8, "bold"),
-            bg=self.colors['card'],
-            fg=self.colors['text']
-        )
-        self.username_label.pack(anchor=tk.W, pady=(0, 2))
-        
-        username_frame = tk.Frame(card_content, bg=self.colors['card'])
-        username_frame.pack(fill=tk.X, pady=(0, 5))
-        
-        self.username_entry = tk.Entry(
-            username_frame,
-            font=("Segoe UI", 8),
-            relief=tk.SOLID,
-            bd=1,
-            highlightthickness=2,
-            highlightbackground=self.colors['border'],
-            highlightcolor=self.colors['secondary']
-        )
-        self.username_entry.pack(fill=tk.X, ipady=3)
-        self.username_entry.insert(0, self.config.get("broker_username", ""))
-        
-        # Initialize broker dropdown options and update credential fields
-        self.update_broker_dropdown()
-        
-        # Update labels based on saved broker
-        self.update_broker_fields()
-        
-        # Bottom button area - very compact
-        button_container = tk.Frame(main_container, bg=self.colors['background'])
-        button_container.pack(fill=tk.X, pady=(10, 0))
-        
-        # Modern confirm button - compact
-        confirm_btn = tk.Button(
-            button_container,
-            text="CONFIRM",
-            font=("Segoe UI", 9, "bold"),
-            bg=self.colors['secondary'],
-            fg="white",
-            activebackground=self.colors['primary'],
-            activeforeground="white",
+        entry = tk.Entry(
+            container,
+            font=("Arial", 12),
+            bg=self.colors['input_bg'],
+            fg=self.colors['text'],
+            insertbackground=self.colors['success'],
             relief=tk.FLAT,
-            command=self.validate_and_continue,
-            cursor="hand2",
-            bd=0
+            bd=0,
+            highlightthickness=2,
+            highlightbackground=self.colors['border'],
+            highlightcolor=self.colors['success'],
+            show="●" if is_password else ""
         )
-        confirm_btn.pack(fill=tk.X, ipady=8)
+        entry.pack(fill=tk.X, ipady=8, padx=2)
+        
+        if placeholder:
+            entry.insert(0, placeholder)
+            entry.config(fg=self.colors['text_secondary'])
+            
+            def on_focus_in(event):
+                if entry.get() == placeholder:
+                    entry.delete(0, tk.END)
+                    entry.config(fg=self.colors['text'])
+            
+            def on_focus_out(event):
+                if not entry.get():
+                    entry.insert(0, placeholder)
+                    entry.config(fg=self.colors['text_secondary'])
+            
+            entry.bind("<FocusIn>", on_focus_in)
+            entry.bind("<FocusOut>", on_focus_out)
+        
+        return entry
     
-    def update_broker_fields(self):
-        """Update field labels based on selected broker."""
-        broker_full = self.broker_var.get()
-        # Extract broker name (before the dash)
-        broker = broker_full.split(" - ")[0] if " - " in broker_full else broker_full
+    def create_button(self, parent, text, command, button_type="next"):
+        """Create a styled button."""
+        if button_type == "next":
+            bg = self.colors['success_dark']
+            fg = self.colors['background']
+            width = 20
+        elif button_type == "back":
+            bg = self.colors['secondary']
+            fg = self.colors['text']
+            width = 15
+        else:  # start
+            bg = self.colors['success']
+            fg = self.colors['background']
+            width = 25
         
-        # Define credential requirements for each broker
-        broker_credentials = {
-            # Futures brokers
-            "TopStep": {
-                "field1_label": "TopStep API Token:",
-                "field2_label": "TopStep Username/Email:",
-                "field1_show": "●",
-                "field2_show": ""
-            },
-            "Tradovate": {
-                "field1_label": "Tradovate API Key:",
-                "field2_label": "Tradovate Username:",
-                "field1_show": "●",
-                "field2_show": ""
-            },
-            "Rithmic": {
-                "field1_label": "Rithmic Username:",
-                "field2_label": "Rithmic Password:",
-                "field1_show": "",
-                "field2_show": "●"
-            },
-            "Interactive Brokers": {
-                "field1_label": "IBKR Account ID:",
-                "field2_label": "IBKR Username:",
-                "field1_show": "",
-                "field2_show": ""
-            },
-            "NinjaTrader": {
-                "field1_label": "NinjaTrader License Key:",
-                "field2_label": "NinjaTrader Username:",
-                "field1_show": "●",
-                "field2_show": ""
-            },
-            # Forex brokers
-            "OANDA": {
-                "field1_label": "OANDA API Token:",
-                "field2_label": "OANDA Account ID:",
-                "field1_show": "●",
-                "field2_show": ""
-            },
-            "FXCM": {
-                "field1_label": "FXCM API Token:",
-                "field2_label": "FXCM Account ID:",
-                "field1_show": "●",
-                "field2_show": ""
-            },
-            "TD Ameritrade": {
-                "field1_label": "TD Ameritrade API Key:",
-                "field2_label": "TD Ameritrade Username:",
-                "field1_show": "●",
-                "field2_show": ""
-            },
-            "IG Markets": {
-                "field1_label": "IG API Key:",
-                "field2_label": "IG Username:",
-                "field1_show": "●",
-                "field2_show": ""
-            },
-            # Crypto brokers
-            "Binance": {
-                "field1_label": "Binance API Key:",
-                "field2_label": "Binance API Secret:",
-                "field1_show": "●",
-                "field2_show": "●"
-            },
-            "Coinbase Pro": {
-                "field1_label": "Coinbase API Key:",
-                "field2_label": "Coinbase API Secret:",
-                "field1_show": "●",
-                "field2_show": "●"
-            },
-            "Kraken": {
-                "field1_label": "Kraken API Key:",
-                "field2_label": "Kraken Private Key:",
-                "field1_show": "●",
-                "field2_show": "●"
-            },
-            "Bybit": {
-                "field1_label": "Bybit API Key:",
-                "field2_label": "Bybit API Secret:",
-                "field1_show": "●",
-                "field2_show": "●"
-            },
-            "Bitget": {
-                "field1_label": "Bitget API Key:",
-                "field2_label": "Bitget Secret Key:",
-                "field1_show": "●",
-                "field2_show": "●"
-            },
-            # Options brokers
-            "Tastytrade": {
-                "field1_label": "Tastytrade API Token:",
-                "field2_label": "Tastytrade Account Number:",
-                "field1_show": "●",
-                "field2_show": ""
-            },
-            "E*TRADE": {
-                "field1_label": "E*TRADE Consumer Key:",
-                "field2_label": "E*TRADE Consumer Secret:",
-                "field1_show": "●",
-                "field2_show": "●"
-            },
-            "Charles Schwab": {
-                "field1_label": "Schwab API Key:",
-                "field2_label": "Schwab Account Number:",
-                "field1_show": "●",
-                "field2_show": ""
-            }
-        }
-        
-        # Get credentials for selected broker
-        creds = broker_credentials.get(broker, broker_credentials["TopStep"])
-        
-        # Update labels and show/hide settings
-        self.token_label.config(text=creds["field1_label"])
-        self.username_label.config(text=creds["field2_label"])
-        self.token_entry.config(show=creds["field1_show"])
-        self.username_entry.config(show=creds["field2_show"])
+        button = tk.Button(
+            parent,
+            text=text,
+            font=("Arial", 14, "bold"),
+            bg=bg,
+            fg=fg,
+            activebackground=self.colors['button_hover'],
+            activeforeground=self.colors['background'],
+            relief=tk.FLAT,
+            bd=0,
+            command=command,
+            cursor="hand2",
+            width=width,
+            height=2
+        )
+        return button
     
-    def update_broker_dropdown(self):
-        """Update broker dropdown options based on selected market type."""
-        market = self.market_var.get()
-        
-        # Define brokers for each market type
-        broker_options = {
-            "Futures": [
-                "TopStep - Funded trader program",
-                "Tradovate - Cloud-based platform",
-                "Rithmic - Professional API access",
-                "Interactive Brokers - Global markets",
-                "NinjaTrader - Platform + brokerage"
-            ],
-            "Forex": [
-                "OANDA - Forex specialist",
-                "Interactive Brokers - Multi-asset",
-                "FXCM - Forex trading",
-                "TD Ameritrade - Forex & more",
-                "IG Markets - Global forex"
-            ],
-            "Crypto": [
-                "Binance - Largest crypto exchange",
-                "Coinbase Pro - US-based exchange",
-                "Kraken - Secure crypto trading",
-                "Bybit - Derivatives exchange",
-                "Bitget - Copy trading platform"
-            ],
-            "Options": [
-                "Tastytrade - Options specialist",
-                "TD Ameritrade - thinkorswim platform",
-                "Interactive Brokers - Advanced options",
-                "E*TRADE - Options trading tools",
-                "Charles Schwab - Full-service options"
-            ]
-        }
-        
-        # Update dropdown values
-        self.broker_dropdown['values'] = broker_options.get(market, broker_options["Futures"])
-        
-        # Set default selection if current broker not in new list
-        current_broker = self.broker_var.get()
-        if not any(current_broker in option for option in self.broker_dropdown['values']):
-            self.broker_dropdown.current(0)
-        
-        # Update credential fields
-        self.update_broker_fields()
-    
-    def validate_and_continue(self):
-        """Validate license key and move to settings screen. Broker credentials validated later."""
-        broker_full = self.broker_var.get()
-        broker = broker_full.split(" - ")[0] if " - " in broker_full else broker_full
-        market_type = self.market_var.get()
-        
-        # Step 1: Validate license key (REQUIRED)
-        license_key = self.license_entry.get()
-        
-        if not license_key:
-            messagebox.showerror("Missing License Key", 
-                "QuoTrading License Key is required!\n\n"
-                "You should have received this via email after purchase.\n"
-                "Contact support@quotrading.com if you need help.")
-            return
-        
-        # Admin master key - instant access (bypass all checks)
-        if license_key == "QUOTRADING_ADMIN_MASTER_2025":
-            self.config["quotrading_license"] = license_key
-            self.config["market_type"] = market_type
-            self.config["broker"] = broker
-            self.config["broker_token"] = self.token_entry.get() or "admin_token"
-            self.config["broker_username"] = self.username_entry.get() or "admin@quotrading.com"
-            self.save_config()
-            self.setup_settings_screen()
-            return
-        
-        # Validate license key format (basic check for now)
-        if len(license_key) < 20:
-            messagebox.showerror("Invalid License Key", 
-                "License key appears to be invalid.\n\n"
-                "Please check your email for the correct license key.\n"
-                "Format: QUOTRADING-XXXX-XXXX-XXXX-XXXX")
-            return
-        
-        # Step 2: Check broker credentials are entered (NOT validated yet - that happens at START TRADING)
-        if not self.token_entry.get():
-            messagebox.showwarning(f"Missing {broker} Credentials", 
-                f"Please enter your {broker} API credentials.\n\n"
-                f"You can get these from your {broker} account dashboard.\n"
-                f"These will be validated when you start trading.")
-            return
-        
-        if not self.username_entry.get():
-            messagebox.showwarning(f"Missing {broker} Username", 
-                f"Please enter your {broker} username/email.")
-            return
-        
-        # Step 3: Save everything and proceed to settings screen
-        self.config["quotrading_license"] = license_key
-        self.config["market_type"] = market_type
-        self.config["broker"] = broker
-        self.config["broker_token"] = self.token_entry.get()
-        self.config["broker_username"] = self.username_entry.get()
-        self.save_config()
-        
-        # Move to settings screen (broker credentials will be validated when clicking START TRADING)
-        self.setup_settings_screen()
-    
-    def setup_settings_screen(self):
-        """Setup the trading settings screen (Screen 2)."""
+    def setup_username_screen(self):
+        """Screen 0: Username creation screen."""
         # Clear window
         for widget in self.root.winfo_children():
             widget.destroy()
         
-        self.root.title("QuoTrading AI - Configure Trading")
-        self.root.geometry("700x550")
+        self.current_screen = 0
+        self.root.title("QuoTrading - Welcome")
         
         # Header
-        header = tk.Frame(self.root, bg="#2C3E50", height=80)
-        header.pack(fill=tk.X)
-        
-        title = tk.Label(
-            header, 
-            text="QuoTrading AI - Trading Settings", 
-            font=("Arial", 20, "bold"),
-            bg="#2C3E50",
-            fg="white"
-        )
-        title.pack(pady=25)
+        header = self.create_header("Welcome to QuoTrading", "Create your trading profile")
         
         # Main container
-        main = tk.Frame(self.root, bg="white", padx=30, pady=20)
+        main = tk.Frame(self.root, bg=self.colors['background'], padx=40, pady=40)
         main.pack(fill=tk.BOTH, expand=True)
+        
+        # Card
+        card = tk.Frame(main, bg=self.colors['card'], relief=tk.FLAT, bd=0)
+        card.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        card.configure(highlightbackground=self.colors['border'], highlightthickness=2)
+        
+        # Card content
+        content = tk.Frame(card, bg=self.colors['card'], padx=30, pady=30)
+        content.pack(fill=tk.BOTH, expand=True)
+        
+        # Welcome message
+        welcome = tk.Label(
+            content,
+            text="Create Your Username",
+            font=("Arial", 18, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text']
+        )
+        welcome.pack(pady=(0, 10))
+        
+        info = tk.Label(
+            content,
+            text="This username will be used to identify your trading profile.\nChoose something you'll remember.",
+            font=("Arial", 10),
+            bg=self.colors['card'],
+            fg=self.colors['text_light'],
+            justify=tk.CENTER
+        )
+        info.pack(pady=(0, 30))
+        
+        # Username input
+        self.username_entry = self.create_input_field(content, "Username:", placeholder=self.config.get("username", "Enter your username"))
         
         # Instructions
         instructions = tk.Label(
-            main,
-            text="Configure Your Trading Settings",
-            font=("Arial", 14, "bold"),
-            bg="white"
-        )
-        instructions.pack(pady=(0, 20))
-        
-        # Trading Settings Frame
-        settings = tk.Frame(main, bg="white")
-        settings.pack(fill=tk.BOTH, expand=True)
-        
-        # Row 1: Symbol and Contracts
-        tk.Label(settings, text="Trading Symbol:", font=("Arial", 11, "bold"), bg="white").grid(row=0, column=0, sticky=tk.W, pady=10)
-        self.symbol_var = tk.StringVar(value=self.config.get("symbol", "ES"))
-        symbol_combo = ttk.Combobox(settings, textvariable=self.symbol_var, width=25, state="readonly")
-        symbol_combo['values'] = (
-            "ES - E-mini S&P 500",
-            "NQ - E-mini Nasdaq 100",
-            "YM - E-mini Dow",
-            "RTY - E-mini Russell 2000",
-            "CL - Crude Oil",
-            "GC - Gold",
-            "NG - Natural Gas",
-            "6E - Euro FX",
-            "ZN - 10-Year Treasury",
-            "MES - Micro E-mini S&P 500",
-            "MNQ - Micro E-mini Nasdaq 100"
-        )
-        symbol_combo.grid(row=0, column=1, sticky=tk.W, padx=15, pady=10)
-        
-        tk.Label(settings, text="Max Contracts:", font=("Arial", 11, "bold"), bg="white").grid(row=0, column=2, sticky=tk.W, padx=(30, 0), pady=10)
-        self.contracts_var = tk.IntVar(value=self.config.get("max_contracts", 3))
-        contracts_spin = ttk.Spinbox(settings, from_=1, to=10, textvariable=self.contracts_var, width=10)
-        contracts_spin.grid(row=0, column=3, padx=15, pady=10)
-        
-        # Row 2: Daily Limits
-        tk.Label(settings, text="Max Trades/Day:", font=("Arial", 11, "bold"), bg="white").grid(row=1, column=0, sticky=tk.W, pady=10)
-        self.trades_var = tk.IntVar(value=self.config.get("max_trades", 9))
-        trades_spin = ttk.Spinbox(settings, from_=1, to=50, textvariable=self.trades_var, width=10)
-        trades_spin.grid(row=1, column=1, sticky=tk.W, padx=15, pady=10)
-        
-        tk.Label(settings, text="Risk per Trade (%):", font=("Arial", 11, "bold"), bg="white").grid(row=1, column=2, sticky=tk.W, padx=(30, 0), pady=10)
-        self.risk_var = tk.DoubleVar(value=self.config.get("risk_per_trade", 1.2))
-        risk_spin = ttk.Spinbox(settings, from_=0.5, to=5.0, increment=0.1, textvariable=self.risk_var, width=10, format="%.1f")
-        risk_spin.grid(row=1, column=3, padx=15, pady=10)
-        
-        # Row 3: TopStep Rules
-        self.topstep_var = tk.BooleanVar(value=self.config.get("use_topstep_rules", True))
-        topstep_check = ttk.Checkbutton(
-            settings,
-            text="Use TopStep Rules (Daily loss limits, drawdown protection)",
-            variable=self.topstep_var
-        )
-        topstep_check.grid(row=2, column=0, columnspan=4, sticky=tk.W, pady=(15, 10))
-        
-        # Start Button
-        start_btn = tk.Button(
-            main,
-            text="🚀 START TRADING",
-            font=("Arial", 14, "bold"),
-            bg="#27AE60",
-            fg="white",
-            command=self.start_bot,
-            width=30,
-            height=2
-        )
-        start_btn.pack(pady=20)
-        
-        info_label = tk.Label(
-            main,
-            text="Bot will launch in PowerShell terminal with live logs",
+            content,
+            text="• 3-20 characters\n• Letters, numbers, and underscores only\n• Will be saved to your profile",
             font=("Arial", 9),
-            bg="white",
-            fg="gray"
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary'],
+            justify=tk.LEFT
         )
-        info_label.pack()
+        instructions.pack(pady=(10, 30))
         
-        self.contracts_spin.grid(row=0, column=3, padx=10, pady=5)
-        
-        # Row 2: Daily Limits
-        ttk.Label(self.settings_frame, text="Max Trades/Day:", font=("Arial", 10, "bold")).grid(row=1, column=0, sticky=tk.W, pady=5)
-        self.trades_var = tk.IntVar(value=self.config.get("max_trades", 9))
-        self.trades_spin = ttk.Spinbox(self.settings_frame, from_=1, to=50, textvariable=self.trades_var, width=10, state="disabled")
-        self.trades_spin.grid(row=1, column=1, sticky=tk.W, padx=10, pady=5)
-        
-        ttk.Label(self.settings_frame, text="Risk per Trade (%):", font=("Arial", 10, "bold")).grid(row=1, column=2, sticky=tk.W, padx=(30, 0), pady=5)
-        self.risk_var = tk.DoubleVar(value=self.config.get("risk_per_trade", 1.2))
-        self.risk_spin = ttk.Spinbox(self.settings_frame, from_=0.5, to=5.0, increment=0.1, textvariable=self.risk_var, width=10, format="%.1f", state="disabled")
-        self.risk_spin.grid(row=1, column=3, padx=10, pady=5)
-        
-        # Row 3: TopStep Rules
-        self.topstep_var = tk.BooleanVar(value=self.config.get("use_topstep_rules", True))
-        self.topstep_check = ttk.Checkbutton(
-            self.settings_frame,
-            text="Use TopStep Rules (Daily loss limits, drawdown protection)",
-            variable=self.topstep_var,
-            state="disabled"
-        )
-        self.topstep_check.grid(row=2, column=0, columnspan=4, sticky=tk.W, pady=(10, 5))
-        
-        # Control Buttons
-        button_frame = tk.Frame(main)
+        # Button container
+        button_frame = tk.Frame(content, bg=self.colors['card'])
         button_frame.pack(fill=tk.X, pady=20)
         
-        self.start_btn = tk.Button(
-            button_frame,
-            text="🚀 START TRADING",
-            font=("Arial", 14, "bold"),
-            bg="#27AE60",
-            fg="white",
-            command=self.start_bot,
-            width=25,
-            height=2,
-            state=tk.NORMAL  # Enabled - validation happens when clicked
-        )
-        self.start_btn.pack(pady=10)
-        
-        info_label = tk.Label(
-            button_frame,
-            text="Bot will launch in PowerShell terminal with live logs",
-            font=("Arial", 9),
-            fg="gray"
-        )
-        info_label.pack()
+        # Next button
+        next_btn = self.create_button(button_frame, "NEXT →", self.validate_username, "next")
+        next_btn.pack()
     
-    def load_config(self):
-        """Load saved configuration."""
-        if self.config_file.exists():
-            try:
-                with open(self.config_file) as f:
-                    return json.load(f)
-            except:
-                pass
-        return {}
-    
-    def save_config(self):
-        """Save current configuration (only saves what exists)."""
-        config = self.config.copy()  # Start with existing config
+    def validate_username(self):
+        """Validate username and proceed to QuoTrading setup."""
+        username = self.username_entry.get().strip()
         
-        # Always save these if they exist
-        if hasattr(self, 'license_entry'):
-            config["quotrading_license"] = self.license_entry.get()
-        if hasattr(self, 'token_entry'):
-            config["broker_token"] = self.token_entry.get()
-        if hasattr(self, 'username_entry'):
-            config["broker_username"] = self.username_entry.get()
+        # Remove placeholder if present
+        if username == "Enter your username":
+            username = ""
         
-        # Save trading settings if they exist (Screen 2)
-        if hasattr(self, 'symbol_var'):
-            config["symbol"] = self.symbol_var.get().split(" - ")[0]
-        if hasattr(self, 'contracts_var'):
-            config["max_contracts"] = self.contracts_var.get()
-        if hasattr(self, 'trades_var'):
-            config["max_trades"] = self.trades_var.get()
-        if hasattr(self, 'risk_var'):
-            config["risk_per_trade"] = self.risk_var.get()
-        if hasattr(self, 'topstep_var'):
-            config["use_topstep_rules"] = self.topstep_var.get()
-        
-        with open(self.config_file, 'w') as f:
-            json.dump(config, f, indent=2)
-    
-    def start_bot(self):
-        """Validate broker credentials and start the trading bot in PowerShell terminal."""
-        # Step 1: Validate broker credentials NOW (right before trading)
-        broker = self.config.get("broker", "TopStep")
-        broker_token = self.config.get("broker_token", "")
-        broker_username = self.config.get("broker_username", "")
-        license_key = self.config.get("quotrading_license", "")
-        
-        # Admin key bypasses broker validation
-        if license_key != "QUOTRADING_ADMIN_MASTER_2025":
-            # Validate broker credentials are present
-            if not broker_token or not broker_username:
-                messagebox.showerror(
-                    "Missing Broker Credentials",
-                    f"Your {broker} credentials are missing!\n\n"
-                    f"Please go back and enter your API credentials."
-                )
-                return
-            
-            # TODO: When you build the API server, add real credential validation here:
-            # response = requests.post("https://api.quotrading.com/validate", 
-            #                          json={"broker": broker, "token": broker_token})
-            # For now, we just check they exist
-            
-            messagebox.showinfo(
-                "Credentials Ready",
-                f"✓ License key validated\n"
-                f"✓ {broker} credentials ready\n\n"
-                f"Broker credentials will be validated when the bot connects."
+        # Validation
+        if not username:
+            messagebox.showerror(
+                "Username Required",
+                "Please enter a username to continue."
             )
+            return
         
-        # Step 2: Save final config
+        if len(username) < 3 or len(username) > 20:
+            messagebox.showerror(
+                "Invalid Username",
+                "Username must be between 3 and 20 characters."
+            )
+            return
+        
+        if not re.match(r'^[a-zA-Z0-9_]+$', username):
+            messagebox.showerror(
+                "Invalid Username",
+                "Username can only contain letters, numbers, and underscores."
+            )
+            return
+        
+        # Save username to config
+        self.config["username"] = username
         self.save_config()
         
-        # Step 3: Create .env file
+        # Proceed to QuoTrading setup
+        self.setup_quotrading_screen()
+    
+    def setup_quotrading_screen(self):
+        """Screen 1: QuoTrading Account Setup with Email + API Key validation."""
+        # Clear window
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        
+        self.current_screen = 1
+        self.root.title("QuoTrading - Account Setup")
+        
+        # Header
+        header = self.create_header("QuoTrading Account", "Enter your subscription credentials")
+        
+        # Main container
+        main = tk.Frame(self.root, bg=self.colors['background'], padx=40, pady=30)
+        main.pack(fill=tk.BOTH, expand=True)
+        
+        # Card
+        card = tk.Frame(main, bg=self.colors['card'], relief=tk.FLAT, bd=0)
+        card.pack(fill=tk.BOTH, expand=True)
+        card.configure(highlightbackground=self.colors['border'], highlightthickness=2)
+        
+        # Card content
+        content = tk.Frame(card, bg=self.colors['card'], padx=30, pady=30)
+        content.pack(fill=tk.BOTH, expand=True)
+        
+        # Info message
+        info = tk.Label(
+            content,
+            text="Enter your QuoTrading subscription details.\nWe'll validate your access before proceeding.",
+            font=("Arial", 11),
+            bg=self.colors['card'],
+            fg=self.colors['text_light'],
+            justify=tk.CENTER
+        )
+        info.pack(pady=(0, 20))
+        
+        # Email input
+        self.email_entry = self.create_input_field(
+            content, 
+            "Email Address:",
+            placeholder=self.config.get("quotrading_email", "your.email@example.com")
+        )
+        
+        # API Key input
+        self.api_key_entry = self.create_input_field(
+            content,
+            "API Key:",
+            is_password=True,
+            placeholder=self.config.get("quotrading_api_key", "")
+        )
+        
+        # Help text
+        help_text = tk.Label(
+            content,
+            text="📧 Check your email for your API key\n💡 Contact support@quotrading.com if you need help",
+            font=("Arial", 9),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary'],
+            justify=tk.CENTER
+        )
+        help_text.pack(pady=(10, 20))
+        
+        # Button container
+        button_frame = tk.Frame(content, bg=self.colors['card'])
+        button_frame.pack(fill=tk.X, pady=20)
+        
+        # Back button
+        back_btn = self.create_button(button_frame, "← BACK", self.setup_username_screen, "back")
+        back_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Next button
+        next_btn = self.create_button(button_frame, "NEXT →", self.validate_quotrading, "next")
+        next_btn.pack(side=tk.RIGHT)
+    
+    def validate_quotrading(self):
+        """Validate QuoTrading credentials before proceeding."""
+        email = self.email_entry.get().strip()
+        api_key = self.api_key_entry.get().strip()
+        
+        # Remove placeholders
+        if email == "your.email@example.com":
+            email = ""
+        
+        # Validation
+        if not email or not api_key:
+            messagebox.showerror(
+                "Missing Information",
+                "Please enter both your email and API key."
+            )
+            return
+        
+        # Validate email format
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, email):
+            messagebox.showerror(
+                "Invalid Email",
+                "Please enter a valid email address."
+            )
+            return
+        
+        # Admin master key - instant access
+        if api_key == "QUOTRADING_ADMIN_MASTER_2025":
+            self.config["quotrading_email"] = email
+            self.config["quotrading_api_key"] = api_key
+            self.config["quotrading_validated"] = True
+            self.save_config()
+            self.setup_broker_screen()
+            return
+        
+        # Validate API key format (basic check)
+        if len(api_key) < 20:
+            messagebox.showerror(
+                "Invalid API Key",
+                "API key appears to be invalid.\nPlease check your email for the correct API key."
+            )
+            return
+        
+        # TODO: Make real API call to QuoTrading backend to validate credentials
+        # For now, simulate validation
+        messagebox.showinfo(
+            "Validation",
+            "⚠️ Note: Real API validation will be implemented.\n\nFor now, credentials are accepted if properly formatted."
+        )
+        
+        # Save credentials
+        self.config["quotrading_email"] = email
+        self.config["quotrading_api_key"] = api_key
+        self.config["quotrading_validated"] = True
+        self.save_config()
+        
+        # Proceed to broker setup
+        self.setup_broker_screen()
+    
+    def setup_broker_screen(self):
+        """Screen 2: Broker Connection Setup (Prop Firm vs Live Broker)."""
+        # Clear window
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        
+        self.current_screen = 2
+        self.root.title("QuoTrading - Broker Setup")
+        
+        # Header
+        header = self.create_header("Broker Connection", "Select your account type and broker")
+        
+        # Main container
+        main = tk.Frame(self.root, bg=self.colors['background'], padx=40, pady=30)
+        main.pack(fill=tk.BOTH, expand=True)
+        
+        # Card
+        card = tk.Frame(main, bg=self.colors['card'], relief=tk.FLAT, bd=0)
+        card.pack(fill=tk.BOTH, expand=True)
+        card.configure(highlightbackground=self.colors['border'], highlightthickness=2)
+        
+        # Card content
+        content = tk.Frame(card, bg=self.colors['card'], padx=30, pady=30)
+        content.pack(fill=tk.BOTH, expand=True)
+        
+        # Info message
+        info = tk.Label(
+            content,
+            text="Choose your broker type and enter credentials",
+            font=("Arial", 11),
+            bg=self.colors['card'],
+            fg=self.colors['text_light'],
+            justify=tk.CENTER
+        )
+        info.pack(pady=(0, 20))
+        
+        # Broker Type Selection - Card-style buttons
+        type_label = tk.Label(
+            content,
+            text="Account Type:",
+            font=("Arial", 13, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text']
+        )
+        type_label.pack(pady=(0, 15))
+        
+        # Container for cards
+        cards_container = tk.Frame(content, bg=self.colors['card'])
+        cards_container.pack(fill=tk.X, pady=(0, 20))
+        
+        # Initialize broker type variable
+        self.broker_type_var = tk.StringVar(value=self.config.get("broker_type", "Prop Firm"))
+        
+        # Create card buttons
+        self.broker_cards = {}
+        broker_types = [
+            ("Prop Firm", "💼", "Funded trading programs"),
+            ("Live Broker", "🏦", "Direct broker accounts")
+        ]
+        
+        for i, (btype, icon, desc) in enumerate(broker_types):
+            card_frame = tk.Frame(
+                cards_container,
+                bg=self.colors['secondary'],
+                relief=tk.FLAT,
+                bd=0,
+                highlightthickness=3,
+                highlightbackground=self.colors['border'] if self.broker_type_var.get() == btype else self.colors['text_secondary']
+            )
+            card_frame.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=10)
+            
+            # Make card clickable
+            def make_select(bt=btype):
+                return lambda e: self.select_broker_type(bt)
+            
+            card_frame.bind("<Button-1>", make_select(btype))
+            
+            # Card content
+            inner = tk.Frame(card_frame, bg=self.colors['secondary'])
+            inner.pack(expand=True, fill=tk.BOTH, padx=20, pady=20)
+            inner.bind("<Button-1>", make_select(btype))
+            
+            # Icon
+            icon_label = tk.Label(
+                inner,
+                text=icon,
+                font=("Arial", 30),
+                bg=self.colors['secondary'],
+                fg=self.colors['text']
+            )
+            icon_label.pack()
+            icon_label.bind("<Button-1>", make_select(btype))
+            
+            # Type name
+            type_name = tk.Label(
+                inner,
+                text=btype,
+                font=("Arial", 13, "bold"),
+                bg=self.colors['secondary'],
+                fg=self.colors['text']
+            )
+            type_name.pack(pady=(10, 5))
+            type_name.bind("<Button-1>", make_select(btype))
+            
+            # Description
+            desc_label = tk.Label(
+                inner,
+                text=desc,
+                font=("Arial", 9),
+                bg=self.colors['secondary'],
+                fg=self.colors['text_light']
+            )
+            desc_label.pack()
+            desc_label.bind("<Button-1>", make_select(btype))
+            
+            self.broker_cards[btype] = card_frame
+        
+        # Broker dropdown
+        broker_label = tk.Label(
+            content,
+            text="Select Broker:",
+            font=("Arial", 12, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text']
+        )
+        broker_label.pack(anchor=tk.W, pady=(10, 5))
+        
+        self.broker_var = tk.StringVar(value=self.config.get("broker", "TopStep"))
+        self.broker_dropdown = ttk.Combobox(
+            content,
+            textvariable=self.broker_var,
+            state="readonly",
+            font=("Arial", 11),
+            width=35
+        )
+        self.broker_dropdown.pack(fill=tk.X, pady=(0, 15))
+        self.broker_dropdown.bind('<<ComboboxSelected>>', lambda e: self.update_broker_fields())
+        
+        # Update broker options based on selected type
+        self.update_broker_options()
+        
+        # Broker credentials
+        self.broker_token_entry = self.create_input_field(
+            content,
+            "API Token:",
+            is_password=True,
+            placeholder=self.config.get("broker_token", "")
+        )
+        
+        self.broker_username_entry = self.create_input_field(
+            content,
+            "Username/Email:",
+            placeholder=self.config.get("broker_username", "")
+        )
+        
+        # Help text
+        help_text = tk.Label(
+            content,
+            text="💡 Get your API credentials from your broker's account dashboard",
+            font=("Arial", 9),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary']
+        )
+        help_text.pack(pady=(5, 20))
+        
+        # Button container
+        button_frame = tk.Frame(content, bg=self.colors['card'])
+        button_frame.pack(fill=tk.X, pady=10)
+        
+        # Back button
+        back_btn = self.create_button(button_frame, "← BACK", self.setup_quotrading_screen, "back")
+        back_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Next button
+        next_btn = self.create_button(button_frame, "NEXT →", self.validate_broker, "next")
+        next_btn.pack(side=tk.RIGHT)
+    
+    def select_broker_type(self, broker_type):
+        """Select broker type and update UI."""
+        self.broker_type_var.set(broker_type)
+        
+        # Update card styling
+        for btype, card in self.broker_cards.items():
+            if btype == broker_type:
+                card.config(highlightbackground=self.colors['border'], highlightthickness=3)
+            else:
+                card.config(highlightbackground=self.colors['text_secondary'], highlightthickness=3)
+        
+        # Update broker dropdown
+        self.update_broker_options()
+    
+    def update_broker_options(self):
+        """Update broker dropdown based on account type."""
+        broker_type = self.broker_type_var.get()
+        
+        if broker_type == "Prop Firm":
+            options = ["TopStep", "Earn2Trade", "The5ers", "FTMO"]
+        else:  # Live Broker
+            options = ["Tradovate", "Rithmic", "Interactive Brokers", "NinjaTrader"]
+        
+        self.broker_dropdown['values'] = options
+        self.broker_dropdown.current(0)
+    
+    def update_broker_fields(self):
+        """Update credential field labels based on selected broker."""
+        # This method can be extended to customize labels per broker
+        pass
+    
+    def validate_broker(self):
+        """Validate broker credentials before proceeding."""
+        broker = self.broker_var.get()
+        token = self.broker_token_entry.get().strip()
+        username = self.broker_username_entry.get().strip()
+        
+        # Validation
+        if not token or not username:
+            messagebox.showerror(
+                "Missing Credentials",
+                f"Please enter both {broker} API Token and Username."
+            )
+            return
+        
+        # Check if using admin key - bypass broker validation
+        quotrading_key = self.config.get("quotrading_api_key", "")
+        if quotrading_key == "QUOTRADING_ADMIN_MASTER_2025":
+            self.config["broker_type"] = self.broker_type_var.get()
+            self.config["broker"] = broker
+            self.config["broker_token"] = token
+            self.config["broker_username"] = username
+            self.config["broker_validated"] = True
+            self.save_config()
+            self.setup_trading_screen()
+            return
+        
+        # TODO: Make real API call to broker to validate credentials
+        # For now, simulate validation
+        messagebox.showinfo(
+            "Validation",
+            "⚠️ Note: Real broker API validation will be implemented.\n\nFor now, credentials are accepted if filled in."
+        )
+        
+        # Save broker credentials
+        self.config["broker_type"] = self.broker_type_var.get()
+        self.config["broker"] = broker
+        self.config["broker_token"] = token
+        self.config["broker_username"] = username
+        self.config["broker_validated"] = True
+        self.save_config()
+        
+        # Proceed to trading preferences
+        self.setup_trading_screen()
+    
+    def setup_trading_screen(self):
+        """Screen 3: Trading Preferences and Launch."""
+        # Clear window
+        for widget in self.root.winfo_children():
+            widget.destroy()
+        
+        self.current_screen = 3
+        self.root.title("QuoTrading - Trading Settings")
+        
+        # Header
+        header = self.create_header("Trading Preferences", "Configure your trading strategy")
+        
+        # Main container with scrollbar capability
+        main = tk.Frame(self.root, bg=self.colors['background'], padx=30, pady=20)
+        main.pack(fill=tk.BOTH, expand=True)
+        
+        # Card
+        card = tk.Frame(main, bg=self.colors['card'], relief=tk.FLAT, bd=0)
+        card.pack(fill=tk.BOTH, expand=True)
+        card.configure(highlightbackground=self.colors['border'], highlightthickness=2)
+        
+        # Card content
+        content = tk.Frame(card, bg=self.colors['card'], padx=25, pady=25)
+        content.pack(fill=tk.BOTH, expand=True)
+        
+        # Symbol Selection
+        symbol_label = tk.Label(
+            content,
+            text="Trading Symbols (select at least one):",
+            font=("Arial", 12, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text']
+        )
+        symbol_label.pack(anchor=tk.W, pady=(0, 10))
+        
+        # Symbol checkboxes - 2 columns
+        symbol_frame = tk.Frame(content, bg=self.colors['card'])
+        symbol_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        self.symbol_vars = {}
+        symbols = [
+            ("ES", "E-mini S&P 500"),
+            ("NQ", "E-mini Nasdaq 100"),
+            ("RTY", "E-mini Russell 2000"),
+            ("YM", "E-mini Dow"),
+            ("CL", "Crude Oil"),
+            ("GC", "Gold")
+        ]
+        
+        saved_symbols = self.config.get("symbols", ["ES"])
+        if isinstance(saved_symbols, str):
+            saved_symbols = [saved_symbols]
+        
+        for i, (code, name) in enumerate(symbols):
+            row = i // 2
+            col = i % 2
+            
+            var = tk.BooleanVar(value=(code in saved_symbols))
+            self.symbol_vars[code] = var
+            
+            cb = tk.Checkbutton(
+                symbol_frame,
+                text=f"{code} - {name}",
+                variable=var,
+                font=("Arial", 10),
+                bg=self.colors['card'],
+                fg=self.colors['text'],
+                selectcolor=self.colors['secondary'],
+                activebackground=self.colors['card'],
+                activeforeground=self.colors['success'],
+                cursor="hand2"
+            )
+            cb.grid(row=row, column=col, sticky=tk.W, padx=10, pady=3)
+        
+        # Account Settings Row
+        settings_row = tk.Frame(content, bg=self.colors['card'])
+        settings_row.pack(fill=tk.X, pady=(0, 15))
+        
+        # Account Size
+        acc_frame = tk.Frame(settings_row, bg=self.colors['card'])
+        acc_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        
+        tk.Label(
+            acc_frame,
+            text="Account Size ($):",
+            font=("Arial", 11, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text']
+        ).pack(anchor=tk.W, pady=(0, 5))
+        
+        self.account_entry = tk.Entry(
+            acc_frame,
+            font=("Arial", 11),
+            bg=self.colors['input_bg'],
+            fg=self.colors['text'],
+            insertbackground=self.colors['success'],
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=2,
+            highlightbackground=self.colors['border'],
+            highlightcolor=self.colors['success']
+        )
+        self.account_entry.pack(fill=tk.X, ipady=6, padx=2)
+        self.account_entry.insert(0, self.config.get("account_size", "10000"))
+        
+        # Risk Per Trade
+        risk_frame = tk.Frame(settings_row, bg=self.colors['card'])
+        risk_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        
+        tk.Label(
+            risk_frame,
+            text="Risk per Trade (%):",
+            font=("Arial", 11, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text']
+        ).pack(anchor=tk.W, pady=(0, 5))
+        
+        self.risk_var = tk.DoubleVar(value=self.config.get("risk_per_trade", 1.0))
+        risk_spin = ttk.Spinbox(
+            risk_frame,
+            from_=0.5,
+            to=5.0,
+            increment=0.1,
+            textvariable=self.risk_var,
+            width=15,
+            format="%.1f"
+        )
+        risk_spin.pack(fill=tk.X, ipady=4)
+        
+        # Daily Loss Limit
+        loss_frame = tk.Frame(settings_row, bg=self.colors['card'])
+        loss_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        tk.Label(
+            loss_frame,
+            text="Daily Loss Limit ($):",
+            font=("Arial", 11, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text']
+        ).pack(anchor=tk.W, pady=(0, 5))
+        
+        self.loss_entry = tk.Entry(
+            loss_frame,
+            font=("Arial", 11),
+            bg=self.colors['input_bg'],
+            fg=self.colors['text'],
+            insertbackground=self.colors['success'],
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=2,
+            highlightbackground=self.colors['border'],
+            highlightcolor=self.colors['success']
+        )
+        self.loss_entry.pack(fill=tk.X, ipady=6, padx=2)
+        self.loss_entry.insert(0, self.config.get("daily_loss_limit", "2000"))
+        
+        # Advanced Settings Row
+        advanced_row = tk.Frame(content, bg=self.colors['card'])
+        advanced_row.pack(fill=tk.X, pady=(0, 15))
+        
+        # Max Contracts
+        contracts_frame = tk.Frame(advanced_row, bg=self.colors['card'])
+        contracts_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+        
+        tk.Label(
+            contracts_frame,
+            text="Max Contracts:",
+            font=("Arial", 11, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text']
+        ).pack(anchor=tk.W, pady=(0, 5))
+        
+        self.contracts_var = tk.IntVar(value=self.config.get("max_contracts", 3))
+        contracts_spin = ttk.Spinbox(
+            contracts_frame,
+            from_=1,
+            to=25,
+            textvariable=self.contracts_var,
+            width=15
+        )
+        contracts_spin.pack(fill=tk.X, ipady=4)
+        
+        # Max Trades Per Day
+        trades_frame = tk.Frame(advanced_row, bg=self.colors['card'])
+        trades_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        tk.Label(
+            trades_frame,
+            text="Max Trades/Day:",
+            font=("Arial", 11, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text']
+        ).pack(anchor=tk.W, pady=(0, 5))
+        
+        self.trades_var = tk.IntVar(value=self.config.get("max_trades", 10))
+        trades_spin = ttk.Spinbox(
+            trades_frame,
+            from_=1,
+            to=50,
+            textvariable=self.trades_var,
+            width=15
+        )
+        trades_spin.pack(fill=tk.X, ipady=4)
+        
+        # Summary display
+        summary_frame = tk.Frame(content, bg=self.colors['secondary'], relief=tk.FLAT, bd=0)
+        summary_frame.pack(fill=tk.X, pady=(10, 20))
+        summary_frame.configure(highlightbackground=self.colors['border'], highlightthickness=1)
+        
+        summary_content = tk.Frame(summary_frame, bg=self.colors['secondary'], padx=15, pady=10)
+        summary_content.pack(fill=tk.X)
+        
+        summary_title = tk.Label(
+            summary_content,
+            text="✓ Ready to Trade",
+            font=("Arial", 12, "bold"),
+            bg=self.colors['secondary'],
+            fg=self.colors['success']
+        )
+        summary_title.pack(pady=(0, 5))
+        
+        username = self.config.get("username", "Trader")
+        broker = self.config.get("broker", "TopStep")
+        
+        summary_text = tk.Label(
+            summary_content,
+            text=f"User: {username} | Broker: {broker}\nAll credentials validated and ready",
+            font=("Arial", 9),
+            bg=self.colors['secondary'],
+            fg=self.colors['text_light'],
+            justify=tk.CENTER
+        )
+        summary_text.pack()
+        
+        # Button container
+        button_frame = tk.Frame(content, bg=self.colors['card'])
+        button_frame.pack(fill=tk.X, pady=15)
+        
+        # Back button
+        back_btn = self.create_button(button_frame, "← BACK", self.setup_broker_screen, "back")
+        back_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Start Bot button
+        start_btn = self.create_button(button_frame, "START BOT", self.start_bot, "start")
+        start_btn.pack(side=tk.RIGHT)
+    
+    def start_bot(self):
+        """Validate settings and start the trading bot."""
+        # Validate at least one symbol selected
+        selected_symbols = [code for code, var in self.symbol_vars.items() if var.get()]
+        
+        if not selected_symbols:
+            messagebox.showerror(
+                "No Symbols Selected",
+                "Please select at least one trading symbol."
+            )
+            return
+        
+        # Validate account size
+        try:
+            account_size = float(self.account_entry.get())
+            if account_size <= 0:
+                raise ValueError()
+        except ValueError:
+            messagebox.showerror(
+                "Invalid Account Size",
+                "Please enter a valid account size (greater than 0)."
+            )
+            return
+        
+        # Validate daily loss limit
+        try:
+            loss_limit = float(self.loss_entry.get())
+            if loss_limit <= 0:
+                raise ValueError()
+        except ValueError:
+            messagebox.showerror(
+                "Invalid Loss Limit",
+                "Please enter a valid daily loss limit (greater than 0)."
+            )
+            return
+        
+        # Save all settings
+        self.config["symbols"] = selected_symbols
+        self.config["account_size"] = account_size
+        self.config["risk_per_trade"] = self.risk_var.get()
+        self.config["daily_loss_limit"] = loss_limit
+        self.config["max_contracts"] = self.contracts_var.get()
+        self.config["max_trades"] = self.trades_var.get()
+        self.save_config()
+        
+        # Create .env file
         self.create_env_file()
         
-        # Step 4: Show confirmation
+        # Show confirmation
+        symbols_str = ", ".join(selected_symbols)
+        broker = self.config.get("broker", "TopStep")
+        
         result = messagebox.askyesno(
             "Launch Trading Bot?",
-            f"Ready to start trading with these settings:\n\n"
+            f"Ready to start bot with these settings:\n\n"
             f"Broker: {broker}\n"
-            f"Symbol: {self.symbol_var.get()}\n"
+            f"Symbols: {symbols_str}\n"
             f"Max Contracts: {self.contracts_var.get()}\n"
             f"Max Trades/Day: {self.trades_var.get()}\n"
-            f"Risk/Trade: {self.risk_var.get()}%\n\n"
+            f"Risk/Trade: {self.risk_var.get()}%\n"
+            f"Daily Loss Limit: ${loss_limit}\n\n"
             f"This will open a PowerShell terminal with live logs.\n"
-            f"The bot will connect to {broker} and start trading.\n"
-            f"Close the PowerShell window to stop the bot.\n\n"
+            f"Use the window's close button to stop the bot.\n\n"
             f"Continue?"
         )
         
@@ -757,24 +976,32 @@ class QuoTradingLauncher:
         
         # Launch bot in PowerShell terminal
         try:
+            # Get the bot directory (parent of customer folder)
+            bot_dir = Path(__file__).parent.parent.absolute()
+            
             # PowerShell command to run the bot
             ps_command = [
                 "powershell.exe",
                 "-NoExit",  # Keep window open
                 "-Command",
-                f"python run.py"
+                f"cd '{bot_dir}'; python run.py"
             ]
             
-            # Start PowerShell process
-            subprocess.Popen(ps_command, creationflags=subprocess.CREATE_NEW_CONSOLE)
+            # Start PowerShell process in a NEW CONSOLE WINDOW
+            self.bot_process = subprocess.Popen(
+                ps_command,
+                creationflags=subprocess.CREATE_NEW_CONSOLE,
+                cwd=str(bot_dir)
+            )
             
             # Success message
             messagebox.showinfo(
                 "Bot Launched!",
-                "✓ QuoTrading AI bot launched successfully!\n\n"
-                "PowerShell terminal opened with live logs.\n"
-                "To stop the bot, close the PowerShell window.\n\n"
-                "You can close this setup window now."
+                f"✓ QuoTrading AI bot launched successfully!\n\n"
+                f"Symbols: {symbols_str}\n\n"
+                f"PowerShell terminal opened with live logs.\n"
+                f"To stop the bot, close the PowerShell window.\n\n"
+                f"You can close this setup window now."
             )
             
             # Close the GUI
@@ -789,15 +1016,27 @@ class QuoTradingLauncher:
     
     def create_env_file(self):
         """Create .env file from GUI settings."""
-        symbol = self.symbol_var.get().split(" - ")[0]  # Extract symbol code (ES, NQ, etc.)
+        selected_symbols = [code for code, var in self.symbol_vars.items() if var.get()]
+        if not selected_symbols:
+            selected_symbols = ["ES"]
+        
+        symbols_str = ",".join(selected_symbols)
         broker = self.config.get("broker", "TopStep")
+        
+        # Get the bot directory (parent of customer folder)
+        bot_dir = Path(__file__).parent.parent.absolute()
+        env_path = bot_dir / '.env'
         
         env_content = f"""# QuoTrading AI - Auto-generated Configuration
 # Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 # DO NOT EDIT MANUALLY - Use the launcher to change settings
 
-# License & API Keys
-QUOTRADING_LICENSE_KEY={self.config.get("quotrading_license", "")}
+# QuoTrading Account
+QUOTRADING_EMAIL={self.config.get("quotrading_email", "")}
+QUOTRADING_API_KEY={self.config.get("quotrading_api_key", "")}
+QUOTRADING_API_URL=https://api.quotrading.com/v1/signals
+
+# Broker Configuration
 BROKER={broker}
 BROKER_API_TOKEN={self.config.get("broker_token", "")}
 BROKER_USERNAME={self.config.get("broker_username", "")}
@@ -808,23 +1047,42 @@ TOPSTEP_USERNAME={self.config.get("broker_username", "")}
 TRADOVATE_API_KEY={self.config.get("broker_token", "")}
 TRADOVATE_USERNAME={self.config.get("broker_username", "")}
 
-# Trading Configuration
-BOT_INSTRUMENT={symbol}
+# Trading Configuration - Multi-Symbol Support
+BOT_INSTRUMENTS={symbols_str}
 BOT_MAX_CONTRACTS={self.contracts_var.get()}
 BOT_MAX_TRADES_PER_DAY={self.trades_var.get()}
 BOT_RISK_PER_TRADE={self.risk_var.get() / 100}
-BOT_USE_TOPSTEP_RULES={str(self.topstep_var.get()).lower()}
+BOT_DAILY_LOSS_LIMIT={self.loss_entry.get()}
+
+# Trading Mode
+BOT_SHADOW_MODE=false
+BOT_DRY_RUN=false
 
 # Environment
 BOT_ENVIRONMENT=production
-BOT_DRY_RUN=false
 CONFIRM_LIVE_TRADING=1
 BOT_LOG_LEVEL=INFO
-QUOTRADING_API_URL=https://api.quotrading.com/v1/signals
 """
         
-        with open('.env', 'w') as f:
+        with open(env_path, 'w') as f:
             f.write(env_content)
+        
+        print(f"✓ .env file created with {len(selected_symbols)} symbols: {symbols_str}")
+    
+    def load_config(self):
+        """Load saved configuration."""
+        if self.config_file.exists():
+            try:
+                with open(self.config_file) as f:
+                    return json.load(f)
+            except:
+                pass
+        return {}
+    
+    def save_config(self):
+        """Save current configuration."""
+        with open(self.config_file, 'w') as f:
+            json.dump(self.config, f, indent=2)
     
     def run(self):
         """Start the GUI application."""

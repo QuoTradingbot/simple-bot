@@ -4821,7 +4821,9 @@ def perform_daily_reset(symbol: str, new_date: Any) -> None:
         "after_noon_force_flattened": 0  # After-noon entries force-closed
     }
     
-    # Re-enable trading if it was stopped for daily limits
+    # Re-enable trading if it was stopped for any daily limit reason
+    # "daily_loss_limit" = specific daily loss limit breached
+    # "daily_limits_reached" = approaching failure without recovery mode
     if bot_status["stop_reason"] in ["daily_loss_limit", "daily_limits_reached"]:
         bot_status["trading_enabled"] = True
         bot_status["stop_reason"] = None
@@ -5131,7 +5133,7 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
             return False, "Daily limits reached - trading stopped until next session (6 PM ET reset)"
     else:
         # Not approaching failure - clear any safety mode that was set
-        if bot_status.get("stop_reason") in ["daily_limits_reached", "approaching_failure_warning", "recovery_mode"]:
+        if bot_status.get("stop_reason") in ["daily_limits_reached", "recovery_mode"]:
             logger.info("=" * 80)
             logger.info("SAFE ZONE: Back to normal operation")
             logger.info("Bot has moved away from failure thresholds")

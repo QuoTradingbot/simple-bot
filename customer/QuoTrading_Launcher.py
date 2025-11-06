@@ -31,22 +31,25 @@ class QuoTradingLauncher:
         self.root.geometry("700x650")
         self.root.resizable(False, False)
         
-        # Green and Black color scheme
+        # Green and Black color scheme - Premium Matrix-style theme
         self.colors = {
             'primary': '#000000',        # Pure black background
-            'secondary': '#0A0A0A',      # Near black for cards
-            'success': '#00FF41',        # Matrix green (bright)
-            'success_dark': '#00B82E',   # Darker green for buttons
-            'error': '#FF0000',          # Red for errors
-            'background': '#000000',     # Black background
-            'card': '#0F0F0F',           # Dark gray card
-            'text': '#00FF41',           # Bright green text
-            'text_light': '#00CC33',     # Medium green
-            'text_secondary': '#008822', # Dark green
-            'border': '#00FF41',         # Green border
-            'input_bg': '#1A1A1A',       # Dark input background
-            'button_hover': '#00DD38'    # Button hover color
+            'secondary': '#0A0A0A',      # Near black for secondary cards
+            'success': '#00FF41',        # Matrix green (bright) - primary accent
+            'success_dark': '#00B82E',   # Darker green for buttons/headers
+            'error': '#FF0000',          # Red for error messages
+            'background': '#000000',     # Black main background
+            'card': '#0F0F0F',           # Dark gray card background
+            'text': '#00FF41',           # Bright green text (primary)
+            'text_light': '#00CC33',     # Medium green (secondary labels)
+            'text_secondary': '#008822', # Dark green (tertiary/hints)
+            'border': '#00FF41',         # Green border (glowing effect)
+            'input_bg': '#1A1A1A',       # Very dark gray for input fields
+            'button_hover': '#00DD38'    # Slightly darker green for hover state
         }
+        
+        # Default fallback symbol
+        self.DEFAULT_SYMBOL = 'ES'
         
         self.root.configure(bg=self.colors['background'])
         
@@ -120,18 +123,23 @@ class QuoTradingLauncher:
         entry.pack(fill=tk.X, ipady=8, padx=2)
         
         if placeholder:
+            # Track placeholder state with custom attribute
+            entry.is_placeholder = True
+            entry.placeholder_text = placeholder
             entry.insert(0, placeholder)
             entry.config(fg=self.colors['text_secondary'])
             
             def on_focus_in(event):
-                if entry.get() == placeholder:
+                if entry.is_placeholder:
                     entry.delete(0, tk.END)
                     entry.config(fg=self.colors['text'])
+                    entry.is_placeholder = False
             
             def on_focus_out(event):
                 if not entry.get():
-                    entry.insert(0, placeholder)
+                    entry.insert(0, entry.placeholder_text)
                     entry.config(fg=self.colors['text_secondary'])
+                    entry.is_placeholder = True
             
             entry.bind("<FocusIn>", on_focus_in)
             entry.bind("<FocusOut>", on_focus_out)
@@ -1018,7 +1026,7 @@ class QuoTradingLauncher:
         """Create .env file from GUI settings."""
         selected_symbols = [code for code, var in self.symbol_vars.items() if var.get()]
         if not selected_symbols:
-            selected_symbols = ["ES"]
+            selected_symbols = [self.DEFAULT_SYMBOL]  # Use class constant instead of magic string
         
         symbols_str = ",".join(selected_symbols)
         broker = self.config.get("broker", "TopStep")

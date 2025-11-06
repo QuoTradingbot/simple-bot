@@ -144,8 +144,9 @@ bot_status: Dict[str, Any] = {
     # PRODUCTION: Track trading costs
     "total_slippage_cost": 0.0,  # Total slippage costs across all trades
     "total_commission": 0.0,  # Total commissions across all trades
-    # Prop Firm Safety Mode: Recovery mode confidence threshold
-    "recovery_confidence_threshold": None,  # Set when in recovery mode
+    # Recovery Mode: Dynamic risk management when approaching limits
+    "recovery_confidence_threshold": None,  # Set when in recovery mode (higher confidence required)
+    "recovery_severity": None,  # Severity level (0.8-1.0) indicating proximity to failure
 }
 
 
@@ -2064,6 +2065,28 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
     else:
         # No RL confidence - cap at user's max
         contracts = min(contracts, user_max_contracts)
+    
+    # RECOVERY MODE: Further reduce position size when approaching limits
+    if bot_status.get("recovery_confidence_threshold") is not None:
+        severity = bot_status.get("recovery_severity", 0.8)  # Default to 80% if not set
+        # Reduce position size based on proximity to failure
+        # At 80% severity: 75% of normal size
+        # At 90% severity: 50% of normal size
+        # At 95%+ severity: 33% of normal size
+        if severity >= 0.95:
+            recovery_multiplier = 0.33
+        elif severity >= 0.90:
+            recovery_multiplier = 0.50
+        elif severity >= 0.80:
+            recovery_multiplier = 0.75
+        else:
+            recovery_multiplier = 1.0
+        
+        original_contracts = contracts
+        contracts = max(1, int(round(contracts * recovery_multiplier)))
+        
+        if contracts != original_contracts:
+            logger.warning(f"[RECOVERY MODE] Position size reduced: {original_contracts} → {contracts} contracts (severity: {severity*100:.0f}%)")
     
     if contracts == 0:
         logger.warning(f"Position size too small: risk=${risk_per_contract:.2f}, allowance=${risk_dollars:.2f}")
@@ -5001,42 +5024,46 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
     if not is_safe:
         return False, reason
     
-    # Check if approaching failure (Prop Firm Safety Mode)
+    # Check if approaching failure (Recovery Mode for All Account Types)
     is_approaching, approach_reason, severity = check_approaching_failure(symbol)
     if is_approaching:
-        # Use stop_on_approach setting to determine behavior
-        if CONFIG.get("stop_on_approach", True):
-            # SAFE MODE: Stop trading when approaching failure
+        # Use recovery_mode setting to determine behavior
+        # INVERTED LOGIC: recovery_mode=True means CONTINUE trading, False means STOP
+        if CONFIG.get("recovery_mode", False):
+            # RECOVERY MODE ENABLED: Continue trading with high confidence requirements
+            required_confidence = get_recovery_confidence_threshold(severity)
+            if bot_status.get("stop_reason") != "recovery_mode":
+                logger.warning("=" * 80)
+                logger.warning("RECOVERY MODE: APPROACHING LIMITS - CONTINUING WITH HIGH CONFIDENCE")
+                logger.warning(f"Reason: {approach_reason}")
+                logger.warning(f"Severity: {severity*100:.1f}%")
+                logger.warning(f"Required confidence increased to {required_confidence*100:.1f}%")
+                logger.warning("Bot will ONLY take highest-confidence signals")
+                logger.warning("Position size will be dynamically reduced")
+                logger.warning("⚠️ Attempting to recover from losses")
+                logger.warning("=" * 80)
+                bot_status["stop_reason"] = "recovery_mode"
+            
+            # Store recovery threshold and severity for use in signal evaluation and position sizing
+            bot_status["recovery_confidence_threshold"] = required_confidence
+            bot_status["recovery_severity"] = severity
+            # Don't stop trading, but signal evaluation will use higher threshold
+        else:
+            # RECOVERY MODE DISABLED (Safe Mode): Stop trading when approaching failure
             if bot_status.get("stop_reason") != "approaching_failure":
                 logger.warning("=" * 80)
-                logger.warning("PROP FIRM SAFETY MODE: APPROACHING FAILURE")
+                logger.warning("SAFE MODE: APPROACHING FAILURE - STOPPING NEW TRADES")
                 logger.warning(f"Reason: {approach_reason}")
                 logger.warning(f"Severity: {severity*100:.1f}%")
                 logger.warning("Bot will STOP making NEW trades (existing positions managed normally)")
-                logger.warning("Bot continues running and monitoring - will resume if safe")
+                logger.warning("Bot continues running and monitoring")
+                logger.warning("Will resume trading after daily reset (maintenance window)")
                 logger.warning("=" * 80)
                 bot_status["trading_enabled"] = False
                 bot_status["stop_reason"] = "approaching_failure"
             return False, f"Approaching failure: {approach_reason}"
-        else:
-            # RECOVERY MODE: Continue but with high confidence requirements
-            required_confidence = get_recovery_confidence_threshold(severity)
-            if bot_status.get("stop_reason") != "recovery_mode":
-                logger.warning("=" * 80)
-                logger.warning("RECOVERY MODE: APPROACHING FAILURE BUT CONTINUING")
-                logger.warning(f"Reason: {approach_reason}")
-                logger.warning(f"Severity: {severity*100:.1f}%")
-                logger.warning(f"Required confidence increased to {required_confidence*100:.1f}%")
-                logger.warning("Bot will ONLY take high-confidence signals")
-                logger.warning("⚠️ CAUTION: Higher risk of account failure!")
-                logger.warning("=" * 80)
-                bot_status["stop_reason"] = "recovery_mode"
-            
-            # Store recovery threshold for use in signal evaluation
-            bot_status["recovery_confidence_threshold"] = required_confidence
-            # Don't stop trading, but signal evaluation will use higher threshold
     else:
-        # Not approaching failure - clear recovery mode if it was set
+        # Not approaching failure - clear any safety mode that was set
         if bot_status.get("stop_reason") in ["approaching_failure", "recovery_mode"]:
             logger.info("=" * 80)
             logger.info("SAFE ZONE: Back to normal operation")
@@ -5045,6 +5072,7 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
             bot_status["trading_enabled"] = True
             bot_status["stop_reason"] = None
             bot_status["recovery_confidence_threshold"] = None
+            bot_status["recovery_severity"] = None
     
     # Check tick timeout
     is_safe, reason = check_tick_timeout(current_time)

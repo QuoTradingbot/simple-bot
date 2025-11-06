@@ -72,29 +72,29 @@ def test_recovery_confidence_threshold():
 
 
 def test_stop_vs_recovery_mode():
-    """Test the difference between stop mode and recovery mode."""
+    """Test the difference between safe mode (recovery disabled) and recovery mode (recovery enabled)."""
     print("\n" + "=" * 60)
-    print("TEST 3: Stop Mode vs Recovery Mode")
+    print("TEST 3: Safe Mode vs Recovery Mode")
     print("=" * 60)
     
     print("\nScenario: Bot at 85% of daily loss limit")
     print("-" * 60)
     
-    # Stop on approach mode
-    print("\nMode 1: STOP ON APPROACH (safe mode)")
+    # Recovery mode DISABLED (safe mode)
+    print("\nMode 1: SAFE MODE (Recovery Mode DISABLED)")
     print("  Expected behavior:")
-    print("  - Bot STOPS making new trades")
+    print("  - Bot STOPS making new trades at 80% of limits")
     print("  - Existing positions managed normally")
     print("  - Bot continues monitoring")
-    print("  - Will resume if conditions improve")
+    print("  - Will resume after daily reset")
     print("  ✅ Account protected from failure")
     
-    # Recovery mode
-    print("\nMode 2: RECOVERY MODE (continue trading)")
+    # Recovery mode ENABLED
+    print("\nMode 2: RECOVERY MODE (Recovery Mode ENABLED)")
     print("  Expected behavior:")
-    print("  - Bot CONTINUES trading")
+    print("  - Bot CONTINUES trading even close to limits")
     print("  - Confidence threshold raised to 75%+ (only best signals)")
-    print("  - Position size may be reduced")
+    print("  - Position size dynamically reduced (75% @ 80%, 50% @ 90%, 33% @ 95%+)")
     print("  - Attempts to recover from drawdown")
     print("  ⚠️  Higher risk of account failure")
     
@@ -103,7 +103,7 @@ def test_stop_vs_recovery_mode():
 
 
 def test_env_variable_creation():
-    """Test that BOT_STOP_ON_APPROACH is correctly written to .env."""
+    """Test that BOT_RECOVERY_MODE is correctly written to .env."""
     print("\n" + "=" * 60)
     print("TEST 4: Environment Variable Creation")
     print("=" * 60)
@@ -120,27 +120,27 @@ def test_env_variable_creation():
     with open(env_path, 'r', encoding='utf-8') as f:
         content = f.read()
     
-    if 'BOT_STOP_ON_APPROACH' in content:
+    if 'BOT_RECOVERY_MODE' in content:
         # Extract value
         for line in content.split('\n'):
-            if line.startswith('BOT_STOP_ON_APPROACH'):
+            if line.startswith('BOT_RECOVERY_MODE'):
                 value = line.split('=', 1)[1] if '=' in line else ''
-                print(f"✅ PASS: BOT_STOP_ON_APPROACH found in .env")
+                print(f"✅ PASS: BOT_RECOVERY_MODE found in .env")
                 print(f"   Value: {value}")
                 return True
     
-    print("❌ FAIL: BOT_STOP_ON_APPROACH not found in .env")
+    print("❌ FAIL: BOT_RECOVERY_MODE not found in .env")
     return False
 
 
 def main():
     """Run all tests."""
     print("\n" + "=" * 60)
-    print("PROP FIRM SAFETY MODE TEST SUITE")
+    print("RECOVERY MODE TEST SUITE")
     print("=" * 60)
-    print("\nTesting new prop firm safety mode feature:")
-    print("- Stop on approach: Bot stops trading at 80% of limits")
-    print("- Recovery mode: Bot continues with high confidence only")
+    print("\nTesting recovery mode feature (all account types):")
+    print("- Safe Mode (disabled): Bot stops trading at 80% of limits")
+    print("- Recovery Mode (enabled): Bot continues with high confidence + reduced risk")
     
     # Run tests
     test1_pass = test_approaching_failure_detection()
@@ -154,12 +154,15 @@ def main():
     print("=" * 60)
     
     if test1_pass and test2_pass and test3_pass and test4_pass:
-        print("✅ ALL TESTS PASSED - Prop firm safety mode implemented correctly!")
+        print("✅ ALL TESTS PASSED - Recovery mode implemented correctly!")
         print("\nFeature Summary:")
         print("- Bot detects when approaching 80% of daily loss or max drawdown")
-        print("- User can choose to stop trading (safe) or continue with recovery (risky)")
-        print("- Recovery mode automatically increases confidence requirements")
-        print("- Settings are saved to config and .env file")
+        print("- Recovery Mode DISABLED (default): Bot stops trading at 80% threshold")
+        print("- Recovery Mode ENABLED (opt-in): Bot continues with dynamic risk management")
+        print("  → Auto-scales confidence (75-90%) based on proximity to limits")
+        print("  → Dynamically reduces position size (75% → 50% → 33%)")
+        print("- Works for ALL account types (prop firms, live brokers, etc.)")
+        print("- Settings saved to config and .env file")
     else:
         print("❌ SOME TESTS FAILED - Check errors above")
 

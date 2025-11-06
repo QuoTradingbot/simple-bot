@@ -1452,35 +1452,32 @@ class QuoTradingLauncher:
         )
         dynamic_info.pack(anchor=tk.W)
         
-        # Prop Firm Safety Mode Section (NEW)
-        prop_safety_frame = tk.Frame(content, bg=self.colors['card_elevated'], relief=tk.FLAT, bd=0)
-        prop_safety_frame.pack(fill=tk.X, pady=(0, 10), padx=2)
-        prop_safety_frame.configure(highlightbackground=self.colors['border_subtle'], highlightthickness=1)
+        # Recovery Mode Section - Works for ALL account types
+        recovery_frame = tk.Frame(content, bg=self.colors['card_elevated'], relief=tk.FLAT, bd=0)
+        recovery_frame.pack(fill=tk.X, pady=(0, 10), padx=2)
+        recovery_frame.configure(highlightbackground=self.colors['border_subtle'], highlightthickness=1)
         
-        prop_safety_content = tk.Frame(prop_safety_frame, bg=self.colors['card_elevated'], padx=12, pady=10)
-        prop_safety_content.pack(fill=tk.X)
+        recovery_content = tk.Frame(recovery_frame, bg=self.colors['card_elevated'], padx=12, pady=10)
+        recovery_content.pack(fill=tk.X)
         
-        prop_safety_label = tk.Label(
-            prop_safety_content,
-            text="Prop Firm Safety Mode:",
+        recovery_label = tk.Label(
+            recovery_content,
+            text="Recovery Mode (All Account Types):",
             font=("Arial", 10, "bold"),
             bg=self.colors['card_elevated'],
             fg=self.colors['text']
         )
-        prop_safety_label.pack(anchor=tk.W, pady=(0, 5))
+        recovery_label.pack(anchor=tk.W, pady=(0, 5))
         
-        # Get account type to determine if this is relevant
-        account_type = self.config.get("broker_type", "Prop Firm")
+        # Default: Recovery mode disabled (safest - bot stops when approaching limits)
+        # Inverted from previous logic - now the checkbox ENABLES recovery mode
+        self.recovery_mode_var = tk.BooleanVar(value=self.config.get("recovery_mode", False))
         
-        # Default: Stop trading when approaching failure (safest for prop firms)
-        default_stop_mode = account_type == "Prop Firm"
-        self.stop_on_approach_var = tk.BooleanVar(value=self.config.get("stop_on_approach", default_stop_mode))
-        
-        # Checkbox for stop on approach
-        stop_approach_cb = tk.Checkbutton(
-            prop_safety_content,
-            text="Stop Trading When Approaching Failure (Recommended for Prop Firms)",
-            variable=self.stop_on_approach_var,
+        # Checkbox for recovery mode
+        recovery_cb = tk.Checkbutton(
+            recovery_content,
+            text="Enable Recovery Mode",
+            variable=self.recovery_mode_var,
             font=("Arial", 9, "bold"),
             bg=self.colors['card_elevated'],
             fg=self.colors['text'],
@@ -1489,48 +1486,50 @@ class QuoTradingLauncher:
             activeforeground=self.colors['success'],
             cursor="hand2"
         )
-        stop_approach_cb.pack(anchor=tk.W, pady=(0, 3))
+        recovery_cb.pack(anchor=tk.W, pady=(0, 3))
         
         # Add callback to update info label
-        def update_prop_safety_info(*args):
-            if self.stop_on_approach_var.get():
-                prop_safety_info.config(
-                    text="✓ SAFE MODE: Bot will stop making trades (but stay running) when approaching 80% of daily loss limit or max drawdown. "
-                         "This protects you from account failure. Bot continues monitoring and will resume if conditions improve significantly.",
+        def update_recovery_info(*args):
+            if self.recovery_mode_var.get():
+                recovery_info.config(
+                    text="⚠️ RECOVERY MODE ENABLED: Bot will continue trading when approaching limits, automatically increasing confidence "
+                         "requirements and adjusting risk. The closer to limits, the higher the confidence and the more conservative the trading. "
+                         "Use this to give the bot a chance to recover from a bad day.",
+                    fg='#FFA500'  # Orange warning
+                )
+                recovery_explanation.config(
+                    text="When Recovery Mode is ENABLED:\n"
+                         "• Bot continues trading even when close to daily loss or max drawdown limits\n"
+                         "• Confidence auto-scales: 75% @ 80% of limits, 85% @ 90%, 90% @ 95%+\n"
+                         "• Position size dynamically reduced as approaching limits\n"
+                         "• Only takes highest-quality signals when close to failure\n"
+                         "• Attempts to recover from losses with smart risk management\n"
+                         "• Applies to ALL account types (prop firms, live brokers, etc.)",
+                    fg=self.colors['text_secondary']
+                )
+            else:
+                recovery_info.config(
+                    text="✓ SAFE MODE: Bot will stop making NEW trades (but stay running) when approaching 80% of daily loss limit or max drawdown. "
+                         "This protects you from account failure. Bot continues monitoring and will resume after daily reset.",
                     fg=self.colors['success']
                 )
-                prop_safety_explanation.config(
-                    text="When enabled:\n"
+                recovery_explanation.config(
+                    text="When Recovery Mode is DISABLED (Safe Mode):\n"
                          "• Bot stops NEW trades at 80% of daily loss limit (e.g., $1600/$2000)\n"
                          "• Bot stops NEW trades at 80% of max drawdown (e.g., 6.4%/8%)\n"
                          "• Existing positions are managed normally (stop losses, exits)\n"
                          "• Bot continues running and monitoring market conditions\n"
                          "• Bot will NOT attempt recovery trades\n"
-                         "• Safest option for prop firm accounts",
-                    fg=self.colors['text_secondary']
-                )
-            else:
-                prop_safety_info.config(
-                    text="⚠️ RECOVERY MODE: Bot will continue trading even when close to failure, using ONLY high-confidence signals (automatically increases confidence threshold). "
-                         "This gives the bot a chance to recover from a bad day, but increases risk of account failure. Use with caution!",
-                    fg='#FFA500'  # Orange warning
-                )
-                prop_safety_explanation.config(
-                    text="When disabled (Recovery Mode):\n"
-                         "• Bot continues trading even close to limits\n"
-                         "• Auto-increases confidence threshold to 75%+ (only takes best signals)\n"
-                         "• Reduces position size when in danger zone\n"
-                         "• Attempts to recover from drawdown/daily losses\n"
-                         "• Higher risk - could lead to account failure if signals are wrong\n"
-                         "• Use only if you're confident in the bot's performance",
+                         "• Resumes trading after daily reset (maintenance window)\n"
+                         "• Safest option - prevents account failure",
                     fg=self.colors['text_secondary']
                 )
         
-        self.stop_on_approach_var.trace_add('write', update_prop_safety_info)
+        self.recovery_mode_var.trace_add('write', update_recovery_info)
         
         # Info label
-        prop_safety_info = tk.Label(
-            prop_safety_content,
+        recovery_info = tk.Label(
+            recovery_content,
             text="",
             font=("Arial", 7),
             bg=self.colors['card_elevated'],
@@ -1538,11 +1537,11 @@ class QuoTradingLauncher:
             wraplength=520,
             justify=tk.LEFT
         )
-        prop_safety_info.pack(anchor=tk.W, pady=(0, 5))
+        recovery_info.pack(anchor=tk.W, pady=(0, 5))
         
         # Detailed explanation
-        prop_safety_explanation = tk.Label(
-            prop_safety_content,
+        recovery_explanation = tk.Label(
+            recovery_content,
             text="",
             font=("Arial", 7, "italic"),
             bg=self.colors['card_elevated'],
@@ -1550,10 +1549,10 @@ class QuoTradingLauncher:
             wraplength=520,
             justify=tk.LEFT
         )
-        prop_safety_explanation.pack(anchor=tk.W, pady=(2, 0))
+        recovery_explanation.pack(anchor=tk.W, pady=(2, 0))
         
         # Trigger initial info update
-        update_prop_safety_info()
+        update_recovery_info()
         
         # Trailing Drawdown Section (Optional Risk Management Feature)
         trailing_dd_frame = tk.Frame(content, bg=self.colors['card_elevated'], relief=tk.FLAT, bd=0)
@@ -2087,7 +2086,7 @@ class QuoTradingLauncher:
         self.config["dynamic_contracts"] = self.dynamic_contracts_var.get()
         self.config["trailing_drawdown"] = self.trailing_drawdown_var.get()
         self.config["selected_account"] = self.account_dropdown_var.get()
-        self.config["stop_on_approach"] = self.stop_on_approach_var.get()
+        self.config["recovery_mode"] = self.recovery_mode_var.get()
         self.save_config()
         
         # Create .env file
@@ -2127,15 +2126,16 @@ class QuoTradingLauncher:
         if self.dynamic_contracts_var.get():
             confirmation_text += f"Dynamic Contracts: ON (confidence-based sizing)\n"
         
-        # Add Prop Firm Safety Mode info
-        if self.stop_on_approach_var.get():
-            confirmation_text += f"\nProp Firm Safety: STOP when approaching failure (80% of limits)\n"
-            confirmation_text += f"  → Bot stops NEW trades when getting close to account failure\n"
-            confirmation_text += f"  → Continues monitoring but won't trade until safe\n"
+        # Add Recovery Mode info
+        if self.recovery_mode_var.get():
+            confirmation_text += f"\n⚠️ Recovery Mode: ENABLED\n"
+            confirmation_text += f"  → Bot continues trading when close to limits\n"
+            confirmation_text += f"  → Auto-scales confidence (75-90%) and reduces risk dynamically\n"
+            confirmation_text += f"  → Attempts to recover from losses\n"
         else:
-            confirmation_text += f"\n⚠️ Recovery Mode: Continue trading when close to failure\n"
-            confirmation_text += f"  → Bot will attempt recovery with high confidence signals only\n"
-            confirmation_text += f"  → Higher risk - use with caution!\n"
+            confirmation_text += f"\nSafe Mode: Bot stops NEW trades at 80% of limits\n"
+            confirmation_text += f"  → Bot stops trading when approaching failure\n"
+            confirmation_text += f"  → Continues monitoring, resumes after daily reset\n"
         
         confirmation_text += f"\nThis will open a PowerShell terminal with live logs.\n"
         confirmation_text += f"Use the window's close button to stop the bot.\n\n"
@@ -2252,10 +2252,10 @@ BOT_DYNAMIC_CONFIDENCE={'true' if self.dynamic_confidence_var.get() else 'false'
 BOT_DYNAMIC_CONTRACTS={'true' if self.dynamic_contracts_var.get() else 'false'}
 # Uses signal confidence to determine contract size dynamically (bot uses adaptive exits)
 
-# Prop Firm Safety Mode
-BOT_STOP_ON_APPROACH={'true' if self.stop_on_approach_var.get() else 'false'}
-# When true: Bot stops making NEW trades (but stays running) when approaching 80% of daily loss or max drawdown limits
-# When false (Recovery Mode): Bot continues trading with high confidence requirements even when close to failure
+# Recovery Mode (All Account Types)
+BOT_RECOVERY_MODE={'true' if self.recovery_mode_var.get() else 'false'}
+# When true (ENABLED): Bot continues trading when approaching limits with auto-scaled confidence (75-90%) and dynamic risk reduction
+# When false (DISABLED): Bot stops making NEW trades (but stays running) at 80% of daily loss or max drawdown limits, resumes after daily reset
 
 # Trading Mode
 BOT_SHADOW_MODE={'true' if self.shadow_mode_var.get() else 'false'}

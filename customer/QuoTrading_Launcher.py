@@ -1425,6 +1425,101 @@ class QuoTradingLauncher:
         )
         dynamic_info.pack(anchor=tk.W)
         
+        # Trailing Drawdown Section (Optional Risk Management Feature)
+        trailing_dd_frame = tk.Frame(content, bg=self.colors['card_elevated'], relief=tk.FLAT, bd=0)
+        trailing_dd_frame.pack(fill=tk.X, pady=(0, 10), padx=2)
+        trailing_dd_frame.configure(highlightbackground=self.colors['border_subtle'], highlightthickness=1)
+        
+        trailing_dd_content = tk.Frame(trailing_dd_frame, bg=self.colors['card_elevated'], padx=12, pady=10)
+        trailing_dd_content.pack(fill=tk.X)
+        
+        trailing_dd_label = tk.Label(
+            trailing_dd_content,
+            text="Advanced Risk Protection:",
+            font=("Arial", 10, "bold"),
+            bg=self.colors['card_elevated'],
+            fg=self.colors['text']
+        )
+        trailing_dd_label.pack(anchor=tk.W, pady=(0, 5))
+        
+        # Trailing Drawdown checkbox with account-aware guidance
+        self.trailing_drawdown_var = tk.BooleanVar(value=self.config.get("trailing_drawdown", False))
+        
+        # Add validation to provide smart guidance
+        def update_trailing_drawdown_info(*args):
+            enabled = self.trailing_drawdown_var.get()
+            account_type = self.config.get("broker_type", "Prop Firm")
+            
+            if enabled:
+                if account_type == "Prop Firm":
+                    # Check if this is required or optional for this prop firm
+                    # For now, treating all as optional (TopStep, Apex, etc. would be detected here)
+                    trailing_dd_info.config(
+                        text="✓ Enabled - Locks in profits automatically as account grows (Extra protection for Prop Firm)",
+                        fg=self.colors['success']
+                    )
+                else:  # Live Broker
+                    trailing_dd_info.config(
+                        text="✓ Enabled - Recommended for profit protection and emotional discipline",
+                        fg=self.colors['success']
+                    )
+            else:
+                if account_type == "Prop Firm":
+                    trailing_dd_info.config(
+                        text="Optional - Extra protection to prevent 'giving back' profits (Good practice for stricter firms)",
+                        fg=self.colors['text_secondary']
+                    )
+                else:  # Live Broker
+                    trailing_dd_info.config(
+                        text="Optional - Helps lock in profits and prevent revenge trading after good days",
+                        fg=self.colors['text_secondary']
+                    )
+        
+        self.trailing_drawdown_var.trace_add('write', update_trailing_drawdown_info)
+        
+        trailing_dd_cb = tk.Checkbutton(
+            trailing_dd_content,
+            text="Enable Trailing Drawdown",
+            variable=self.trailing_drawdown_var,
+            font=("Arial", 9, "bold"),
+            bg=self.colors['card_elevated'],
+            fg=self.colors['text'],
+            selectcolor=self.colors['secondary'],
+            activebackground=self.colors['card_elevated'],
+            activeforeground=self.colors['success'],
+            cursor="hand2"
+        )
+        trailing_dd_cb.pack(anchor=tk.W, pady=(0, 3))
+        
+        # Info label for trailing drawdown with account-aware guidance
+        trailing_dd_info = tk.Label(
+            trailing_dd_content,
+            text="",
+            font=("Arial", 7),
+            bg=self.colors['card_elevated'],
+            fg=self.colors['text_secondary'],
+            wraplength=520,
+            justify=tk.LEFT
+        )
+        trailing_dd_info.pack(anchor=tk.W, pady=(0, 5))
+        
+        # Trigger initial info update
+        update_trailing_drawdown_info()
+        
+        # Explanation text for trailing drawdown
+        trailing_dd_explanation = tk.Label(
+            trailing_dd_content,
+            text="ℹ️ How it works: Your max drawdown 'floor' moves UP with your profits but never down.\n"
+                 "Example: Start at $50k → Grow to $55k → New floor is $55k minus your max drawdown %.\n"
+                 "This protects you from giving back gains after profitable periods.",
+            font=("Arial", 7, "italic"),
+            bg=self.colors['card_elevated'],
+            fg=self.colors['text_secondary'],
+            wraplength=520,
+            justify=tk.LEFT
+        )
+        trailing_dd_explanation.pack(anchor=tk.W, pady=(2, 0))
+        
         # Account Fetch Section
         fetch_frame = tk.Frame(content, bg=self.colors['card_elevated'], relief=tk.FLAT, bd=0)
         fetch_frame.pack(fill=tk.X, pady=(0, 10), padx=2)
@@ -1764,6 +1859,7 @@ class QuoTradingLauncher:
         self.config["confidence_threshold"] = self.confidence_var.get()
         self.config["shadow_mode"] = self.shadow_mode_var.get()
         self.config["dynamic_contracts"] = self.dynamic_contracts_var.get()
+        self.config["trailing_drawdown"] = self.trailing_drawdown_var.get()
         self.config["selected_account"] = self.account_dropdown_var.get()
         self.save_config()
         
@@ -1780,6 +1876,8 @@ class QuoTradingLauncher:
         confirmation_text += f"Symbols: {symbols_str}\n"
         confirmation_text += f"Contracts Per Trade: {self.contracts_var.get()}\n"
         confirmation_text += f"Max Drawdown: {self.drawdown_var.get()}%\n"
+        if self.trailing_drawdown_var.get():
+            confirmation_text += f"Trailing Drawdown: ON (Floor moves up with profits)\n"
         confirmation_text += f"Daily Loss Limit: ${loss_limit}\n"
         confirmation_text += f"  → Bot stays on but will NOT execute trades if limit is hit\n"
         confirmation_text += f"  → Resets daily after market maintenance\n"
@@ -1888,6 +1986,8 @@ BOT_MAX_TRADES_PER_DAY={self.trades_var.get()}
 # Bot stays on but will NOT execute trades after reaching max (resets daily after market maintenance)
 BOT_MAX_DRAWDOWN={self.drawdown_var.get()}
 # Maximum drawdown percentage before bot stops trading (account type aware)
+BOT_TRAILING_DRAWDOWN={'true' if self.trailing_drawdown_var.get() else 'false'}
+# When enabled, max drawdown 'floor' moves UP with profits but never down (profit protection)
 BOT_DAILY_LOSS_LIMIT={self.loss_entry.get()}
 # Bot stays on but will NOT execute trades if this limit (in dollars) is hit (resets daily after market maintenance)
 

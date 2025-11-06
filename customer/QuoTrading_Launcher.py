@@ -1360,12 +1360,39 @@ class QuoTradingLauncher:
         # Info label for confidence threshold
         confidence_info = tk.Label(
             confidence_frame,
-            text="Bot only takes signals above this confidence",
+            text="Minimum confidence - bot takes signals above this",
             font=("Arial", 7),
             bg=self.colors['card'],
             fg=self.colors['text_secondary']
         )
         confidence_info.pack(anchor=tk.W, pady=(2, 0))
+        
+        # Dynamic Confidence Threshold checkbox
+        self.dynamic_confidence_var = tk.BooleanVar(value=self.config.get("dynamic_confidence", False))
+        dynamic_conf_cb = tk.Checkbutton(
+            confidence_frame,
+            text="Enable Dynamic Confidence",
+            variable=self.dynamic_confidence_var,
+            font=("Arial", 8),
+            bg=self.colors['card'],
+            fg=self.colors['text'],
+            selectcolor=self.colors['secondary'],
+            activebackground=self.colors['card'],
+            activeforeground=self.colors['success'],
+            cursor="hand2"
+        )
+        dynamic_conf_cb.pack(anchor=tk.W, pady=(3, 2))
+        
+        # Info label for dynamic confidence
+        dynamic_conf_info = tk.Label(
+            confidence_frame,
+            text="Auto-increases (never below your setting) when bot\nperforms poorly or approaching account limits",
+            font=("Arial", 7),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary'],
+            justify=tk.LEFT
+        )
+        dynamic_conf_info.pack(anchor=tk.W)
         
         # Shadow Mode checkbox (keeping existing functionality)
         shadow_frame = tk.Frame(ai_row, bg=self.colors['card'])
@@ -1499,15 +1526,15 @@ class QuoTradingLauncher:
                         fg=self.colors['error']
                     )
                 else:
-                    # SOFT FLOOR - Optional personal protection (bot pauses with recovery options)
+                    # SOFT FLOOR - Optional personal protection (bot stops trading when approaching failure)
                     if broker == "TopStep":
                         trailing_dd_info.config(
-                            text="✓ Personal Soft Floor Active - Moves UP with profits. Bot PAUSES (doesn't fail) if violated - you'll get options to resume or adjust. TopStep's hard floor: $47K static (separate).",
+                            text="✓ Personal Soft Floor Active - Moves UP with profits. Bot stops making trades (doesn't fail) when approaching this floor. TopStep's hard floor: $47K static (separate).",
                             fg=self.colors['success']
                         )
                     else:
                         trailing_dd_info.config(
-                            text="✓ Personal Soft Floor Active - Moves UP with profits, never down. Bot PAUSES (doesn't fail) if violated - you can adjust and resume. This is YOUR protection layer.",
+                            text="✓ Personal Soft Floor Active - Moves UP with profits, never down. Bot stops making trades when approaching this floor - continuous monitoring. This is YOUR protection layer.",
                             fg=self.colors['success']
                         )
             else:
@@ -1515,17 +1542,17 @@ class QuoTradingLauncher:
                 if account_type == "Prop Firm":
                     if broker == "TopStep":
                         trailing_dd_info.config(
-                            text=f"TopStep's hard floor: $47K static (account fails if violated). Optional: Enable soft trailing floor for extra protection - bot will pause (not fail) if soft floor violated.",
+                            text=f"TopStep's hard floor: $47K static (account fails if violated). Optional: Enable soft trailing floor for extra protection - bot stops trading when too close to failure.",
                             fg=self.colors['text_secondary']
                         )
                     else:
                         trailing_dd_info.config(
-                            text="Optional soft floor protection - Adds personal safety layer that pauses bot (with recovery options) before you approach your firm's hard floor.",
+                            text="Optional soft floor protection - Adds personal safety layer that stops trading before you approach your firm's hard floor. Bot continues monitoring.",
                             fg=self.colors['text_secondary']
                         )
                 else:  # Live Broker
                     trailing_dd_info.config(
-                        text="Optional soft floor - Bot pauses (doesn't stop) if violated, giving you options to adjust and resume. Protects your capital from extended losing streaks.",
+                        text="Optional soft floor - Bot stops making trades (doesn't shutdown) when approaching this floor. Continues monitoring. Protects your capital from extended losing streaks.",
                         fg=self.colors['text_secondary']
                     )
         
@@ -1573,16 +1600,17 @@ class QuoTradingLauncher:
                  "SOFT FLOOR (Your Personal Protection - THIS CHECKBOX):\n"
                  "• Optional safety YOU can enable for extra protection\n"
                  "• Moves UP with your profits (just like hard trailing)\n"
-                 "• If violated: Bot PAUSES (doesn't fail) - you get recovery options\n"
+                 "• If approaching: Bot stops making trades (doesn't fail or shutdown)\n"
+                 "• Bot continues monitoring - may resume if conditions improve\n"
                  "• Helps you avoid getting close to the dangerous hard floor\n"
                  "\n"
                  "Example: TopStep account with soft floor enabled:\n"
                  "• Hard floor: $47K static (account fails - can't change)\n"
                  "• Peak at $55K → Soft floor at $49.5K (with 10% max DD)\n"
-                 "• Drop to $49K → Bot PAUSES (below soft floor)\n"
+                 "• Drop to $49K → Bot stops trading (approaching soft floor)\n"
                  "• Hard floor still $47K - you're $2K away, still safe!\n"
-                 "• Options: Resume (disable soft), Adjust soft floor, or Stop\n"
-                 "• Prevents you from getting too close to $47K danger zone",
+                 "• Bot continues running and monitoring performance\n"
+                 "• May resume if dynamic confidence helps create safety margin",
             font=("Arial", 7, "italic"),
             bg=self.colors['card_elevated'],
             fg=self.colors['text_secondary'],
@@ -1951,6 +1979,7 @@ class QuoTradingLauncher:
         self.config["max_contracts"] = self.contracts_var.get()
         self.config["max_trades"] = self.trades_var.get()
         self.config["confidence_threshold"] = self.confidence_var.get()
+        self.config["dynamic_confidence"] = self.dynamic_confidence_var.get()
         self.config["shadow_mode"] = self.shadow_mode_var.get()
         self.config["dynamic_contracts"] = self.dynamic_contracts_var.get()
         self.config["trailing_drawdown"] = self.trailing_drawdown_var.get()
@@ -1975,7 +2004,7 @@ class QuoTradingLauncher:
             if broker == "Apex":
                 confirmation_text += f"Trailing Drawdown: ON (HARD FLOOR - Required by {broker}, account fails if violated)\n"
             else:
-                confirmation_text += f"Trailing Drawdown: ON (SOFT FLOOR - Bot pauses with recovery options if violated)\n"
+                confirmation_text += f"Trailing Drawdown: ON (SOFT FLOOR - Bot stops trading when approaching failure)\n"
                 if broker == "TopStep":
                     confirmation_text += f"  → TopStep's hard floor: $47K static (separate, account fails if violated)\n"
         confirmation_text += f"Daily Loss Limit: ${loss_limit}\n"
@@ -1984,7 +2013,11 @@ class QuoTradingLauncher:
         confirmation_text += f"Max Trades/Day: {self.trades_var.get()}\n"
         confirmation_text += f"  → Bot stays on but will NOT execute trades after limit\n"
         confirmation_text += f"  → Resets daily after market maintenance\n"
-        confirmation_text += f"Confidence Threshold: {self.confidence_var.get()}%\n"
+        if self.dynamic_confidence_var.get():
+            confirmation_text += f"Confidence Threshold: {self.confidence_var.get()}% (Min - dynamic adjustments enabled)\n"
+            confirmation_text += f"  → Bot may auto-increase confidence when needed (never below minimum)\n"
+        else:
+            confirmation_text += f"Confidence Threshold: {self.confidence_var.get()}% (Fixed)\n"
         if self.shadow_mode_var.get():
             confirmation_text += f"Shadow Mode: ON (paper trading)\n"
         if self.dynamic_contracts_var.get():
@@ -2088,17 +2121,19 @@ BOT_MAX_DRAWDOWN={self.drawdown_var.get()}
 # Maximum drawdown percentage before bot stops trading (account type aware)
 BOT_TRAILING_DRAWDOWN={'true' if self.trailing_drawdown_var.get() else 'false'}
 # SOFT FLOOR: Optional personal protection. When enabled, floor moves UP with profits (never down).
-# If violated: Bot PAUSES (doesn't fail) with recovery options (resume/adjust/stop).
+# If violated: Bot stops making trades when approaching account failure (doesn't shut off, continues monitoring).
 # This is YOUR extra protection layer - separate from prop firm's hard floor rules.
 # Hard floors: Apex=trailing (required), TopStep=$47K static, both cause account failure if violated.
 BOT_TRAILING_TYPE={'hard' if self.config.get("broker", "") == "Apex" else 'soft'}
-# Type: "hard" (required by prop firm, account fails) or "soft" (optional, bot pauses with recovery)
+# Type: "hard" (required by prop firm, account fails) or "soft" (optional, bot stops trading when approaching failure)
 BOT_DAILY_LOSS_LIMIT={self.loss_entry.get()}
 # Bot stays on but will NOT execute trades if this limit (in dollars) is hit (resets daily after market maintenance)
 
 # AI/Confidence Settings
 BOT_CONFIDENCE_THRESHOLD={self.confidence_var.get()}
-# Bot only takes signals above this confidence threshold
+# Bot only takes signals above this confidence threshold (user's minimum)
+BOT_DYNAMIC_CONFIDENCE={'true' if self.dynamic_confidence_var.get() else 'false'}
+# When enabled, bot auto-increases confidence (never below user's setting) when performing poorly or approaching account limits
 BOT_DYNAMIC_CONTRACTS={'true' if self.dynamic_contracts_var.get() else 'false'}
 # Uses signal confidence to determine contract size dynamically (bot uses adaptive exits)
 

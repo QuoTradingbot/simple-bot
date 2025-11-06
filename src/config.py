@@ -21,13 +21,14 @@ class BotConfiguration:
     timezone: str = "America/New_York"
     
     # Broker Configuration
+    broker: str = "TopStep"  # USER CONFIGURABLE - TopStep, Tradovate, Rithmic, NinjaTrader, etc.
     api_token: str = ""
-    username: str = ""  # TopStep username/email
+    username: str = ""  # Broker username/email
     
     # Trading Parameters
     risk_per_trade: float = 0.012  # 1.2% of account per trade (increased for more profit)
     max_contracts: int = 3  # USER CONFIGURABLE - maximum contracts allowed (user sets their own limit)
-    max_trades_per_day: int = 9  # USER CONFIGURABLE - customers can adjust
+    max_trades_per_day: int = 9999  # USER CONFIGURABLE - customers can adjust (9999 = unlimited)
     risk_reward_ratio: float = 2.0  # Realistic 2:1 for mean reversion with tight stops
     
     # Slippage & Commission - PRODUCTION READY
@@ -81,11 +82,11 @@ class BotConfiguration:
     friday_entry_cutoff: time = field(default_factory=lambda: time(16, 30))  # Stop entries 4:30 PM Friday
     friday_close_target: time = field(default_factory=lambda: time(16, 45))  # Flatten by 4:45 PM Friday
     
-    # Safety Parameters
-    daily_loss_limit: float = 1000.0  # Default - will be calculated from account size
-    max_drawdown_percent: float = 4.0  # Default: 4% (standard safe limit)
-    daily_loss_percent: float = 2.0  # Default: 2% (standard safe limit)
-    auto_calculate_limits: bool = True  # If True, bot auto-calculates limits from account balance
+    # Safety Parameters - USER CONFIGURABLE
+    daily_loss_limit: float = 1000.0  # USER CONFIGURABLE - max $ loss per day (or auto-calculated)
+    max_drawdown_percent: float = 4.0  # USER CONFIGURABLE - max account drawdown % (broker rules may override)
+    daily_loss_percent: float = 2.0  # USER CONFIGURABLE - max daily loss as % of account
+    auto_calculate_limits: bool = True  # USER CONFIGURABLE - auto-calculate limits from account balance
     tick_timeout_seconds: int = 999999  # Disabled for testing
     proactive_stop_buffer_ticks: int = 2
     flatten_buffer_ticks: int = 2  # Buffer for flatten price calculation
@@ -93,13 +94,13 @@ class BotConfiguration:
     def get_daily_loss_limit(self, account_balance: float) -> float:
         """
         Calculate dynamic daily loss limit based on account rules.
-        Works for TopStep accounts OR personal accounts with custom risk %.
+        Works for any broker - uses configured risk percentage.
         
-        TopStep Rules (as of 2025):
-        - All accounts: 2% of starting balance
+        If auto_calculate_limits=True:
+        - Uses daily_loss_percent setting (default: 2%)
         
-        Personal Account:
-        - Uses daily_loss_percent setting (default: 2%, but customizable)
+        If auto_calculate_limits=False:
+        - Uses fixed daily_loss_limit value
         
         Args:
             account_balance: Current account balance
@@ -107,57 +108,49 @@ class BotConfiguration:
         Returns:
             Daily loss limit in dollars
         """
-        # Use custom percentage or TopStep standard (2%)
+        # Use configured percentage (default 2%)
         loss_percent = self.daily_loss_percent if hasattr(self, 'daily_loss_percent') else 2.0
         return account_balance * (loss_percent / 100.0)
     
     def get_max_drawdown_dollars(self, account_balance: float) -> float:
         """
-        Calculate max trailing drawdown in dollars based on TopStep rules.
-        Works for ALL TopStep account sizes.
+        Calculate max trailing drawdown in dollars based on configured rules.
+        Works for any broker - uses max_drawdown_percent setting.
         
-        TopStep Trailing Drawdown Rules:
+        Trailing Drawdown:
         - Calculated from HIGHEST equity reached (not starting balance)
-        - Express ($25K): 4% = $1,000 max drawdown from peak
-        - Step 1 ($50K): 4% = $2,000 max drawdown from peak
-        - Step 2 ($100K): 4% = $4,000 max drawdown from peak
-        - Step 2 ($150K): 4% = $6,000 max drawdown from peak
-        - Funded (All sizes): 4% max drawdown from peak
-        
-        Example: Start at $50K, grow to $55K → Max drawdown = $55K - ($55K × 0.04) = $52,800
+        - Default: 4% of peak equity
+        - Examples:
+          * Start at $50K, grow to $55K → Max DD = $55K × 4% = $2,200 from peak
+          * If equity drops below $52,800, stop trading
         
         Args:
             account_balance: Current/highest account balance reached
             
         Returns:
-            Max trailing drawdown in dollars (4% of highest balance)
+            Max trailing drawdown in dollars
         """
         return account_balance * (self.max_drawdown_percent / 100.0)
     
     def get_profit_target(self, account_balance: float) -> float:
         """
-        Calculate profit target based on TopStep rules.
-        Users must hit profit target to advance to next step or get funded.
+        Calculate profit target (optional - for evaluation/funded accounts).
         
-        TopStep Profit Targets:
-        - Express ($25K): $1,500 (6%)
-        - Step 1 ($50K): $3,000 (6%)
-        - Step 2 ($100K): $6,000 (6%)
-        - Step 2 ($150K): $9,000 (6%)
-        - Funded: No target, keep profits!
+        Default: 6% profit target
+        Users can customize this based on their broker's requirements.
         
         Args:
             account_balance: Starting account balance
             
         Returns:
-            Profit target in dollars (6% for evaluation accounts)
+            Profit target in dollars
         """
-        # 6% profit target for evaluation accounts
+        # Default 6% profit target (common for evaluation accounts)
         return account_balance * 0.06
     
     def get_account_type(self, account_balance: float) -> str:
         """
-        Determine TopStep account type based on balance.
+        Determine account type based on balance (informational only).
         
         Args:
             account_balance: Current account balance
@@ -166,15 +159,15 @@ class BotConfiguration:
             Account type string
         """
         if account_balance <= 25000:
-            return "Express ($25K)"
+            return "Small ($25K)"
         elif account_balance <= 50000:
-            return "Step 1 ($50K) or Funded ($50K)"
+            return "Medium ($50K)"
         elif account_balance <= 100000:
-            return "Step 2 ($100K) or Funded ($100K)"
+            return "Large ($100K)"
         elif account_balance <= 150000:
-            return "Step 2 ($150K) or Funded ($150K)"
+            return "XLarge ($150K)"
         elif account_balance <= 250000:
-            return "Funded ($250K)"
+            return "Pro ($250K)"
         else:
             return f"Funded (${account_balance/1000:.0f}K)"
     
@@ -281,7 +274,14 @@ class BotConfiguration:
         """
         violations = []
         
-        # Check daily loss limit (must be 2% of balance)
+        # Only validate if broker is TopStep
+        if self.broker.lower() not in ["topstep", "topstepx"]:
+            if logger:
+                logger.info(f"[INFO] Broker '{self.broker}' - skipping TopStep-specific compliance checks")
+            return True
+        
+        # TopStep-specific checks
+        # Check daily loss limit (must be 2% of balance for TopStep)
         expected_daily_loss = self.get_daily_loss_limit(account_balance)
         if abs(self.daily_loss_limit - expected_daily_loss) > 1.0:  # $1 tolerance
             violations.append(
@@ -289,8 +289,8 @@ class BotConfiguration:
                 f"Got ${self.daily_loss_limit:,.2f}"
             )
         
-        # Check max drawdown (must be 4%)
-        if self.max_drawdown_percent != 4.0:
+        # Check max drawdown (must be 4% for TopStep)
+        if abs(self.max_drawdown_percent - 4.0) > 0.01:  # Tolerance for float comparison
             violations.append(
                 f"Max drawdown must be 4% (TopStep rule), got {self.max_drawdown_percent}%"
             )
@@ -487,6 +487,7 @@ class BotConfiguration:
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary (legacy format)."""
         return {
+            "broker": self.broker,
             "instrument": self.instrument,
             "timezone": self.timezone,
             "risk_per_trade": self.risk_per_trade,
@@ -556,6 +557,11 @@ class BotConfiguration:
             "partial_exit_2_r_multiple": self.partial_exit_2_r_multiple,
             "partial_exit_3_percentage": self.partial_exit_3_percentage,
             "partial_exit_3_r_multiple": self.partial_exit_3_r_multiple,
+            # RL Configuration
+            "rl_confidence_threshold": self.rl_confidence_threshold,
+            "rl_exploration_rate": self.rl_exploration_rate,
+            "rl_min_exploration_rate": self.rl_min_exploration_rate,
+            "rl_exploration_decay": self.rl_exploration_decay,
         }
 
 
@@ -626,14 +632,22 @@ def load_from_env() -> BotConfiguration:
     if os.getenv("BOT_ENVIRONMENT"):
         config.environment = os.getenv("BOT_ENVIRONMENT")
     
-    # API Token (support both old TOPSTEP and new TOPSTEPX variable names)
-    if os.getenv("TOPSTEPX_API_TOKEN"):
+    # Broker name (USER CONFIGURABLE)
+    if os.getenv("BOT_BROKER"):
+        config.broker = os.getenv("BOT_BROKER")
+    
+    # API Token (support both old TOPSTEP and new TOPSTEPX variable names, plus generic)
+    if os.getenv("BOT_API_TOKEN"):
+        config.api_token = os.getenv("BOT_API_TOKEN")
+    elif os.getenv("TOPSTEPX_API_TOKEN"):
         config.api_token = os.getenv("TOPSTEPX_API_TOKEN")
     elif os.getenv("TOPSTEP_API_TOKEN"):
         config.api_token = os.getenv("TOPSTEP_API_TOKEN")
     
-    # Username (support both old TOPSTEP and new TOPSTEPX variable names)
-    if os.getenv("TOPSTEPX_USERNAME"):
+    # Username (support both old TOPSTEP and new TOPSTEPX variable names, plus generic)
+    if os.getenv("BOT_USERNAME"):
+        config.username = os.getenv("BOT_USERNAME")
+    elif os.getenv("TOPSTEPX_USERNAME"):
         config.username = os.getenv("TOPSTEPX_USERNAME")
     elif os.getenv("TOPSTEP_USERNAME"):
         config.username = os.getenv("TOPSTEP_USERNAME")
@@ -646,6 +660,18 @@ def get_development_config() -> BotConfiguration:
     config = BotConfiguration()
     config.environment = "development"
     config.dry_run = True
+    
+    # Load additional config from JSON file if it exists
+    config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.json")
+    if os.path.exists(config_file):
+        import json
+        with open(config_file, 'r') as f:
+            json_config = json.load(f)
+            # Update config with JSON values
+            for key, value in json_config.items():
+                if hasattr(config, key):
+                    setattr(config, key, value)
+    
     # API token must be set via environment variable
     return config
 
@@ -655,7 +681,18 @@ def get_staging_config() -> BotConfiguration:
     config = BotConfiguration()
     config.environment = "staging"
     config.dry_run = True
-    config.max_trades_per_day = 5
+    
+    # Load additional config from JSON file if it exists
+    config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.json")
+    if os.path.exists(config_file):
+        import json
+        with open(config_file, 'r') as f:
+            json_config = json.load(f)
+            # Update config with JSON values
+            for key, value in json_config.items():
+                if hasattr(config, key):
+                    setattr(config, key, value)
+    
     # API token must be set via environment variable
     return config
 
@@ -665,6 +702,18 @@ def get_production_config() -> BotConfiguration:
     config = BotConfiguration()
     config.environment = "production"
     config.dry_run = False
+    
+    # Load additional config from JSON file if it exists
+    config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.json")
+    if os.path.exists(config_file):
+        import json
+        with open(config_file, 'r') as f:
+            json_config = json.load(f)
+            # Update config with JSON values
+            for key, value in json_config.items():
+                if hasattr(config, key):
+                    setattr(config, key, value)
+    
     # API token must be set via environment variable
     return config
 
@@ -737,7 +786,7 @@ def log_config(config: BotConfiguration, logger) -> None:
     
     # Only show broker info in live mode
     if not config.backtest_mode:
-        logger.info(f"Broker: TopStep")
+        logger.info(f"Broker: {config.broker}")
         logger.info(f"Dry Run: {config.dry_run}")
     
     logger.info(f"Instrument: {config.instrument}")

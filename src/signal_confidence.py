@@ -31,7 +31,7 @@ class SignalConfidenceRL:
     Reward: Profit/loss from trade outcome
     """
     
-    def __init__(self, experience_file: str = "data/signal_experience.json", backtest_mode: bool = False, confidence_threshold: Optional[float] = None):
+    def __init__(self, experience_file: str = "data/signal_experience.json", backtest_mode: bool = False, confidence_threshold: Optional[float] = None, exploration_rate: Optional[float] = None, min_exploration: Optional[float] = None, exploration_decay: Optional[float] = None):
         """
         Initialize RL confidence scorer.
         
@@ -41,6 +41,9 @@ class SignalConfidenceRL:
             confidence_threshold: Optional fixed threshold (0.1-1.0). 
                                  - For LIVE/SHADOW mode: If None, defaults to 0.5 (50%). User's GUI setting always used.
                                  - For BACKTEST mode: If None, calculates adaptive threshold from experiences.
+            exploration_rate: Percentage of random exploration (0.0-1.0). Default: 0.05 (5%)
+            min_exploration: Minimum exploration rate (0.0-1.0). Default: 0.05 (5%)
+            exploration_decay: Decay factor for exploration rate. Default: 0.995
         """
         self.experience_file = experience_file
         self.experiences = []  # All past (state, action, reward) tuples
@@ -50,10 +53,10 @@ class SignalConfidenceRL:
         
         # Random exploration enabled - no fixed seed for natural learning
         
-        # Learning parameters
-        self.exploration_rate = 0.30  # 30% random exploration for learning
-        self.min_exploration = 0.05  # Never go below 5%
-        self.exploration_decay = 0.995
+        # Learning parameters - use config values or defaults
+        self.exploration_rate = exploration_rate if exploration_rate is not None else 0.05  # Default 5%
+        self.min_exploration = min_exploration if min_exploration is not None else 0.05  # Default 5%
+        self.exploration_decay = exploration_decay if exploration_decay is not None else 0.995
         
         # User-configured threshold
         # For LIVE/SHADOW mode: Always use user threshold (default 50% if not set)
@@ -64,6 +67,7 @@ class SignalConfidenceRL:
             logger.info(" LIVE MODE: No threshold configured, using default 50%")
         else:
             self.user_threshold = confidence_threshold
+            logger.info(f" RL BRAIN CONFIG: threshold={confidence_threshold}, exploration={exploration_rate}, backtest_mode={backtest_mode}")
         
         # Cached optimal threshold (only used in backtest mode when user_threshold is None)
         self.cached_threshold = None
@@ -103,7 +107,7 @@ class SignalConfidenceRL:
         
         # Log exploration mode
         if self.backtest_mode:
-            logger.info(f" BACKTEST MODE: 30% exploration enabled (aggressive learning mode)")
+            logger.info(f" BACKTEST MODE: {self.exploration_rate*100:.1f}% exploration enabled (learning mode)")
         else:
             logger.info(f" LIVE MODE: 0% exploration (pure exploitation - NO RANDOM TRADES!)")
     
@@ -149,8 +153,8 @@ class SignalConfidenceRL:
         
         # SMART EXPLORATION: Only in backtest mode!
         # LIVE MODE: 0% exploration (pure exploitation of learned intelligence)
-        # BACKTEST MODE: 30% exploration (aggressive learning mode)
-        effective_exploration = 0.30 if self.backtest_mode else 0.0
+        # BACKTEST MODE: Use configured exploration_rate (default 5%)
+        effective_exploration = self.exploration_rate if self.backtest_mode else 0.0
         
         # ALWAYS calculate confidence from experiences
         confidence, reason = self.calculate_confidence(state)

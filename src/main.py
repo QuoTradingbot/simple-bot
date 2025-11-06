@@ -171,10 +171,13 @@ Examples:
     return parser.parse_args()
 
 
-def initialize_rl_brains_for_backtest() -> Tuple[Any, Any]:
+def initialize_rl_brains_for_backtest(bot_config_dict: Dict[str, Any] = None) -> Tuple[Any, Any]:
     """
     Initialize RL brains (signal confidence and adaptive exits) for backtest mode.
     This ensures experience files are loaded before the backtest runs.
+    
+    Args:
+        bot_config_dict: Bot configuration dictionary with RL parameters
     
     Note: Imports are done locally as these modules must be imported after 
     other bot components are initialized.
@@ -187,15 +190,25 @@ def initialize_rl_brains_for_backtest() -> Tuple[Any, Any]:
     from signal_confidence import SignalConfidenceRL
     from adaptive_exits import AdaptiveExitManager
     
+    # Use provided config dict, or fall back to module config
+    config = bot_config_dict if bot_config_dict is not None else vwap_bounce_bot.CONFIG
+    
     # Initialize RL brain with experience file using PROJECT_ROOT
     if vwap_bounce_bot.rl_brain is None:
         signal_exp_file = os.path.join(PROJECT_ROOT, "data/signal_experience.json")
-        # Get confidence threshold from config (if set)
-        confidence_threshold = vwap_bounce_bot.CONFIG.get('rl_confidence_threshold', None)
+        # Get RL configuration from config
+        confidence_threshold = config.get('rl_confidence_threshold', None)
+        exploration_rate = config.get('rl_exploration_rate', None)
+        min_exploration = config.get('rl_min_exploration_rate', None)
+        exploration_decay = config.get('rl_exploration_decay', None)
+        
         vwap_bounce_bot.rl_brain = SignalConfidenceRL(
             experience_file=signal_exp_file,
             backtest_mode=True,
-            confidence_threshold=confidence_threshold
+            confidence_threshold=confidence_threshold,
+            exploration_rate=exploration_rate,
+            min_exploration=min_exploration,
+            exploration_decay=exploration_decay
         )
         logger.info(f"✓ RL BRAIN INITIALIZED for backtest - {len(vwap_bounce_bot.rl_brain.experiences)} signal experiences loaded")
     
@@ -203,7 +216,7 @@ def initialize_rl_brains_for_backtest() -> Tuple[Any, Any]:
     if vwap_bounce_bot.adaptive_manager is None:
         exit_exp_file = os.path.join(PROJECT_ROOT, "data/exit_experience.json")
         vwap_bounce_bot.adaptive_manager = AdaptiveExitManager(
-            config=vwap_bounce_bot.CONFIG,
+            config=config,
             experience_file=exit_exp_file
         )
         logger.info(f"✓ ADAPTIVE EXITS INITIALIZED for backtest - {len(vwap_bounce_bot.adaptive_manager.exit_experiences)} exit experiences loaded")
@@ -315,7 +328,7 @@ def run_backtest_with_params(
         initialize_state(symbol)
         
         # Initialize RL brains (signal confidence and adaptive exits) for backtest
-        rl_brain, adaptive_manager = initialize_rl_brains_for_backtest()
+        rl_brain, adaptive_manager = initialize_rl_brains_for_backtest(bot_config_dict)
         
         # Track starting experience counts
         starting_signal_count = len(rl_brain.experiences) if rl_brain else 0
@@ -510,7 +523,7 @@ def run_backtest(args: argparse.Namespace, bot_config: Any) -> Dict[str, Any]:
     initialize_state(symbol)
     
     # Initialize RL brains (signal confidence and adaptive exits) for backtest
-    rl_brain, adaptive_manager = initialize_rl_brains_for_backtest()
+    rl_brain, adaptive_manager = initialize_rl_brains_for_backtest(bot_config_dict)
     
     # Create a simple object to hold RL brain references for tracking
     class BotRLReferences:
@@ -808,10 +821,25 @@ def main():
     
     bot_config = load_config(environment=args.environment, backtest_mode=backtest_mode)
     
+    # DEBUG: Print max_contracts immediately after load
+    print(f"DEBUG: Immediately after load_config, max_contracts = {bot_config.max_contracts}")
+    
     # Apply learned parameters if available (unless we're learning new ones)
     if not args.continuous_learn:
         from config import apply_learned_parameters
         apply_learned_parameters(bot_config)
+    
+    # DEBUG: Print max_contracts after apply_learned_parameters
+    print(f"DEBUG: After apply_learned_parameters, max_contracts = {bot_config.max_contracts}")
+    
+    # CRITICAL FIX: Update vwap_bounce_bot.CONFIG with the correct runtime config
+    # The module-level CONFIG was loaded at import time with defaults,
+    # but we need it to reflect the actual config.json values
+    import vwap_bounce_bot
+    vwap_bounce_bot.CONFIG = bot_config.to_dict()
+    
+    # DEBUG: Print max_contracts in vwap_bounce_bot.CONFIG
+    print(f"DEBUG: vwap_bounce_bot.CONFIG['max_contracts'] = {vwap_bounce_bot.CONFIG['max_contracts']}")
     
     # In backtest mode, we don't need API token at all
     # The backtest runs completely independently using historical data

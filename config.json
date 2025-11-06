@@ -1,19 +1,23 @@
 {
-  "quotrading_license": "QUOTRADING_ADMIN_MASTER_2025QUOTRADING_ADMIN_MASTER_2025QUOTRADING_ADMIN_MASTER_2025",
+  "quotrading_license": "QUOTRADING_ADMIN_MASTER_2025",
   "market_type": "Futures",
   "broker": "TopStep",
-  "broker_token": "test_tokentest_token8SIwAhS0+28Qt/yAqNb7a84nfUjd3v4h9IhbVoyOmik=",
-  "broker_username": "test@example.comtest@example.comkevinsuero072897@gmail.com",
+  "broker_token": "test_token",
+  "broker_username": "test@example.com",
   "symbols": [
     "ES",
     "NQ",
     "RTY"
   ],
   "account_size": "50000",
-  "max_contracts": 5,
-  "max_trades": 10,
-  "risk_per_trade": 1.2,
+  "max_contracts": 3,
+  "max_trades_per_day": 9999,
+  "risk_per_trade": 0.012,
   "min_risk_reward": 2.0,
   "daily_loss_limit": 2000,
-  "auto_calculate_limits": true
+  "auto_calculate_limits": true,
+  "rl_confidence_threshold": 0.65,
+  "rl_exploration_rate": 0.05,
+  "rl_min_exploration_rate": 0.05,
+  "rl_exploration_decay": 0.995
 }

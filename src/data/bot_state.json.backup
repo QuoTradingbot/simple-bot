@@ -1,13 +1,13 @@
 {
   "symbol": "ES",
   "active": true,
-  "side": "short",
-  "quantity": 3,
-  "entry_price": 5018.5,
-  "stop_price": 5021.75,
-  "target_price": 4992.5,
-  "entry_time": "2025-11-05T05:11:00-05:00",
-  "order_id": "BACKTEST_1762377837.504499",
+  "side": "long",
+  "quantity": 1,
+  "entry_price": 6877.5,
+  "stop_price": 6874.25,
+  "target_price": 6895.75,
+  "entry_time": "2025-11-03T02:07:00-05:00",
+  "order_id": "BACKTEST_1762389515.168433",
   "stop_order_id": null,
-  "last_updated": "2025-11-05T21:23:57.504585"
+  "last_updated": "2025-11-06T00:38:35.168493"
 }

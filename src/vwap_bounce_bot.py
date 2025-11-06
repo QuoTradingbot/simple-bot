@@ -839,7 +839,11 @@ def save_position_state(symbol: str) -> None:
         with open(state_file, 'w') as f:
             json.dump(position_state, f, indent=2)
         
-        logger.debug(f"Position state saved: {position['side']} {position['quantity']} @ ${position['entry_price']:.2f}")
+        # Safe logging with None checks
+        if position.get('entry_price') is not None:
+            logger.debug(f"Position state saved: {position['side']} {position['quantity']} @ ${position['entry_price']:.2f}")
+        else:
+            logger.debug(f"Position state saved: {position['side']} (inactive)")
         
     except Exception as e:
         logger.error(f"CRITICAL: Failed to save position state: {e}", exc_info=True)

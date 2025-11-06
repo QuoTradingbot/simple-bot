@@ -155728,15 +155728,73 @@
         "exit_reason": "stop_loss",
         "held_full_duration": false
       }
+    },
+    {
+      "timestamp": "2025-11-06T01:03:06.725858",
+      "state": {
+        "rsi": 33.192324924391855,
+        "vwap_distance": 0.8306465599239254,
+        "atr": 3.0,
+        "volume_ratio": 1.0,
+        "hour": 22,
+        "day_of_week": 6,
+        "recent_pnl": 0,
+        "streak": 0,
+        "side": "long",
+        "price": 6886.25
+      },
+      "action": {
+        "took_trade": true,
+        "exploration_rate": 0.3
+      },
+      "reward": -27.5,
+      "duration": 4187.11209635,
+      "execution": {
+        "order_type_used": "market",
+        "entry_slippage_ticks": 1.0,
+        "partial_fill": false,
+        "fill_ratio": 1.0,
+        "exit_reason": "early_loss_cut",
+        "held_full_duration": false
+      }
+    },
+    {
+      "timestamp": "2025-11-06T01:03:06.734778",
+      "state": {
+        "rsi": 33.192324924391855,
+        "vwap_distance": 0.8128376103341756,
+        "atr": 3.0,
+        "volume_ratio": 1.0,
+        "hour": 22,
+        "day_of_week": 6,
+        "recent_pnl": 0,
+        "streak": 0,
+        "side": "long",
+        "price": 6883.25
+      },
+      "action": {
+        "took_trade": true,
+        "exploration_rate": 0.3
+      },
+      "reward": -27.5,
+      "duration": 4174.112245383333,
+      "execution": {
+        "order_type_used": "market",
+        "entry_slippage_ticks": 1.0,
+        "partial_fill": false,
+        "fill_ratio": 1.0,
+        "exit_reason": "early_loss_cut",
+        "held_full_duration": false
+      }
     }
   ],
   "stats": {
-    "total_signals": 121,
-    "taken": 21,
-    "skipped": 100,
-    "take_rate": 17.355371900826448,
-    "recent_pnl": 2132.5,
-    "recent_win_rate": 35.0,
-    "exploration_rate": 19.889042503841097
+    "total_signals": 14,
+    "taken": 2,
+    "skipped": 12,
+    "take_rate": 14.285714285714285,
+    "recent_pnl": -55.0,
+    "recent_win_rate": 0.0,
+    "exploration_rate": 28.248684207431268
   }
 }

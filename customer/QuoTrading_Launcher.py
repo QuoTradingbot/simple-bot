@@ -31,7 +31,7 @@ class QuoTradingLauncher:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("QuoTrading - Professional Trading Platform")
-        self.root.geometry("600x550")
+        self.root.geometry("600x600")
         self.root.resizable(False, False)
         
         # Blue and White color scheme - Professional theme
@@ -388,7 +388,7 @@ class QuoTradingLauncher:
         header = self.create_header("QuoTrading Login", "Enter your credentials")
         
         # Main container
-        main = tk.Frame(self.root, bg=self.colors['background'], padx=30, pady=20)
+        main = tk.Frame(self.root, bg=self.colors['background'], padx=30, pady=15)
         main.pack(fill=tk.BOTH, expand=True)
         
         # Card
@@ -445,7 +445,7 @@ class QuoTradingLauncher:
         button_frame.pack(fill=tk.X, pady=10)
         
         # Login button
-        login_btn = self.create_button(button_frame, "LOGIN", self.validate_login, "next")
+        login_btn = self.create_button(button_frame, "LOGIN & CONTINUE →", self.validate_login, "next")
         login_btn.pack()
     
     def validate_login(self):

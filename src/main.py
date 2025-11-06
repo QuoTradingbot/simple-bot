@@ -85,7 +85,7 @@ Examples:
     parser.add_argument(
         '--data-path',
         type=str,
-        default='./data/historical_data',
+        default=None,  # Will be set to PROJECT_ROOT/data/historical_data if not specified
         help='Path to historical data directory (default: ./data/historical_data)'
     )
     
@@ -426,12 +426,15 @@ def run_backtest(args, bot_config):
         start_date = end_date - timedelta(days=7)
         
     # Create backtest configuration
+    # Use PROJECT_ROOT-based path if data_path not explicitly provided
+    data_path = args.data_path if args.data_path else os.path.join(PROJECT_ROOT, "data/historical_data")
+    
     backtest_config = BacktestConfig(
         start_date=start_date,
         end_date=end_date,
         initial_equity=args.initial_equity,
         symbols=[args.symbol] if args.symbol else [bot_config.instrument],
-        data_path=args.data_path,
+        data_path=data_path,
         use_tick_data=args.use_tick_data  # Enable tick-by-tick if requested
     )
     
@@ -461,6 +464,30 @@ def run_backtest(args, bot_config):
     # Initialize bot state for backtesting
     symbol = bot_config_dict['instrument']
     initialize_state(symbol)
+    
+    # CRITICAL: Force initialize RL brain in backtest mode
+    # This must happen BEFORE importing rl_brain to ensure experience files are loaded
+    import vwap_bounce_bot
+    from signal_confidence import SignalConfidenceRL
+    from adaptive_exits import AdaptiveExitManager
+    
+    # Initialize RL brain with experience file FROM PARENT DIRECTORY (not src/)
+    if vwap_bounce_bot.rl_brain is None:
+        signal_exp_file = os.path.join(PROJECT_ROOT, "data/signal_experience.json")
+        vwap_bounce_bot.rl_brain = SignalConfidenceRL(
+            experience_file=signal_exp_file,
+            backtest_mode=True
+        )
+        logger.info(f"✓ RL BRAIN INITIALIZED for backtest - {len(vwap_bounce_bot.rl_brain.experiences)} signal experiences loaded")
+    
+    # Initialize adaptive exit manager FROM PARENT DIRECTORY
+    if vwap_bounce_bot.adaptive_manager is None:
+        exit_exp_file = os.path.join(PROJECT_ROOT, "data/exit_experience.json")
+        vwap_bounce_bot.adaptive_manager = AdaptiveExitManager(
+            config=vwap_bounce_bot.CONFIG,
+            experience_file=exit_exp_file
+        )
+        logger.info(f"✓ ADAPTIVE EXITS INITIALIZED for backtest - {len(vwap_bounce_bot.adaptive_manager.exit_experiences)} exit experiences loaded")
     
     # NOW import RL brain references after initialization
     from vwap_bounce_bot import rl_brain, adaptive_manager

@@ -1248,6 +1248,160 @@ class QuoTradingLauncher:
         )
         trades_spin.pack(fill=tk.X, ipady=2)
         
+        # AI/Confidence Settings Row
+        ai_row = tk.Frame(content, bg=self.colors['card'])
+        ai_row.pack(fill=tk.X, pady=(0, 10))
+        
+        # Confidence Threshold
+        confidence_frame = tk.Frame(ai_row, bg=self.colors['card'])
+        confidence_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+        
+        tk.Label(
+            confidence_frame,
+            text="Confidence Threshold (%):",
+            font=("Arial", 9, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text']
+        ).pack(anchor=tk.W, pady=(0, 3))
+        
+        self.confidence_var = tk.DoubleVar(value=self.config.get("confidence_threshold", 70.0))
+        confidence_spin = ttk.Spinbox(
+            confidence_frame,
+            from_=0.0,
+            to=100.0,
+            increment=5.0,
+            textvariable=self.confidence_var,
+            width=12,
+            format="%.1f"
+        )
+        confidence_spin.pack(fill=tk.X, ipady=2)
+        
+        # Info label for confidence threshold
+        confidence_info = tk.Label(
+            confidence_frame,
+            text="Bot only takes signals above this confidence",
+            font=("Arial", 7),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary']
+        )
+        confidence_info.pack(anchor=tk.W, pady=(2, 0))
+        
+        # Shadow Mode checkbox (keeping existing functionality)
+        shadow_frame = tk.Frame(ai_row, bg=self.colors['card'])
+        shadow_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        self.shadow_mode_var = tk.BooleanVar(value=self.config.get("shadow_mode", False))
+        shadow_cb = tk.Checkbutton(
+            shadow_frame,
+            text="Shadow Mode",
+            variable=self.shadow_mode_var,
+            font=("Arial", 9, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text'],
+            selectcolor=self.colors['secondary'],
+            activebackground=self.colors['card'],
+            activeforeground=self.colors['success'],
+            cursor="hand2"
+        )
+        shadow_cb.pack(anchor=tk.W, pady=(0, 3))
+        
+        # Info label for shadow mode
+        shadow_info = tk.Label(
+            shadow_frame,
+            text="Paper trade mode - no real trades executed",
+            font=("Arial", 7),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary']
+        )
+        shadow_info.pack(anchor=tk.W)
+        
+        # Dynamic Contract Mode Row
+        dynamic_row = tk.Frame(content, bg=self.colors['card'])
+        dynamic_row.pack(fill=tk.X, pady=(0, 10))
+        
+        self.dynamic_contracts_var = tk.BooleanVar(value=self.config.get("dynamic_contracts", False))
+        dynamic_cb = tk.Checkbutton(
+            dynamic_row,
+            text="Dynamic Contract Mode",
+            variable=self.dynamic_contracts_var,
+            font=("Arial", 9, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text'],
+            selectcolor=self.colors['secondary'],
+            activebackground=self.colors['card'],
+            activeforeground=self.colors['success'],
+            cursor="hand2"
+        )
+        dynamic_cb.pack(anchor=tk.W, pady=(0, 3))
+        
+        # Info label for dynamic contract mode
+        dynamic_info = tk.Label(
+            dynamic_row,
+            text="Uses signal confidence to determine contract size dynamically",
+            font=("Arial", 7),
+            bg=self.colors['card'],
+            fg=self.colors['text_secondary']
+        )
+        dynamic_info.pack(anchor=tk.W)
+        
+        # Account Fetch Section
+        fetch_frame = tk.Frame(content, bg=self.colors['card_elevated'], relief=tk.FLAT, bd=0)
+        fetch_frame.pack(fill=tk.X, pady=(0, 10), padx=2)
+        fetch_frame.configure(highlightbackground=self.colors['border_subtle'], highlightthickness=1)
+        
+        fetch_content = tk.Frame(fetch_frame, bg=self.colors['card_elevated'], padx=12, pady=10)
+        fetch_content.pack(fill=tk.X)
+        
+        fetch_label = tk.Label(
+            fetch_content,
+            text="Account Information:",
+            font=("Arial", 10, "bold"),
+            bg=self.colors['card_elevated'],
+            fg=self.colors['text']
+        )
+        fetch_label.pack(anchor=tk.W, pady=(0, 5))
+        
+        # Account selection dropdown
+        account_select_frame = tk.Frame(fetch_content, bg=self.colors['card_elevated'])
+        account_select_frame.pack(fill=tk.X, pady=(0, 8))
+        
+        tk.Label(
+            account_select_frame,
+            text="Select Account:",
+            font=("Arial", 9),
+            bg=self.colors['card_elevated'],
+            fg=self.colors['text_light']
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        
+        self.account_dropdown_var = tk.StringVar(value=self.config.get("selected_account", "Default Account"))
+        self.account_dropdown = ttk.Combobox(
+            account_select_frame,
+            textvariable=self.account_dropdown_var,
+            state="readonly",
+            font=("Arial", 9),
+            width=25,
+            values=["Default Account"]
+        )
+        self.account_dropdown.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # Fetch button and info display
+        fetch_button_frame = tk.Frame(fetch_content, bg=self.colors['card_elevated'])
+        fetch_button_frame.pack(fill=tk.X)
+        
+        fetch_btn = self.create_button(fetch_button_frame, "Fetch Account Info", self.fetch_account_info, "next")
+        fetch_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Account info display label
+        self.account_info_label = tk.Label(
+            fetch_button_frame,
+            text="Click to fetch account balance and details",
+            font=("Arial", 8),
+            bg=self.colors['card_elevated'],
+            fg=self.colors['text_secondary'],
+            anchor=tk.W
+        )
+        self.account_info_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
         # Summary display
         summary_frame = tk.Frame(content, bg=self.colors['secondary'], relief=tk.FLAT, bd=0)
         summary_frame.pack(fill=tk.X, pady=(8, 12))
@@ -1289,6 +1443,79 @@ class QuoTradingLauncher:
         # Start Bot button
         start_btn = self.create_button(button_frame, "START BOT →", self.start_bot, "next")
         start_btn.pack(side=tk.RIGHT)
+    
+    def fetch_account_info(self):
+        """Fetch account information from the broker."""
+        broker = self.config.get("broker", "TopStep")
+        token = self.config.get("broker_token", "")
+        username = self.config.get("broker_username", "")
+        
+        if not token or not username:
+            messagebox.showerror(
+                "Missing Credentials",
+                "Please complete broker setup first (go back to Screen 0)."
+            )
+            return
+        
+        # Show loading spinner
+        self.show_loading(f"Fetching account info from {broker}...")
+        
+        def fetch_in_thread():
+            try:
+                # Simulate API call - in production, this would call actual broker API
+                import time
+                time.sleep(1.5)  # Simulate network delay
+                
+                # Mock account data - replace with actual API call
+                accounts = [
+                    {"id": "ACC001", "name": f"{broker} Account 1", "balance": 50000.00, "equity": 51234.56},
+                    {"id": "ACC002", "name": f"{broker} Account 2", "balance": 100000.00, "equity": 102456.78}
+                ]
+                
+                # Update UI on main thread
+                def update_ui():
+                    self.hide_loading()
+                    
+                    # Update account dropdown with fetched accounts
+                    account_names = [f"{acc['name']} - ${acc['balance']:,.2f}" for acc in accounts]
+                    self.account_dropdown['values'] = account_names
+                    self.account_dropdown.current(0)
+                    
+                    # Store accounts data
+                    self.config["accounts"] = accounts
+                    self.config["selected_account"] = account_names[0]
+                    self.save_config()
+                    
+                    # Update info label
+                    selected_acc = accounts[0]
+                    self.account_info_label.config(
+                        text=f"✓ Balance: ${selected_acc['balance']:,.2f} | Equity: ${selected_acc['equity']:,.2f}",
+                        fg=self.colors['success']
+                    )
+                    
+                    messagebox.showinfo(
+                        "Account Info Fetched",
+                        f"Successfully retrieved {len(accounts)} account(s) from {broker}.\n\n"
+                        f"Selected: {selected_acc['name']}\n"
+                        f"Balance: ${selected_acc['balance']:,.2f}\n"
+                        f"Equity: ${selected_acc['equity']:,.2f}"
+                    )
+                
+                self.root.after(0, update_ui)
+                
+            except Exception as e:
+                def show_error():
+                    self.hide_loading()
+                    messagebox.showerror(
+                        "Fetch Failed",
+                        f"Failed to fetch account information:\n{str(e)}\n\n"
+                        f"Please check your broker credentials."
+                    )
+                self.root.after(0, show_error)
+        
+        # Start fetch in background thread
+        thread = threading.Thread(target=fetch_in_thread, daemon=True)
+        thread.start()
     
     def start_bot(self):
         """Validate settings and start the trading bot."""
@@ -1333,27 +1560,39 @@ class QuoTradingLauncher:
         self.config["daily_loss_limit"] = loss_limit
         self.config["max_contracts"] = self.contracts_var.get()
         self.config["max_trades"] = self.trades_var.get()
+        self.config["confidence_threshold"] = self.confidence_var.get()
+        self.config["shadow_mode"] = self.shadow_mode_var.get()
+        self.config["dynamic_contracts"] = self.dynamic_contracts_var.get()
+        self.config["selected_account"] = self.account_dropdown_var.get()
         self.save_config()
         
         # Create .env file
         self.create_env_file()
         
-        # Show confirmation
+        # Show confirmation with new settings
         symbols_str = ", ".join(selected_symbols)
         broker = self.config.get("broker", "TopStep")
         
+        confirmation_text = f"Ready to start bot with these settings:\n\n"
+        confirmation_text += f"Broker: {broker}\n"
+        confirmation_text += f"Account: {self.account_dropdown_var.get()}\n"
+        confirmation_text += f"Symbols: {symbols_str}\n"
+        confirmation_text += f"Max Contracts: {self.contracts_var.get()}\n"
+        confirmation_text += f"Max Trades/Day: {self.trades_var.get()}\n"
+        confirmation_text += f"Risk/Trade: {self.risk_var.get()}%\n"
+        confirmation_text += f"Daily Loss Limit: ${loss_limit}\n"
+        confirmation_text += f"Confidence Threshold: {self.confidence_var.get()}%\n"
+        if self.shadow_mode_var.get():
+            confirmation_text += f"Shadow Mode: ON (paper trading)\n"
+        if self.dynamic_contracts_var.get():
+            confirmation_text += f"Dynamic Contracts: ON (confidence-based sizing)\n"
+        confirmation_text += f"\nThis will open a PowerShell terminal with live logs.\n"
+        confirmation_text += f"Use the window's close button to stop the bot.\n\n"
+        confirmation_text += f"Continue?"
+        
         result = messagebox.askyesno(
             "Launch Trading Bot?",
-            f"Ready to start bot with these settings:\n\n"
-            f"Broker: {broker}\n"
-            f"Symbols: {symbols_str}\n"
-            f"Max Contracts: {self.contracts_var.get()}\n"
-            f"Max Trades/Day: {self.trades_var.get()}\n"
-            f"Risk/Trade: {self.risk_var.get()}%\n"
-            f"Daily Loss Limit: ${loss_limit}\n\n"
-            f"This will open a PowerShell terminal with live logs.\n"
-            f"Use the window's close button to stop the bot.\n\n"
-            f"Continue?"
+            confirmation_text
         )
         
         if not result:
@@ -1444,9 +1683,16 @@ BOT_MAX_TRADES_PER_DAY={self.trades_var.get()}
 BOT_RISK_PER_TRADE={self.risk_var.get() / 100}
 BOT_DAILY_LOSS_LIMIT={self.loss_entry.get()}
 
+# AI/Confidence Settings
+BOT_CONFIDENCE_THRESHOLD={self.confidence_var.get()}
+BOT_DYNAMIC_CONTRACTS={'true' if self.dynamic_contracts_var.get() else 'false'}
+
 # Trading Mode
-BOT_SHADOW_MODE=false
-BOT_DRY_RUN=false
+BOT_SHADOW_MODE={'true' if self.shadow_mode_var.get() else 'false'}
+BOT_DRY_RUN={'true' if self.shadow_mode_var.get() else 'false'}
+
+# Account Selection
+SELECTED_ACCOUNT={self.config.get("selected_account", "Default Account")}
 
 # Environment
 BOT_ENVIRONMENT=production

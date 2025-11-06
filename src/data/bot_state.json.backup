@@ -5,9 +5,9 @@
   "quantity": 1,
   "entry_price": 6877.5,
   "stop_price": 6874.25,
-  "target_price": 6896.0,
-  "entry_time": "2025-11-03T02:10:00-05:00",
-  "order_id": "BACKTEST_1762387142.989082",
+  "target_price": 6895.75,
+  "entry_time": "2025-11-03T02:07:00-05:00",
+  "order_id": "BACKTEST_1762389515.168433",
   "stop_order_id": null,
-  "last_updated": "2025-11-05T23:59:02.989202"
+  "last_updated": "2025-11-06T00:38:35.168493"
 }

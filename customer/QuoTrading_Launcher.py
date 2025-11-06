@@ -1345,7 +1345,7 @@ class QuoTradingLauncher:
             fg=self.colors['text']
         ).pack(anchor=tk.W, pady=(0, 3))
         
-        self.confidence_var = tk.DoubleVar(value=self.config.get("confidence_threshold", 70.0))
+        self.confidence_var = tk.DoubleVar(value=self.config.get("confidence_threshold", 65.0))
         confidence_spin = ttk.Spinbox(
             confidence_frame,
             from_=0.0,
@@ -1443,35 +1443,50 @@ class QuoTradingLauncher:
         trailing_dd_label.pack(anchor=tk.W, pady=(0, 5))
         
         # Trailing Drawdown checkbox with account-aware guidance
-        self.trailing_drawdown_var = tk.BooleanVar(value=self.config.get("trailing_drawdown", False))
+        # Initialize with smart defaults based on account type
+        default_trailing = self.config.get("broker_type", "Prop Firm") == "Prop Firm"
+        self.trailing_drawdown_var = tk.BooleanVar(value=self.config.get("trailing_drawdown", default_trailing))
         
-        # Add validation to provide smart guidance
+        # Add validation to provide smart, session-aware guidance
         def update_trailing_drawdown_info(*args):
             enabled = self.trailing_drawdown_var.get()
             account_type = self.config.get("broker_type", "Prop Firm")
+            broker_name = self.config.get("broker", "")
+            
+            # Session-aware: Check if account has fetched data to provide contextual advice
+            accounts = self.config.get("accounts", [])
+            has_account_data = len(accounts) > 0
             
             if enabled:
                 if account_type == "Prop Firm":
-                    # Check if this is required or optional for this prop firm
-                    # For now, treating all as optional (TopStep, Apex, etc. would be detected here)
-                    trailing_dd_info.config(
-                        text="✓ Enabled - Locks in profits automatically as account grows (Extra protection for Prop Firm)",
-                        fg=self.colors['success']
-                    )
+                    # Prop firm rules awareness - incorporate industry best practices
+                    # Most prop firms (TopStep, Apex, etc.) benefit from trailing drawdown
+                    # This helps traders avoid the common mistake of "giving back" a good week
+                    if has_account_data:
+                        trailing_dd_info.config(
+                            text="✓ Enabled - Smart! Floor moves up with profits, never down. Protects from giving back gains (Prop firm best practice)",
+                            fg=self.colors['success']
+                        )
+                    else:
+                        trailing_dd_info.config(
+                            text="✓ Enabled - Highly recommended for prop firms. Locks in profits automatically as account grows",
+                            fg=self.colors['success']
+                        )
                 else:  # Live Broker
                     trailing_dd_info.config(
-                        text="✓ Enabled - Recommended for profit protection and emotional discipline",
+                        text="✓ Enabled - Excellent! Provides emotional discipline and prevents revenge trading after profitable days",
                         fg=self.colors['success']
                     )
             else:
                 if account_type == "Prop Firm":
+                    # For prop firms, provide stronger guidance to enable it
                     trailing_dd_info.config(
-                        text="Optional - Extra protection to prevent 'giving back' profits (Good practice for stricter firms)",
-                        fg=self.colors['text_secondary']
+                        text="⚠ Consider enabling - Most successful prop traders use trailing drawdown to protect profits and avoid account failure",
+                        fg=self.colors['warning']
                     )
                 else:  # Live Broker
                     trailing_dd_info.config(
-                        text="Optional - Helps lock in profits and prevent revenge trading after good days",
+                        text="Optional - Recommended for profit protection. Helps maintain emotional discipline during winning streaks",
                         fg=self.colors['text_secondary']
                     )
         
@@ -1795,21 +1810,44 @@ class QuoTradingLauncher:
             else:
                 max_trades = 20
         
-        # Apply the calculated settings (only these 3 parameters)
+        # Intelligently set max drawdown based on account type and prop firm rules
+        if account_type == "Prop Firm":
+            # Most prop firms enforce 10% max drawdown
+            # Set to 8% for safety buffer (strategic, not maxing out)
+            recommended_max_drawdown = 8.0
+            
+            # Enable trailing drawdown for prop firms (industry best practice)
+            # Helps protect from giving back profits
+            self.trailing_drawdown_var.set(True)
+        else:  # Live Broker
+            # Live brokers are more flexible
+            # Set based on equity size
+            if equity < 50000:
+                recommended_max_drawdown = 12.0
+            elif equity < 100000:
+                recommended_max_drawdown = 15.0
+            else:
+                recommended_max_drawdown = 18.0
+            
+            # Trailing drawdown optional for live brokers but recommended
+            # Leave user's existing choice unchanged
+        
+        # Apply the calculated settings (all 4 parameters now)
         self.loss_entry.delete(0, tk.END)
         self.loss_entry.insert(0, f"{daily_loss_limit:.2f}")
         self.contracts_var.set(max_contracts)
         self.trades_var.set(max_trades)
+        self.drawdown_var.set(recommended_max_drawdown)
         
-        # Update info label with detailed feedback
+        # Update info label with comprehensive feedback
         if account_type == "Prop Firm":
             self.auto_adjust_info_label.config(
-                text=f"✓ Settings for ${equity:,.2f} equity ({drawdown_pct:.1f}% drawdown) - {max_contracts} contracts, ${daily_loss_limit:.0f} daily limit, {max_trades} trades/day",
+                text=f"✓ Optimized for ${equity:,.2f} equity ({drawdown_pct:.1f}% current drawdown) - {max_contracts} contracts, ${daily_loss_limit:.0f} daily limit, {max_trades} trades/day, {recommended_max_drawdown}% max drawdown, trailing enabled",
                 fg=self.colors['success']
             )
         else:
             self.auto_adjust_info_label.config(
-                text=f"✓ Settings for ${equity:,.2f} equity - {max_contracts} contracts, ${daily_loss_limit:.0f} daily limit, {max_trades} trades/day",
+                text=f"✓ Optimized for ${equity:,.2f} equity - {max_contracts} contracts, ${daily_loss_limit:.0f} daily limit, {max_trades} trades/day, {recommended_max_drawdown}% max drawdown",
                 fg=self.colors['success']
             )
     

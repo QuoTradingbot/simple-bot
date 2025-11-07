@@ -135,7 +135,6 @@ class SessionStateManager:
     def check_warnings_and_recommendations(
         self,
         account_size: float,
-        max_drawdown_percent: float,
         daily_loss_limit: float,
         current_confidence: float,
         max_contracts: int,
@@ -143,6 +142,9 @@ class SessionStateManager:
     ) -> Tuple[list, list, Dict[str, Any]]:
         """
         Check current state and generate warnings/recommendations.
+        
+        Recovery mode only tracks daily loss limit and initial balance.
+        No maximum drawdown or trailing drawdown tracking.
         
         Returns:
             Tuple of (warnings, recommendations, smart_settings)
@@ -153,19 +155,16 @@ class SessionStateManager:
         
         current_equity = self.state.get("current_equity", account_size)
         daily_pnl = self.state.get("daily_pnl", 0.0)
-        current_drawdown = self.state.get("current_drawdown_percent", 0.0)
         daily_loss_pct = self.state.get("daily_loss_percent", 0.0)
         account_type = self.state.get("account_type", "live_broker")
         broker = self.state.get("broker", "Unknown")
         
-        # Calculate approaching threshold
+        # Calculate approaching threshold based ONLY on daily loss limit
         daily_loss_severity = abs(daily_pnl) / daily_loss_limit if daily_loss_limit > 0 else 0.0
-        drawdown_severity = current_drawdown / max_drawdown_percent if max_drawdown_percent > 0 else 0.0
-        max_severity = max(daily_loss_severity, drawdown_severity)
         
-        # Check if approaching failure (80%+ of limits)
-        approaching_failure = max_severity >= 0.80
-        critical_failure = max_severity >= 0.95
+        # Check if approaching failure (80%+ of daily loss limit)
+        approaching_failure = daily_loss_severity >= 0.80
+        critical_failure = daily_loss_severity >= 0.95
         
         self.state["approaching_failure"] = approaching_failure
         self.state["in_recovery_mode"] = recovery_mode_enabled
@@ -174,13 +173,19 @@ class SessionStateManager:
         if critical_failure:
             warnings.append({
                 "level": "critical",
-                "message": f"⚠️ CRITICAL: At {max_severity*100:.0f}% of account limits! Account failure imminent!"
+                "message": f"⚠️ CRITICAL: At {daily_loss_severity*100:.0f}% of daily loss limit! Account failure imminent!"
             })
         elif approaching_failure:
-            warnings.append({
-                "level": "warning",
-                "message": f"⚠️ WARNING: Approaching limits ({max_severity*100:.0f}% of max). Consider enabling Recovery Mode."
-            })
+            if recovery_mode_enabled:
+                warnings.append({
+                    "level": "warning",
+                    "message": f"⚠️ RECOVERY MODE ACTIVE: At {daily_loss_severity*100:.0f}% of daily loss limit. Bot continues trading with increased confidence."
+                })
+            else:
+                warnings.append({
+                    "level": "warning",
+                    "message": f"⚠️ WARNING: Approaching daily loss limit ({daily_loss_severity*100:.0f}% of max). Bot will STOP trading. Consider enabling Recovery Mode."
+                })
         
         if daily_loss_pct > 1.5 and account_type == "prop_firm":
             loss_dollars = abs(daily_pnl)
@@ -194,13 +199,18 @@ class SessionStateManager:
             if not recovery_mode_enabled:
                 recommendations.append({
                     "priority": "high",
-                    "message": "🔄 RECOMMEND: Enable Recovery Mode to attempt recovery with high-confidence signals"
+                    "message": "🔄 RECOMMEND: Enable Recovery Mode to continue trading when approaching limits with high-confidence signals"
+                })
+            else:
+                recommendations.append({
+                    "priority": "info",
+                    "message": "✅ Recovery Mode is ENABLED - Bot continues trading with dynamic risk management"
                 })
             
-            # Recommend higher confidence
-            if max_severity >= SEVERITY_HIGH:
+            # Recommend higher confidence based on daily loss severity
+            if daily_loss_severity >= SEVERITY_HIGH:
                 recommended_confidence = CONFIDENCE_THRESHOLD_HIGH
-            elif max_severity >= SEVERITY_MODERATE:
+            elif daily_loss_severity >= SEVERITY_MODERATE:
                 recommended_confidence = CONFIDENCE_THRESHOLD_MODERATE
             else:
                 recommended_confidence = current_confidence
@@ -212,12 +222,12 @@ class SessionStateManager:
                 })
                 smart_settings["confidence_threshold"] = recommended_confidence
             
-            # Recommend fewer contracts
-            if max_severity >= 0.95:
+            # Recommend fewer contracts based on daily loss severity
+            if daily_loss_severity >= 0.95:
                 recommended_contracts = max(1, int(max_contracts * CONTRACT_MULTIPLIER_CRITICAL))
-            elif max_severity >= SEVERITY_HIGH:
+            elif daily_loss_severity >= SEVERITY_HIGH:
                 recommended_contracts = max(1, int(max_contracts * CONTRACT_MULTIPLIER_HIGH))
-            elif max_severity >= SEVERITY_MODERATE:
+            elif daily_loss_severity >= SEVERITY_MODERATE:
                 recommended_contracts = max(1, int(max_contracts * CONTRACT_MULTIPLIER_MODERATE))
             else:
                 recommended_contracts = max_contracts
@@ -241,12 +251,6 @@ class SessionStateManager:
                         "message": f"💡 SUGGEST: Set daily loss limit to ${optimal_daily_loss:.0f} ({PROP_FIRM_DAILY_LOSS_PERCENT*100:.0f}% rule for {broker})"
                     })
                     smart_settings["daily_loss_limit"] = optimal_daily_loss
-                
-                # Recommend trailing drawdown for prop firms
-                recommendations.append({
-                    "priority": "medium",
-                    "message": "🛡️ SUGGEST: Enable trailing drawdown protection for prop firm accounts"
-                })
         
         # Show dollar amounts instead of percentages for clarity
         if daily_pnl < 0:
@@ -255,11 +259,12 @@ class SessionStateManager:
                 "message": f"📊 Current Daily Loss: ${abs(daily_pnl):.0f} of ${daily_loss_limit:.0f} limit"
             })
         
+        # Show total account status
         if current_equity < account_size:
-            drawdown_dollars = account_size - current_equity
+            loss_from_initial = account_size - current_equity
             recommendations.append({
                 "priority": "info",
-                "message": f"📉 Current Drawdown: ${drawdown_dollars:.0f} from starting ${account_size:.0f}"
+                "message": f"📉 Total Loss from Initial Balance: ${loss_from_initial:.0f} (started at ${account_size:.0f})"
             })
         
         # Save warnings and recommendations to state

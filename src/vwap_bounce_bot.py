@@ -5077,11 +5077,31 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
                 )
                 
                 if is_losing:
+                    # Calculate how much the position is losing
+                    side = position.get("side", "long")
+                    if side == "long":
+                        position_pnl = (current_price - entry_price) * position["quantity"]
+                    else:
+                        position_pnl = (entry_price - current_price) * position["quantity"]
+                    
                     logger.warning("=" * 80)
                     logger.warning("SMART POSITION MANAGEMENT: Critical severity (95%+) with losing position")
-                    logger.warning("Considering early exit to prevent account failure")
+                    logger.warning(f"Position: {side.upper()} {position['quantity']} @ ${entry_price:.2f}")
+                    logger.warning(f"Current Price: ${current_price:.2f}")
+                    logger.warning(f"Position Loss: ${position_pnl:.2f}")
+                    logger.warning("Closing position to prevent account failure")
                     logger.warning("=" * 80)
-                    # Let exit management handle it - just flag for aggressive management
+                    
+                    # Get smart flatten price
+                    flatten_price = get_flatten_price(symbol, side, current_price)
+                    
+                    # Close the losing position immediately
+                    handle_exit_orders(symbol, position, flatten_price, "recovery_loss_protection")
+                    
+                    logger.info(f"Losing position closed at ${flatten_price:.2f} in recovery mode")
+                else:
+                    # Position is winning, just flag for aggressive management
+                    logger.info("Position is profitable - maintaining with aggressive exit management")
                     bot_status["aggressive_exit_mode"] = True
             
             # Don't stop trading - recovery mode continues with same logic
@@ -5098,6 +5118,36 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
             logger.warning("=" * 80)
             bot_status["trading_enabled"] = False
             bot_status["stop_reason"] = "daily_limits_reached"
+            
+            # SMART POSITION CLOSING: Close any active position when daily limit reached
+            if state[symbol]["position"]["active"]:
+                position = state[symbol]["position"]
+                entry_price = position.get("entry_price", 0)
+                side = position.get("side", "long")
+                current_price = state[symbol]["bars"][-1]["close"] if state[symbol]["bars"] else entry_price
+                
+                # Calculate current P&L for the position
+                if side == "long":
+                    position_pnl = (current_price - entry_price) * position["quantity"]
+                else:
+                    position_pnl = (entry_price - current_price) * position["quantity"]
+                
+                logger.warning("=" * 80)
+                logger.warning("SMART POSITION MANAGEMENT: Closing active position due to daily limit")
+                logger.warning(f"Position: {side.upper()} {position['quantity']} @ ${entry_price:.2f}")
+                logger.warning(f"Current Price: ${current_price:.2f}")
+                logger.warning(f"Position P&L: ${position_pnl:.2f}")
+                logger.warning("Executing smart exit to minimize additional losses")
+                logger.warning("=" * 80)
+                
+                # Get smart flatten price (includes buffer to ensure fill)
+                flatten_price = get_flatten_price(symbol, side, current_price)
+                
+                # Close the position
+                handle_exit_orders(symbol, position, flatten_price, "daily_limit_protection")
+                
+                logger.info(f"Position closed at ${flatten_price:.2f} to protect from further losses")
+            
             return False, "Daily limits reached - trading stopped until next session (6 PM ET reset)"
     else:
         # Not approaching failure - clear any safety mode that was set

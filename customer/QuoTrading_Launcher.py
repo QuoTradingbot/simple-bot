@@ -2275,7 +2275,7 @@ class QuoTradingLauncher:
 
 # QuoTrading Account
 QUOTRADING_API_KEY={self.config.get("quotrading_api_key", "")}
-ACCOUNT_SIZE={self.config.get("account_size", "50k")}
+ACCOUNT_SIZE={self.config.get("account_size", 50000)}
 
 # Broker Configuration
 BROKER={broker}

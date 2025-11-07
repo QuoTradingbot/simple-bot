@@ -15,6 +15,9 @@ import pytz
 class BotConfiguration:
     """Type-safe configuration for the VWAP Bounce Bot."""
     
+    # Default account size constant
+    DEFAULT_ACCOUNT_SIZE: float = 50000.0
+    
     # Instrument Configuration
     instrument: str = "ES"  # Single instrument (legacy support)
     instruments: list = field(default_factory=lambda: ["ES"])  # Multi-symbol support
@@ -82,6 +85,7 @@ class BotConfiguration:
     # Safety Parameters - USER CONFIGURABLE
     daily_loss_limit: float = 1000.0  # USER CONFIGURABLE - max $ loss per day (or auto-calculated)
     daily_loss_percent: float = 2.0  # USER CONFIGURABLE - max daily loss as % of account
+    account_size: float = 50000.0  # USER CONFIGURABLE - account size for risk calculations (needed for recovery mode to track initial balance)
     auto_calculate_limits: bool = True  # USER CONFIGURABLE - auto-calculate limits from account balance
     tick_timeout_seconds: int = 999999  # Disabled for testing
     proactive_stop_buffer_ticks: int = 2
@@ -533,8 +537,9 @@ class BotConfiguration:
             # Dynamic AI Features (from GUI)
             "dynamic_confidence": self.dynamic_confidence,
             "dynamic_contracts": self.dynamic_contracts,
-            # Recovery Mode
+            # Recovery Mode and Account Settings
             "recovery_mode": self.recovery_mode,
+            "account_size": self.account_size,
         }
 
 
@@ -591,6 +596,24 @@ def load_from_env() -> BotConfiguration:
     # Recovery Mode (All Account Types)
     if os.getenv("BOT_RECOVERY_MODE"):
         config.recovery_mode = os.getenv("BOT_RECOVERY_MODE").lower() in ("true", "1", "yes")
+    
+    # Account Size (for risk calculations and recovery mode initial balance tracking)
+    if os.getenv("ACCOUNT_SIZE"):
+        # Handle both numeric and string formats (e.g., "50000", "50k", "50K")
+        account_size_str = os.getenv("ACCOUNT_SIZE")
+        try:
+            # Try parsing as float first
+            config.account_size = float(account_size_str)
+        except ValueError:
+            # Handle "50k", "50K", "100k", "100K" format
+            try:
+                account_size_str_lower = account_size_str.lower().replace("k", "000")
+                config.account_size = float(account_size_str_lower)
+            except ValueError:
+                # If still fails, log error and use default
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Invalid ACCOUNT_SIZE format: {account_size_str}. Using default: {config.account_size}")
     
     # RL/AI Configuration from GUI
     if os.getenv("BOT_CONFIDENCE_THRESHOLD"):
@@ -750,12 +773,61 @@ def load_config(environment: Optional[str] = None, backtest_mode: bool = False) 
     env_config = load_from_env()
     
     # Merge configurations (env vars take precedence)
+    # We need to check which env vars were actually set, not just compare to defaults
+    # Load environment variables again to check which ones are set
+    env_vars_set = set()
+    
+    # Check which environment variables are actually set
+    if os.getenv("BOT_INSTRUMENTS") or os.getenv("BOT_INSTRUMENT"):
+        env_vars_set.add("instruments")
+        env_vars_set.add("instrument")
+    if os.getenv("BOT_TIMEZONE"):
+        env_vars_set.add("timezone")
+    if os.getenv("BOT_RISK_PER_TRADE"):
+        env_vars_set.add("risk_per_trade")
+    if os.getenv("BOT_MAX_CONTRACTS"):
+        env_vars_set.add("max_contracts")
+    if os.getenv("BOT_MAX_TRADES_PER_DAY"):
+        env_vars_set.add("max_trades_per_day")
+    if os.getenv("BOT_MIN_RISK_REWARD") or os.getenv("BOT_RISK_REWARD_RATIO"):
+        env_vars_set.add("risk_reward_ratio")
+    if os.getenv("BOT_DAILY_LOSS_LIMIT"):
+        env_vars_set.add("daily_loss_limit")
+    if os.getenv("BOT_DAILY_LOSS_PERCENT"):
+        env_vars_set.add("daily_loss_percent")
+    if os.getenv("BOT_AUTO_CALCULATE_LIMITS") or os.getenv("BOT_USE_TOPSTEP_RULES"):
+        env_vars_set.add("auto_calculate_limits")
+    if os.getenv("BOT_RECOVERY_MODE"):
+        env_vars_set.add("recovery_mode")
+    if os.getenv("ACCOUNT_SIZE"):
+        env_vars_set.add("account_size")
+    if os.getenv("BOT_CONFIDENCE_THRESHOLD"):
+        env_vars_set.add("rl_confidence_threshold")
+    if os.getenv("BOT_DYNAMIC_CONFIDENCE"):
+        env_vars_set.add("dynamic_confidence")
+    if os.getenv("BOT_DYNAMIC_CONTRACTS"):
+        env_vars_set.add("dynamic_contracts")
+    if os.getenv("BOT_TICK_SIZE"):
+        env_vars_set.add("tick_size")
+    if os.getenv("BOT_TICK_VALUE"):
+        env_vars_set.add("tick_value")
+    if os.getenv("BOT_DRY_RUN"):
+        env_vars_set.add("dry_run")
+    if os.getenv("BOT_SHADOW_MODE"):
+        env_vars_set.add("shadow_mode")
+    if os.getenv("BOT_ENVIRONMENT"):
+        env_vars_set.add("environment")
+    if os.getenv("BOT_BROKER") or os.getenv("BROKER"):
+        env_vars_set.add("broker")
+    if os.getenv("BOT_API_TOKEN") or os.getenv("TOPSTEPX_API_TOKEN") or os.getenv("TOPSTEP_API_TOKEN") or os.getenv("BROKER_API_TOKEN"):
+        env_vars_set.add("api_token")
+    if os.getenv("BOT_USERNAME") or os.getenv("TOPSTEPX_USERNAME") or os.getenv("TOPSTEP_USERNAME") or os.getenv("BROKER_USERNAME"):
+        env_vars_set.add("username")
+    
+    # Apply env vars that were actually set
     for key in config.__dataclass_fields__.keys():
-        env_value = getattr(env_config, key)
-        default_value = getattr(BotConfiguration(), key)
-        
-        # If env value differs from default, use it
-        if env_value != default_value:
+        if key in env_vars_set:
+            env_value = getattr(env_config, key)
             setattr(config, key, env_value)
     
     # Validate configuration

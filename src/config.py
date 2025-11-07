@@ -15,6 +15,9 @@ import pytz
 class BotConfiguration:
     """Type-safe configuration for the VWAP Bounce Bot."""
     
+    # Default account size constant
+    DEFAULT_ACCOUNT_SIZE: float = 50000.0
+    
     # Instrument Configuration
     instrument: str = "ES"  # Single instrument (legacy support)
     instruments: list = field(default_factory=lambda: ["ES"])  # Multi-symbol support
@@ -607,15 +610,21 @@ def load_from_env() -> BotConfiguration:
     
     # Account Size (for risk calculations)
     if os.getenv("ACCOUNT_SIZE"):
-        # Handle both numeric and string formats (e.g., "50000" or "50k")
+        # Handle both numeric and string formats (e.g., "50000", "50k", "50K")
         account_size_str = os.getenv("ACCOUNT_SIZE")
         try:
             # Try parsing as float first
             config.account_size = float(account_size_str)
         except ValueError:
-            # Handle "50k", "100k" format
-            account_size_str = account_size_str.lower().replace("k", "000")
-            config.account_size = float(account_size_str)
+            # Handle "50k", "50K", "100k", "100K" format
+            try:
+                account_size_str_lower = account_size_str.lower().replace("k", "000")
+                config.account_size = float(account_size_str_lower)
+            except ValueError:
+                # If still fails, log error and use default
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Invalid ACCOUNT_SIZE format: {account_size_str}. Using default: {config.account_size}")
     
     # RL/AI Configuration from GUI
     if os.getenv("BOT_CONFIDENCE_THRESHOLD"):

@@ -4899,27 +4899,33 @@ def get_recovery_confidence_threshold(severity_level: float) -> float:
     """
     Calculate required confidence threshold for recovery mode.
     Higher severity = higher confidence requirement.
+    Confidence NEVER goes below user's initial threshold - it only increases.
     
     Args:
         severity_level: How close to failure (0.8 = at 80%, 1.0 = at 100%)
     
     Returns:
-        Required confidence threshold (0.0-1.0)
+        Required confidence threshold (0.0-1.0), never below user's initial setting
     """
-    # Base threshold is user's setting
+    # Base threshold is user's setting - this is the MINIMUM
     base_threshold = CONFIG.get("rl_confidence_threshold", 0.65)
     
+    # Calculate dynamic threshold based on severity
     # At 80% of limits, require 75% confidence
     # At 90% of limits, require 85% confidence
     # At 95%+ of limits, require 90% confidence
     if severity_level >= 0.95:
-        return 0.90  # Only take absolute best signals
+        dynamic_threshold = 0.90  # Only take absolute best signals
     elif severity_level >= 0.90:
-        return 0.85  # Very selective
+        dynamic_threshold = 0.85  # Very selective
     elif severity_level >= 0.80:
-        return 0.75  # Selective
+        dynamic_threshold = 0.75  # Selective
     else:
-        return base_threshold  # Normal operation
+        dynamic_threshold = base_threshold  # Normal operation
+    
+    # NEVER go below user's initial threshold
+    # As bot moves away from limits, confidence stays at or above initial threshold
+    return max(base_threshold, dynamic_threshold)
 
 
 def check_tick_timeout(current_time: datetime) -> Tuple[bool, Optional[str]]:

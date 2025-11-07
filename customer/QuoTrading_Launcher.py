@@ -102,10 +102,12 @@ class QuoTradingLauncher:
             elif system == "Darwin":  # macOS
                 canvas.yview_scroll(int(-1*event.delta), "units")
             else:  # Linux and others
-                if event.num == 4:
-                    canvas.yview_scroll(-1, "units")
-                elif event.num == 5:
-                    canvas.yview_scroll(1, "units")
+                # Check for event.num attribute (Linux X11 scroll events)
+                if hasattr(event, 'num'):
+                    if event.num == 4:
+                        canvas.yview_scroll(-1, "units")
+                    elif event.num == 5:
+                        canvas.yview_scroll(1, "units")
         return handler
     
     def create_header(self, title, subtitle=""):

@@ -262,8 +262,6 @@ class BotConfiguration:
                 f"Got ${self.daily_loss_limit:,.2f}"
             )
         
-        # Check max drawdown (must be 4% for TopStep)
-        
         if violations:
             if logger:
                 logger.error("[WARNING] TOPSTEP COMPLIANCE VIOLATIONS DETECTED:")

@@ -4867,7 +4867,14 @@ def check_approaching_failure(symbol: str) -> Tuple[bool, Optional[str], Optiona
     """
     Check if bot is approaching failure thresholds.
     Used for Recovery Mode - ONLY checks daily loss limit.
-    User tracks max drawdown on their own.
+    
+    Note: User is responsible for tracking max drawdown themselves.
+    Recommended max drawdown limits (for reference):
+    - TopStep: 4% from starting balance
+    - Apex: 4% trailing (from peak)
+    - Live accounts: User preference (typically 2-5%)
+    
+    Bot only enforces daily loss limit for recovery mode decisions.
     
     Args:
         symbol: Instrument symbol

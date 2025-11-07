@@ -4861,69 +4861,29 @@ def check_daily_loss_limit(symbol: str) -> Tuple[bool, Optional[str]]:
     return True, None
 
 
-def check_max_drawdown() -> Tuple[bool, Optional[str]]:
-    """
-    Check if maximum drawdown has been exceeded.
-    
-    Returns:
-        Tuple of (is_safe, reason)
-    """
-    if bot_status["starting_equity"] is not None:
-        current_equity = get_account_equity()
-        drawdown_percent = ((bot_status["starting_equity"] - current_equity) / 
-                           bot_status["starting_equity"] * 100)
-        
-        if drawdown_percent >= CONFIG["max_drawdown_percent"]:
-            if not bot_status["emergency_stop"]:
-                logger.critical(f"MAXIMUM DRAWDOWN EXCEEDED: {drawdown_percent:.2f}%")
-                logger.critical(f"Starting: ${bot_status['starting_equity']:.2f}, "
-                              f"Current: ${current_equity:.2f}")
-                logger.critical("EMERGENCY STOP ACTIVATED")
-                bot_status["emergency_stop"] = True
-                bot_status["trading_enabled"] = False
-                bot_status["stop_reason"] = "max_drawdown_exceeded"
-            return False, f"Max drawdown exceeded: {drawdown_percent:.2f}%"
-    return True, None
 
 
 def check_approaching_failure(symbol: str) -> Tuple[bool, Optional[str], Optional[float]]:
     """
     Check if bot is approaching failure thresholds.
-    Used for Recovery Mode (all account types).
+    Used for Recovery Mode - ONLY checks daily loss limit.
+    User tracks max drawdown on their own.
     
     Args:
         symbol: Instrument symbol
     
     Returns:
         Tuple of (is_approaching, reason, severity_level)
-        - is_approaching: True if at RECOVERY_APPROACHING_THRESHOLD (80%) or more of any limit
+        - is_approaching: True if at RECOVERY_APPROACHING_THRESHOLD (80%) or more of daily loss limit
         - reason: Description of what limit is being approached
         - severity_level: 0.0-1.0 indicating how close to failure (0.8 = at 80%, 1.0 = at 100%)
     """
-    max_severity = 0.0
-    reasons = []
-    
-    # Check daily loss limit approach
+    # Only check daily loss limit - user tracks max drawdown themselves
     daily_loss_limit = CONFIG.get("daily_loss_limit", 1000.0)
     if daily_loss_limit > 0 and state[symbol]["daily_pnl"] <= -daily_loss_limit * RECOVERY_APPROACHING_THRESHOLD:
         daily_loss_severity = abs(state[symbol]["daily_pnl"]) / daily_loss_limit
-        max_severity = max(max_severity, daily_loss_severity)
-        reasons.append(f"Daily loss at {daily_loss_severity*100:.1f}% of limit (${state[symbol]['daily_pnl']:.2f}/${-daily_loss_limit:.2f})")
-    
-    # Check max drawdown approach
-    max_drawdown_percent = CONFIG.get("max_drawdown_percent", 4.0)
-    if bot_status["starting_equity"] is not None and max_drawdown_percent > 0:
-        current_equity = get_account_equity()
-        drawdown_percent = ((bot_status["starting_equity"] - current_equity) / 
-                           bot_status["starting_equity"] * 100)
-        drawdown_severity = drawdown_percent / max_drawdown_percent
-        
-        if drawdown_severity >= RECOVERY_APPROACHING_THRESHOLD:
-            max_severity = max(max_severity, drawdown_severity)
-            reasons.append(f"Drawdown at {drawdown_severity*100:.1f}% of limit ({drawdown_percent:.2f}%/{max_drawdown_percent:.2f}%)")
-    
-    if reasons:
-        return True, "; ".join(reasons), max_severity
+        reason = f"Daily loss at {daily_loss_severity*100:.1f}% of limit (${state[symbol]['daily_pnl']:.2f}/${-daily_loss_limit:.2f})"
+        return True, reason, daily_loss_severity
     
     return False, None, 0.0
 
@@ -5053,12 +5013,7 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
     # if not is_safe:
     #     return False, reason
     
-    # Check maximum drawdown
-    is_safe, reason = check_max_drawdown()
-    if not is_safe:
-        return False, reason
-    
-    # Check if approaching failure (Recovery Mode for All Account Types)
+    # Check if approaching failure (Recovery Mode - only checks daily loss limit)
     is_approaching, approach_reason, severity = check_approaching_failure(symbol)
     if is_approaching:
         # Use recovery_mode setting to determine behavior
@@ -5822,7 +5777,6 @@ def main(symbol_override: str = None) -> None:
     logger.info(f"[{trading_symbol}] Max Trades/Day: {CONFIG['max_trades_per_day']}")
     logger.info(f"[{trading_symbol}] Risk Per Trade: {CONFIG['risk_per_trade'] * 100:.1f}%")
     logger.info(f"[{trading_symbol}] Daily Loss Limit: ${CONFIG['daily_loss_limit']}")
-    logger.info(f"[{trading_symbol}] Max Drawdown: {CONFIG['max_drawdown_percent']}%")
     logger.info(SEPARATOR_LINE)
     
     # Phase Fifteen: Validate timezone configuration

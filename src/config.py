@@ -81,13 +81,12 @@ class BotConfiguration:
     
     # Safety Parameters - USER CONFIGURABLE
     daily_loss_limit: float = 1000.0  # USER CONFIGURABLE - max $ loss per day (or auto-calculated)
-    max_drawdown_percent: float = 4.0  # USER CONFIGURABLE - max account drawdown % (broker rules may override)
     daily_loss_percent: float = 2.0  # USER CONFIGURABLE - max daily loss as % of account
     auto_calculate_limits: bool = True  # USER CONFIGURABLE - auto-calculate limits from account balance
     tick_timeout_seconds: int = 999999  # Disabled for testing
     proactive_stop_buffer_ticks: int = 2
     flatten_buffer_ticks: int = 2  # Buffer for flatten price calculation
-    recovery_mode: bool = False  # USER CONFIGURABLE - Enable recovery mode (continue trading with high confidence when approaching limits)
+    recovery_mode: bool = False  # USER CONFIGURABLE - Enable recovery mode (continue trading when approaching daily loss limit)
     
     def get_daily_loss_limit(self, account_balance: float) -> float:
         """
@@ -109,26 +108,6 @@ class BotConfiguration:
         # Use configured percentage (default 2%)
         loss_percent = self.daily_loss_percent if hasattr(self, 'daily_loss_percent') else 2.0
         return account_balance * (loss_percent / 100.0)
-    
-    def get_max_drawdown_dollars(self, account_balance: float) -> float:
-        """
-        Calculate max trailing drawdown in dollars based on configured rules.
-        Works for any broker - uses max_drawdown_percent setting.
-        
-        Trailing Drawdown:
-        - Calculated from HIGHEST equity reached (not starting balance)
-        - Default: 4% of peak equity
-        - Examples:
-          * Start at $50K, grow to $55K → Max DD = $55K × 4% = $2,200 from peak
-          * If equity drops below $52,800, stop trading
-        
-        Args:
-            account_balance: Current/highest account balance reached
-            
-        Returns:
-            Max trailing drawdown in dollars
-        """
-        return account_balance * (self.max_drawdown_percent / 100.0)
     
     def get_profit_target(self, account_balance: float) -> float:
         """
@@ -204,13 +183,11 @@ class BotConfiguration:
         
         # Calculate dynamic limits based on account type
         self.daily_loss_limit = self.get_daily_loss_limit(account_balance)
-        max_dd_dollars = self.get_max_drawdown_dollars(account_balance)
         profit_target = self.get_profit_target(account_balance)
         account_type = self.get_account_type(account_balance)
         
-        # Auto-calculate limits based on account balance (standard 2%/4% rules)
+        # Auto-calculate limits based on account balance
         if self.auto_calculate_limits:
-            self.max_drawdown_percent = 4.0  # Standard safe limit
             account_label = "AUTO-CALCULATED LIMITS"
         else:
             # Keep user's custom setting (already set in config)
@@ -229,9 +206,8 @@ class BotConfiguration:
             if self.auto_calculate_limits:
                 logger.info("Auto-Calculated Limits (Based on Account Balance):")
             else:
-                logger.info(f"Manual Limits (Custom {self.daily_loss_percent}%/{self.max_drawdown_percent}%):")
+                logger.info(f"Manual Limits (Custom {self.daily_loss_percent}%):")
             logger.info(f"  Daily Loss Limit: ${self.daily_loss_limit:,.2f} ({self.daily_loss_percent}% of balance)")
-            logger.info(f"  Max Trailing Drawdown: ${max_dd_dollars:,.2f} ({self.max_drawdown_percent}% from peak)")
             if self.auto_calculate_limits:
                 logger.info(f"  Profit Target: ${profit_target:,.2f} (6% target)")
             logger.info("")
@@ -252,7 +228,6 @@ class BotConfiguration:
         """
         return {
             "daily_loss_limit": self.daily_loss_limit,
-            "max_drawdown_percent": self.max_drawdown_percent,
             "max_contracts": self.max_contracts,
             "max_trades_per_day": self.max_trades_per_day,
             "risk_per_trade": self.risk_per_trade,
@@ -288,10 +263,6 @@ class BotConfiguration:
             )
         
         # Check max drawdown (must be 4% for TopStep)
-        if abs(self.max_drawdown_percent - 4.0) > 0.01:  # Tolerance for float comparison
-            violations.append(
-                f"Max drawdown must be 4% (TopStep rule), got {self.max_drawdown_percent}%"
-            )
         
         if violations:
             if logger:
@@ -398,7 +369,6 @@ class BotConfiguration:
     # Dynamic AI Features (USER CONFIGURABLE via GUI)
     dynamic_confidence: bool = False  # USER CONFIGURABLE - Auto-increase confidence when approaching limits
     dynamic_contracts: bool = False  # USER CONFIGURABLE - Use signal confidence to scale contracts dynamically
-    trailing_drawdown: bool = False  # USER CONFIGURABLE - Enable trailing drawdown (soft floor protection)
     
     # Broker Configuration (only for live trading)
     api_token: Optional[str] = None
@@ -465,8 +435,6 @@ class BotConfiguration:
         if self.daily_loss_limit <= 0:
             errors.append(f"daily_loss_limit must be positive, got {self.daily_loss_limit}")
         
-        if not 0 < self.max_drawdown_percent <= 100:
-            errors.append(f"max_drawdown_percent must be between 0 and 100, got {self.max_drawdown_percent}")
         
         # Validate broker configuration - API token is required unless in backtest mode
         # Shadow mode needs API token for live data streaming (but no account login)
@@ -527,7 +495,6 @@ class BotConfiguration:
             "friday_entry_cutoff": self.friday_entry_cutoff,
             "friday_close_target": self.friday_close_target,
             "daily_loss_limit": self.daily_loss_limit,
-            "max_drawdown_percent": self.max_drawdown_percent,
             "tick_timeout_seconds": self.tick_timeout_seconds,
             "proactive_stop_buffer_ticks": self.proactive_stop_buffer_ticks,
             "flatten_buffer_ticks": self.flatten_buffer_ticks,
@@ -568,7 +535,6 @@ class BotConfiguration:
             # Dynamic AI Features (from GUI)
             "dynamic_confidence": self.dynamic_confidence,
             "dynamic_contracts": self.dynamic_contracts,
-            "trailing_drawdown": self.trailing_drawdown,
             # Recovery Mode
             "recovery_mode": self.recovery_mode,
         }
@@ -614,8 +580,6 @@ def load_from_env() -> BotConfiguration:
     if os.getenv("BOT_DAILY_LOSS_LIMIT"):
         config.daily_loss_limit = float(os.getenv("BOT_DAILY_LOSS_LIMIT"))
     
-    if os.getenv("BOT_MAX_DRAWDOWN_PERCENT"):
-        config.max_drawdown_percent = float(os.getenv("BOT_MAX_DRAWDOWN_PERCENT"))
     
     if os.getenv("BOT_DAILY_LOSS_PERCENT"):
         config.daily_loss_percent = float(os.getenv("BOT_DAILY_LOSS_PERCENT"))
@@ -647,9 +611,6 @@ def load_from_env() -> BotConfiguration:
     
     if os.getenv("BOT_DYNAMIC_CONTRACTS"):
         config.dynamic_contracts = os.getenv("BOT_DYNAMIC_CONTRACTS").lower() in ("true", "1", "yes")
-    
-    if os.getenv("BOT_TRAILING_DRAWDOWN"):
-        config.trailing_drawdown = os.getenv("BOT_TRAILING_DRAWDOWN").lower() in ("true", "1", "yes")
     
     if os.getenv("BOT_TICK_SIZE"):
         config.tick_size = float(os.getenv("BOT_TICK_SIZE"))
@@ -830,7 +791,6 @@ def log_config(config: BotConfiguration, logger) -> None:
     logger.info(f"Max Trades per Day: {config.max_trades_per_day}")
     logger.info(f"Risk/Reward Ratio: {config.risk_reward_ratio}:1")
     logger.info(f"Daily Loss Limit: ${config.daily_loss_limit:.2f}")
-    logger.info(f"Max Drawdown: {config.max_drawdown_percent:.1f}%")
     
     # Time windows
     logger.info(f"Entry Window: {config.entry_start_time} - {config.entry_end_time} ET")

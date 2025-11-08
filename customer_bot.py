@@ -23,7 +23,7 @@ import aiohttp
 import pytz
 
 # Import local execution modules
-from src.topstep_websocket import TopstepWebSocket
+from src.broker_interface import create_broker, BrokerInterface
 from src.config import load_config
 from src.notifications import NotificationManager
 from src.monitoring import PerformanceMonitor
@@ -72,7 +72,7 @@ class QuoTradingCustomerBot:
         self.http_session: Optional[aiohttp.ClientSession] = None
         
         # Trading components
-        self.ws: Optional[TopstepWebSocket] = None
+        self.broker: Optional[BrokerInterface] = None
         self.notifications = NotificationManager(self.config)
         self.monitor = PerformanceMonitor()
         self.session_state = SessionState()
@@ -169,41 +169,45 @@ class QuoTradingCustomerBot:
     async def enter_position(self, side: str, signal_data: Dict[str, Any]):
         """Enter a new position"""
         try:
-            # Get current market price from WebSocket
-            if not self.ws or not self.ws.last_tick:
+            # Get current market price from broker
+            current_price = self.broker.get_last_price(INSTRUMENT)
+            if not current_price:
                 logger.warning("No market data available, cannot enter position")
                 return
-            
-            price = self.ws.last_tick['price']
             
             # Calculate position size based on account and risk settings
             position_size = self.calculate_position_size()
             
-            # Place order
-            order_type = side  # 'LONG' or 'SHORT'
-            logger.info(f"Entering {order_type} position at {price}, size: {position_size}")
+            # Place market order
+            order_side = "BUY" if side == "LONG" else "SELL"
+            logger.info(f"Entering {side} position at {current_price}, size: {position_size}")
             
-            # Send order via WebSocket
-            await self.ws.place_order(
-                side=order_type,
-                quantity=position_size,
-                price=price
+            # Execute order via broker
+            order_result = self.broker.place_market_order(
+                symbol=INSTRUMENT,
+                side=order_side,
+                quantity=position_size
             )
+            
+            if not order_result:
+                logger.error("Failed to place entry order")
+                await self.notifications.send_alert("❌ ENTRY FAILED", "Order rejected by broker")
+                return
             
             # Update state
             self.in_position = True
             self.position_side = side
-            self.entry_price = price
+            self.entry_price = current_price
             
             # Send notification
             await self.notifications.send_alert(
-                f"🟢 ENTERED {side} at {price}",
+                f"🟢 ENTERED {side} at {current_price}",
                 f"Signal: {signal_data.get('message', 'Cloud signal')}\n"
                 f"VWAP: {signal_data.get('vwap', 'N/A')}\n"
                 f"RSI: {signal_data.get('rsi', 'N/A')}"
             )
             
-            logger.info(f"Position entered successfully: {side} @ {price}")
+            logger.info(f"Position entered successfully: {side} @ {current_price}")
             
         except Exception as e:
             logger.error(f"Error entering position: {e}")
@@ -216,23 +220,34 @@ class QuoTradingCustomerBot:
                 logger.warning("No position to exit")
                 return
             
-            # Get current market price
-            if not self.ws or not self.ws.last_tick:
+            # Get current market price from broker
+            current_price = self.broker.get_last_price(INSTRUMENT)
+            if not current_price:
                 logger.warning("No market data available, cannot exit position")
                 return
             
-            exit_price = self.ws.last_tick['price']
-            
             # Calculate P&L
             if self.position_side == 'LONG':
-                pnl = (exit_price - self.entry_price) * 50  # ES tick value
+                pnl = (current_price - self.entry_price) * 50  # ES tick value
             else:  # SHORT
-                pnl = (self.entry_price - exit_price) * 50
+                pnl = (self.entry_price - current_price) * 50
             
-            logger.info(f"Exiting {self.position_side} position at {exit_price}, P&L: ${pnl:.2f}")
+            logger.info(f"Exiting {self.position_side} position at {current_price}, P&L: ${pnl:.2f}")
             
-            # Close position via WebSocket
-            await self.ws.close_position()
+            # Close position via broker
+            exit_side = "SELL" if self.position_side == 'LONG' else "BUY"
+            position_size = self.calculate_position_size()
+            
+            order_result = self.broker.place_market_order(
+                symbol=INSTRUMENT,
+                side=exit_side,
+                quantity=position_size
+            )
+            
+            if not order_result:
+                logger.error("Failed to place exit order")
+                await self.notifications.send_alert("❌ EXIT FAILED", "Order rejected by broker")
+                return
             
             # Update state
             self.in_position = False
@@ -244,7 +259,7 @@ class QuoTradingCustomerBot:
             await self.notifications.send_alert(
                 f"{pnl_emoji} EXITED {side}",
                 f"Entry: {self.entry_price}\n"
-                f"Exit: {exit_price}\n"
+                f"Exit: {current_price}\n"
                 f"P&L: ${pnl:.2f}\n"
                 f"Reason: {signal_data.get('message', 'Cloud signal')}"
             )
@@ -261,16 +276,19 @@ class QuoTradingCustomerBot:
         # Simple fixed size for now - can be enhanced with risk management
         return self.config.get('position_size', 1)
     
-    async def on_tick(self, tick_data: Dict[str, Any]):
-        """Handle incoming tick data from WebSocket"""
+    async def on_tick(self, symbol: str, price: float, volume: int, timestamp: int):
+        """Handle incoming tick data from broker"""
         try:
             # Send tick to cloud for signal calculation
-            await self.send_market_data(
-                price=tick_data['price'],
-                volume=tick_data.get('volume', 0)
-            )
+            await self.send_market_data(price=price, volume=volume)
             
             # Update monitoring
+            tick_data = {
+                'symbol': symbol,
+                'price': price,
+                'volume': volume,
+                'timestamp': timestamp
+            }
             self.monitor.update_tick(tick_data)
             
         except Exception as e:
@@ -315,22 +333,29 @@ class QuoTradingCustomerBot:
                 await self.http_session.close()
                 return
             
-            # Initialize WebSocket connection
-            self.ws = TopstepWebSocket(self.config)
-            self.ws.on_tick = self.on_tick
+            # Initialize broker connection
+            api_token = self.config.topstep_api_token
+            username = self.config.topstep_username
             
-            # Connect to TopStep
-            await self.ws.connect()
-            logger.info("Connected to TopStep WebSocket")
+            self.broker = create_broker(api_token=api_token, username=username, instrument=INSTRUMENT)
+            
+            # Connect to broker
+            connected = await self.broker.connect_async()
+            if not connected:
+                logger.error("Failed to connect to broker!")
+                await self.http_session.close()
+                return
+            
+            logger.info("Connected to TopStep broker")
+            
+            # Subscribe to market data
+            self.broker.subscribe_market_data(INSTRUMENT, self.on_tick)
             
             # Start signal monitoring
             self.running = True
             
-            # Run signal check loop and WebSocket listener concurrently
-            await asyncio.gather(
-                self.signal_check_loop(),
-                self.ws.listen()
-            )
+            # Run signal check loop
+            await self.signal_check_loop()
             
         except KeyboardInterrupt:
             logger.info("Shutdown requested by user")
@@ -349,9 +374,9 @@ class QuoTradingCustomerBot:
             logger.info("Closing open position before shutdown")
             await self.exit_position({"message": "Bot shutdown"})
         
-        # Disconnect WebSocket
-        if self.ws:
-            await self.ws.disconnect()
+        # Disconnect broker
+        if self.broker:
+            self.broker.disconnect()
         
         # Close HTTP session
         if self.http_session:

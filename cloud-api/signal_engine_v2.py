@@ -641,8 +641,15 @@ async def get_ml_stats():
         }
     
     # Handle both loaded format (reward) and new trades (pnl)
+    # Debug: Check first few experiences
+    sample_exp = signal_experiences[0] if signal_experiences else {}
+    logger.info(f"DEBUG Stats - Sample experience keys: {list(sample_exp.keys())}")
+    logger.info(f"DEBUG Stats - Sample PnL field: pnl={sample_exp.get('pnl')}, reward={sample_exp.get('reward')}")
+    
     wins = sum(1 for exp in signal_experiences if exp.get('pnl', exp.get('reward', 0)) > 0)
     total_pnl = sum(exp.get('pnl', exp.get('reward', 0)) for exp in signal_experiences)
+    
+    logger.info(f"DEBUG Stats - Wins: {wins}, Total PnL: {total_pnl}, Total Trades: {len(signal_experiences)}")
     
     return {
         "total_trades": len(signal_experiences),

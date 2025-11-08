@@ -34,8 +34,12 @@ import platform  # For cross-platform mouse wheel support
 # Toggle between local and cloud signal generation
 USE_CLOUD_SIGNALS = False  # Set to True for production (cloud ML/RL)
 
-# Cloud API endpoints
-CLOUD_API_BASE_URL = "https://quotrading-api.onrender.com"  # TODO: Change to Azure after deployment
+# Cloud API endpoints - supports both Render and Azure deployments
+# Set QUOTRADING_API_URL environment variable to override default
+# Examples:
+#   - Render: https://quotrading-api.onrender.com
+#   - Azure: https://quotrading-api.azurewebsites.net
+CLOUD_API_BASE_URL = os.getenv("QUOTRADING_API_URL", "https://quotrading-api.onrender.com")
 CLOUD_SIGNAL_ENDPOINT = f"{CLOUD_API_BASE_URL}/api/v1/signals/generate"
 CLOUD_SIGNAL_POLL_INTERVAL = 5  # Seconds between signal polls
 

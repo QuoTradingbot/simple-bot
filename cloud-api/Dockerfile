@@ -13,8 +13,6 @@ RUN pip install --no-cache-dir -r requirements-azure.txt
 # Copy application files
 COPY main.py .
 COPY signal_engine.py .
-COPY database.py .
-COPY models.py .
 
 # Expose port
 EXPOSE 8000

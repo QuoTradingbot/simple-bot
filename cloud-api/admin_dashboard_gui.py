@@ -6,10 +6,17 @@ Launch this to view all users, subscriptions, and revenue
 import tkinter as tk
 from tkinter import ttk, messagebox
 import requests
+import os
 from datetime import datetime
 import threading
 
-API_URL = "https://quotrading-api.onrender.com"
+# Configuration - supports both Render and Azure deployments
+# Set QUOTRADING_API_URL environment variable to override default
+# Examples:
+#   - Render: https://quotrading-api.onrender.com
+#   - Azure: https://quotrading-api.azurewebsites.net
+#   - Local: http://localhost:8000
+API_URL = os.getenv("QUOTRADING_API_URL", "https://quotrading-api.onrender.com")
 ADMIN_KEY = "QUOTRADING_ADMIN_MASTER_2025"
 
 class AdminDashboard:

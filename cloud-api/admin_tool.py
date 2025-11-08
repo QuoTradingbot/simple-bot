@@ -5,11 +5,16 @@ Manage users, subscriptions, and test API endpoints
 
 import requests
 import json
+import os
 from datetime import datetime
 
-# Configuration
-API_URL = "https://quotrading-api.onrender.com"  # Change to your deployed URL
-# API_URL = "http://localhost:8000"  # For local testing
+# Configuration - supports both Render and Azure deployments
+# Set QUOTRADING_API_URL environment variable to override default
+# Examples:
+#   - Render: https://quotrading-api.onrender.com
+#   - Azure: https://quotrading-api.azurewebsites.net
+#   - Local: http://localhost:8000
+API_URL = os.getenv("QUOTRADING_API_URL", "https://quotrading-api.onrender.com")
 
 def print_response(response):
     """Pretty print API response"""

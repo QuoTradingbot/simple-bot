@@ -1,0 +1,54 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'cloud-api/**'
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: quotrading-api
+  AZURE_WEBAPP_PACKAGE_PATH: './cloud-api'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        cd ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+        python -m pip install --upgrade pip
+        pip install -r requirements-azure.txt
+    
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+    
+    - name: Deploy to Azure Web App
+      uses: azure/webapps-deploy@v2
+      with:
+        app-name: ${{ env.AZURE_WEBAPP_NAME }}
+        package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+    
+    - name: Test deployment
+      run: |
+        sleep 30
+        curl -f https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/ || exit 1
+    
+    - name: Logout from Azure
+      run: |
+        az logout
+      if: always()

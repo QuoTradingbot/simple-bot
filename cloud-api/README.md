@@ -44,7 +44,9 @@ python main.py
 # API runs at http://localhost:8000
 ```
 
-### Deploy to Render
+### Deploy to Cloud
+
+**Option 1: Deploy to Render**
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for complete deployment instructions.
 
@@ -53,6 +55,19 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for complete deployment instructions.
 2. Create Web Service pointing to this folder
 3. Set environment variables
 4. Deploy!
+
+**Option 2: Deploy to Azure**
+
+See [AZURE_DEPLOYMENT.md](AZURE_DEPLOYMENT.md) for complete Azure CLI deployment instructions.
+
+**TL;DR:**
+```bash
+cd cloud-api
+chmod +x deploy-azure.sh
+./deploy-azure.sh
+```
+
+Or deploy manually with Azure CLI commands in the guide.
 
 ## 🔑 API Endpoints
 

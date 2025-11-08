@@ -148,6 +148,28 @@ python build_customer_version.py
 
 This creates a standalone executable in `customer/dist/QuoTrading_Launcher.exe`
 
+## ☁️ Cloud Deployment
+
+The QuoTrading Cloud API can be deployed to multiple cloud platforms:
+
+### Deploy to Render
+See [cloud-api/DEPLOYMENT.md](cloud-api/DEPLOYMENT.md) for Render deployment guide.
+
+### Deploy to Azure
+See [cloud-api/AZURE_DEPLOYMENT.md](cloud-api/AZURE_DEPLOYMENT.md) for Azure CLI deployment guide.
+
+**Quick Azure Deployment:**
+```bash
+cd cloud-api
+chmod +x deploy-azure.sh
+./deploy-azure.sh
+```
+
+After deployment, update your bot configuration:
+```python
+CLOUD_API_BASE_URL = "https://your-app.azurewebsites.net"
+```
+
 ## 📝 License
 
 Proprietary - QuoTrading LLC

@@ -1,10 +1,21 @@
 # Forex Factory Economic Calendar
 
-This directory contains economic calendar data scraped from Forex Factory.
+This directory contains economic calendar data based on typical Forex Factory calendar scheduling patterns.
+
+## ⚠️ Important Note on Dates
+
+**The dates in this calendar follow standard economic release schedules:**
+- **NFP (Non-Farm Payrolls)**: First Friday of each month at 8:30am ET
+- **CPI (Consumer Price Index)**: Mid-month (typically 10th-15th) at 8:30am ET
+- **FOMC Meetings**: Scheduled 8 times per year (approximately every 6 weeks)
+- **ECB/BoE/BoJ**: Monthly or bi-monthly meetings on standard weekdays
+
+These are **realistic scheduling patterns** but should be verified with the actual calendar closer to the event date, as dates can occasionally shift due to holidays or special circumstances.
 
 ## Files
 
 - **`forex_factory_events.json`** - Main file containing upcoming economic events with dates, times, and impact levels
+- **`forex_factory_events.csv`** - Same data in CSV format for spreadsheet analysis
 
 ## Data Structure
 

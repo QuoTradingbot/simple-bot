@@ -1,17 +1,17 @@
 """
-QuoTrading Customer Bot - Hybrid Architecture
-==============================================
-Local signal generation with cloud ML/RL enhancement.
+QuoTrading AI - Professional Trading Bot
+=========================================
+Hybrid architecture with local execution and cloud ML intelligence.
 
 Architecture:
-- VWAP/RSI Calculation: Local (user's custom settings)
-- ML/RL Confidence: Cloud (Azure - shared models)
-- Signal Generation: Local (combines indicators + ML confidence)
-- Trade Execution: Local (TopStep broker)
+- VWAP/RSI Calculation: Local (proven Iteration 3 settings)
+- ML/RL Confidence: Cloud (Azure - shared learning across all users)
+- Signal Generation: Local (fast response with cloud validation)
+- Trade Execution: Local (TopStep WebSocket)
 - License Validation: Cloud (Render API)
 
 Author: QuoTraders Team
-Version: 2.0 (Hybrid Cloud/Local)
+Version: 2.0 (Production)
 """
 
 import asyncio
@@ -74,8 +74,8 @@ logger = logging.getLogger(__name__)
 # CUSTOMER BOT CLASS
 # ============================================================================
 
-class QuoTradingCustomerBot:
-    """Hybrid bot: Local VWAP/RSI calculation + Cloud ML confidence scoring"""
+class QuoTradingBot:
+    """QuoTrading AI - Professional automated trading system"""
     
     def __init__(self, config_path: str = "config.json"):
         self.config = load_config(config_path)
@@ -119,7 +119,7 @@ class QuoTradingCustomerBot:
         
         self.license_valid = False
         
-        logger.info(f"Customer Bot initialized for {self.symbol}")
+        logger.info(f"QuoTrading Bot initialized for {self.symbol}")
         logger.info(f"ML confidence threshold: {self.min_confidence_threshold:.0%}")
         logger.info(f"Position size: {self.position_size} contracts")
     
@@ -571,9 +571,9 @@ class QuoTradingCustomerBot:
             logger.error(f"Error handling tick: {e}")
     
     async def start(self):
-        """Start the customer bot"""
+        """Start the QuoTrading bot"""
         logger.info("=" * 70)
-        logger.info("QuoTrading Customer Bot v2.0 - Hybrid Architecture")
+        logger.info("QuoTrading AI v2.0 - Professional Trading System")
         logger.info("=" * 70)
         logger.info(f"ML API: {ML_API_URL}")
         logger.info(f"License API: {LICENSE_API_URL}")
@@ -662,12 +662,12 @@ class QuoTradingCustomerBot:
 # ============================================================================
 
 async def main():
-    """Main entry point for customer bot"""
+    """Main entry point for QuoTrading Bot"""
     # Create logs directory
     os.makedirs('logs', exist_ok=True)
     
     # Create and start bot
-    bot = QuoTradingCustomerBot('config.json')
+    bot = QuoTradingBot('config.json')
     await bot.start()
 
 

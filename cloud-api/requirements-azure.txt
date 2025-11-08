@@ -1,9 +1,0 @@
-fastapi==0.104.1
-pydantic==2.5.0
-pydantic[email]==2.5.0
-sqlalchemy==2.0.23
-stripe==7.4.0
-gunicorn==21.2.0
-uvicorn[standard]==0.24.0
-numpy==1.26.2
-pandas==2.1.3

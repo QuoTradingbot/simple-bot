@@ -42,6 +42,9 @@ from typing import Any, Dict, List, Optional, Tuple, Callable
 import pytz
 import time as time_module  # Import time module with alias
 import statistics  # For calculating statistics like mean, median, etc.
+import aiohttp
+import asyncio
+import hashlib
 
 # Import new production modules
 from config import load_config, BotConfiguration
@@ -176,6 +179,164 @@ def setup_logging() -> logging.Logger:
 
 
 logger = setup_logging()
+
+
+# ============================================================================
+# CLOUD RL API INTEGRATION - Shared Learning Pool
+# ============================================================================
+
+# Cloud ML API configuration
+CLOUD_ML_API_URL = os.getenv("CLOUD_ML_API_URL", "https://quotrading-signals.icymeadow-86b2969e.eastus.azurecontainerapps.io")
+USE_CLOUD_SIGNALS = os.getenv("USE_CLOUD_SIGNALS", "true").lower() == "true"
+
+# Generate privacy-preserving user ID
+def get_user_id() -> str:
+    """Generate consistent user ID from TopStep username"""
+    username = CONFIG.get("topstep_username", "default_user")
+    return hashlib.md5(username.encode()).hexdigest()[:12]
+
+USER_ID = get_user_id()
+
+
+async def get_ml_confidence_async(rl_state: Dict[str, Any], side: str) -> Tuple[bool, float, str]:
+    """
+    Get ML confidence from cloud API (shared RL learning pool).
+    Returns: (take_signal, confidence, reason)
+    """
+    if not USE_CLOUD_SIGNALS:
+        # Fallback to local RL brain if cloud disabled
+        if rl_brain is not None:
+            return rl_brain.should_take_signal(rl_state)
+        return True, 0.5, "Cloud API disabled, no local RL"
+    
+    try:
+        # Prepare payload for cloud API
+        payload = {
+            "user_id": USER_ID,
+            "symbol": CONFIG["instrument"],
+            "side": side,
+            "rsi": rl_state.get("rsi", 50),
+            "vwap_distance": rl_state.get("vwap_distance", 0),
+            "volume_ratio": rl_state.get("volume_ratio", 1.0),
+            "streak": rl_state.get("streak", 0),
+            "time_of_day_score": rl_state.get("time_of_day_score", 0.5),
+            "volatility": rl_state.get("volatility", 1.0)
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{CLOUD_ML_API_URL}/api/ml/get_confidence",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=3.0)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    confidence = data.get("confidence", 0.5)
+                    take_signal = data.get("should_trade", False)
+                    reason = data.get("reason", "Cloud RL evaluation")
+                    
+                    logger.debug(f"[CLOUD RL] {side.upper()} signal: {take_signal} (confidence: {confidence:.1%}) - {reason}")
+                    logger.debug(f"   Shared pool: {data.get('total_trades', 0)} trades, WR: {data.get('win_rate', 0):.1%}")
+                    
+                    return take_signal, confidence, reason
+                else:
+                    logger.warning(f"Cloud ML API returned status {response.status}, falling back to local RL")
+                    if rl_brain is not None:
+                        return rl_brain.should_take_signal(rl_state)
+                    return True, 0.5, "Cloud API error, no local RL"
+                    
+    except asyncio.TimeoutError:
+        logger.warning("Cloud ML API timeout, falling back to local RL")
+        if rl_brain is not None:
+            return rl_brain.should_take_signal(rl_state)
+        return True, 0.5, "API timeout, no local RL"
+    except Exception as e:
+        logger.warning(f"Cloud ML API error: {e}, falling back to local RL")
+        if rl_brain is not None:
+            return rl_brain.should_take_signal(rl_state)
+        return True, 0.5, f"API error: {e}"
+
+
+def get_ml_confidence(rl_state: Dict[str, Any], side: str) -> Tuple[bool, float, str]:
+    """Synchronous wrapper for get_ml_confidence_async"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(get_ml_confidence_async(rl_state, side))
+    finally:
+        loop.close()
+
+
+async def save_trade_experience_async(
+    rl_state: Dict[str, Any],
+    side: str,
+    pnl: float,
+    duration_minutes: float,
+    execution_data: Dict[str, Any]
+) -> None:
+    """
+    Save trade result to cloud API (shared RL learning pool).
+    All users contribute to and learn from the same experience pool.
+    """
+    if not USE_CLOUD_SIGNALS:
+        # Save to local RL brain if cloud disabled
+        if rl_brain is not None:
+            rl_brain.record_outcome(rl_state, True, pnl, duration_minutes, execution_data)
+        return
+    
+    try:
+        # Prepare trade experience payload
+        payload = {
+            "user_id": USER_ID,
+            "symbol": CONFIG["instrument"],
+            "side": side,
+            "signal": f"{side}_bounce",  # "long_bounce" or "short_bounce"
+            "rsi": rl_state.get("rsi", 50),
+            "vwap_distance": rl_state.get("vwap_distance", 0),
+            "volume_ratio": rl_state.get("volume_ratio", 1.0),
+            "streak": rl_state.get("streak", 0),
+            "time_of_day_score": rl_state.get("time_of_day_score", 0.5),
+            "volatility": rl_state.get("volatility", 1.0),
+            "pnl": pnl,
+            "duration_minutes": duration_minutes,
+            "exit_reason": execution_data.get("exit_reason", "unknown")
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{CLOUD_ML_API_URL}/api/ml/save_trade",
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=5.0)
+            ) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    logger.info(f"[CLOUD RL] Trade saved to shared pool: ${pnl:+.2f}")
+                    logger.info(f"   Shared pool: {data.get('total_trades', 0)} total trades, {data.get('recent_trades', 0)} recent")
+                else:
+                    logger.warning(f"Failed to save trade to cloud (status {response.status}), saving locally")
+                    if rl_brain is not None:
+                        rl_brain.record_outcome(rl_state, True, pnl, duration_minutes, execution_data)
+                        
+    except Exception as e:
+        logger.warning(f"Error saving trade to cloud: {e}, saving locally")
+        if rl_brain is not None:
+            rl_brain.record_outcome(rl_state, True, pnl, duration_minutes, execution_data)
+
+
+def save_trade_experience(
+    rl_state: Dict[str, Any],
+    side: str,
+    pnl: float,
+    duration_minutes: float,
+    execution_data: Dict[str, Any]
+) -> None:
+    """Synchronous wrapper for save_trade_experience_async"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(save_trade_experience_async(rl_state, side, pnl, duration_minutes, execution_data))
+    finally:
+        loop.close()
 
 
 # ============================================================================
@@ -1891,13 +2052,13 @@ def check_for_signals(symbol: str) -> None:
     
     # Check for long signal
     if check_long_signal_conditions(symbol, prev_bar, current_bar):
-        # REINFORCEMENT LEARNING - Check if RL brain approves this signal
-        if CONFIG.get("rl_enabled", True) and rl_brain is not None:
+        # REINFORCEMENT LEARNING - Get confidence from cloud API (shared learning pool)
+        if CONFIG.get("rl_enabled", True):
             # Capture market state
             rl_state = capture_rl_state(symbol, "long", current_bar["close"])
             
-            # Ask RL brain for decision
-            take_signal, confidence, reason = rl_brain.should_take_signal(rl_state)
+            # Ask cloud RL API for decision (or local RL as fallback)
+            take_signal, confidence, reason = get_ml_confidence(rl_state, "long")
             
             # Check if in recovery mode and need higher confidence
             if take_signal and bot_status.get("recovery_confidence_threshold"):
@@ -1942,13 +2103,13 @@ def check_for_signals(symbol: str) -> None:
     
     # Check for short signal
     if check_short_signal_conditions(symbol, prev_bar, current_bar):
-        # REINFORCEMENT LEARNING - Check if RL brain approves this signal
-        if CONFIG.get("rl_enabled", True) and rl_brain is not None:
+        # REINFORCEMENT LEARNING - Get confidence from cloud API (shared learning pool)
+        if CONFIG.get("rl_enabled", True):
             # Capture market state
             rl_state = capture_rl_state(symbol, "short", current_bar["close"])
             
-            # Ask RL brain for decision
-            take_signal, confidence, reason = rl_brain.should_take_signal(rl_state)
+            # Ask cloud RL API for decision (or local RL as fallback)
+            take_signal, confidence, reason = get_ml_confidence(rl_state, "short")
             
             # Check if in recovery mode and need higher confidence
             if take_signal and bot_status.get("recovery_confidence_threshold"):
@@ -4507,12 +4668,13 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
         except Exception as e:
             logger.debug(f"Streak tracking update skipped: {e}")
     
-    # REINFORCEMENT LEARNING - Record outcome for learning
-    if CONFIG.get("rl_enabled", True) and rl_brain is not None:
+    # REINFORCEMENT LEARNING - Record outcome to cloud API (shared learning pool)
+    if CONFIG.get("rl_enabled", True):
         try:
             # Check if we have the entry state stored
             if "entry_rl_state" in state[symbol]:
                 entry_state = state[symbol]["entry_rl_state"]
+                entry_side = state[symbol]["position"]["side"]  # Get the trade side
                 
                 # Calculate trade duration in minutes
                 entry_time = position.get("entry_time")
@@ -4521,10 +4683,10 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
                     duration = exit_time - entry_time
                     duration_minutes = duration.total_seconds() / 60
                 
-                # Record the outcome for learning
-                rl_brain.record_outcome(
-                    state=entry_state,
-                    took_trade=True,
+                # Record the outcome to cloud API for shared learning
+                save_trade_experience(
+                    rl_state=entry_state,
+                    side=entry_side,
                     pnl=pnl,
                     duration_minutes=duration_minutes,
                     execution_data={
@@ -4538,11 +4700,7 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
                     }
                 )
                 
-                # Get RL stats
-                stats = rl_brain.get_stats()
-                logger.info(f" RL LEARNING: Recorded outcome ${pnl:+.2f} in {duration_minutes:.1f}min")
-                logger.info(f"   RL Stats: {stats['total_signals']} signals, {stats['signals_taken']} taken ({stats['take_rate']:.1%}), "
-                          f"Recent WR: {stats['recent_win_rate']:.1%}, Exploration: {stats['exploration_rate']:.1%}")
+                logger.info(f" [CLOUD RL] Recorded outcome ${pnl:+.2f} in {duration_minutes:.1f}min to shared learning pool")
                 
                 # Clean up state
                 del state[symbol]["entry_rl_state"]

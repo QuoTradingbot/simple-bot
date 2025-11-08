@@ -5,6 +5,7 @@
 tkinter-modern>=1.0.0
 requests>=2.32.4
 python-dateutil>=2.8.2
+aiohttp>=3.8.0
 
 # TopStep SDK and dependencies (excluding uvloop which doesn't work on Windows)
 project-x-py>=3.5.9

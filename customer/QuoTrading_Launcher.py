@@ -35,7 +35,7 @@ import platform  # For cross-platform mouse wheel support
 USE_CLOUD_SIGNALS = True  # Set to True for production (cloud ML/RL)
 
 # Cloud API endpoints - Azure deployment
-# The bot (quotrading_bot.py) handles all cloud ML/RL communication
+# The bot (src/vwap_bounce_bot.py) handles all cloud ML/RL communication
 CLOUD_API_BASE_URL = os.getenv("QUOTRADING_API_URL", "https://quotrading-signals.icymeadow-86b2969e.eastus.azurecontainerapps.io")
 CLOUD_SIGNAL_ENDPOINT = f"{CLOUD_API_BASE_URL}/api/ml/get_confidence"
 CLOUD_SIGNAL_POLL_INTERVAL = 5  # Seconds between signal polls
@@ -2713,12 +2713,12 @@ class QuoTradingLauncher:
             # Get the AI directory (parent of customer folder)
             bot_dir = Path(__file__).parent.parent.absolute()
             
-            # PowerShell command to run the QuoTrading AI bot
+            # PowerShell command to run the QuoTrading AI bot (sophisticated vwap_bounce_bot.py)
             ps_command = [
                 "powershell.exe",
                 "-NoExit",  # Keep window open
                 "-Command",
-                f"cd '{bot_dir}'; python quotrading_bot.py"
+                f"cd '{bot_dir}'; python src/vwap_bounce_bot.py"
             ]
             
             # Start PowerShell process in a NEW CONSOLE WINDOW
@@ -2745,7 +2745,7 @@ class QuoTradingLauncher:
             messagebox.showerror(
                 "Launch Error",
                 f"Failed to launch bot:\n{str(e)}\n\n"
-                f"Make sure Python is installed and quotrading_bot.py exists."
+                f"Make sure Python is installed and src/vwap_bounce_bot.py exists."
             )
     
     def show_settings_dialog(self):

@@ -385,23 +385,25 @@ def load_initial_experiences():
     import os
     
     try:
-        # Load signal experiences (178K trades)
+        # Load signal experiences (6,880 trades)
         if os.path.exists("signal_experience.json"):
             with open("signal_experience.json", "r") as f:
-                signal_experiences = json.load(f)
+                data = json.load(f)
+                signal_experiences = data.get("experiences", [])
             logger.info(f"✅ Loaded {len(signal_experiences):,} signal experiences from Kevin's backtests")
         
-        # Load exit experiences (121K exits)
+        # Load exit experiences (2,961 exits)
         if os.path.exists("exit_experience.json"):
             with open("exit_experience.json", "r") as f:
-                exit_experiences = json.load(f)
+                data = json.load(f)
+                exit_experiences = data.get("exit_experiences", [])
             logger.info(f"✅ Loaded {len(exit_experiences):,} exit experiences from Kevin's backtests")
         
         logger.info(f"🧠 HIVE MIND INITIALIZED: {len(signal_experiences):,} signals + {len(exit_experiences):,} exits")
         logger.info(f"   All users will learn from and contribute to this shared wisdom pool!")
         
     except Exception as e:
-        logger.warning(f"Could not load initial experiences: {e}")
+        logger.error(f"❌ Could not load initial experiences: {e}")
         logger.info("Starting with empty experience pool")
 
 # Load experiences at startup

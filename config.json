@@ -7,7 +7,7 @@
   "symbols": [
     "ES"
   ],
-  "account_size": 50000.0,
+  "account_size": "50000",
   "max_contracts": 1,
   "max_trades_per_day": 9999,
   "risk_per_trade": 0.012,

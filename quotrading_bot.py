@@ -131,9 +131,15 @@ class QuoTradingBot:
         # Position size (user configurable via GUI)
         self.position_size = getattr(self.config, 'max_contracts', 1)
         
+        # User ID for cloud ML isolation (hash of username for privacy)
+        import hashlib
+        username = getattr(self.config, 'username', '') or getattr(self.config, 'broker_username', '') or 'default_user'
+        self.user_id = hashlib.md5(username.encode()).hexdigest()[:12]  # 12-char hash
+        
         self.license_valid = False
         
         logger.info(f"QuoTrading Bot initialized for {self.symbol}")
+        logger.info(f"User ID: {self.user_id} (hashed for privacy)")
         logger.info(f"ML confidence threshold: {self.min_confidence_threshold:.0%}")
         logger.info(f"Position size: {self.position_size} contracts")
     
@@ -374,9 +380,10 @@ class QuoTradingBot:
         return None
     
     async def get_ml_confidence(self, signal: str, price: float, vwap: float, rsi: float) -> Optional[float]:
-        """Get ML confidence score from cloud API"""
+        """Get ML confidence score from cloud API (user-isolated)"""
         try:
             payload = {
+                "user_id": self.user_id,  # CRITICAL: User isolation
                 "symbol": self.symbol,
                 "vwap": vwap,
                 "rsi": rsi,
@@ -401,11 +408,12 @@ class QuoTradingBot:
     
     
     async def save_trade_experience(self, side: str, entry_price: float, exit_price: float, pnl: float):
-        """Save trade experience to cloud for RL learning"""
+        """Save trade experience to cloud for RL learning (user-isolated)"""
         try:
             duration = (datetime.now(TIMEZONE) - self.entry_time).total_seconds()
             
             payload = {
+                "user_id": self.user_id,  # CRITICAL: User isolation
                 "symbol": self.symbol,
                 "side": side.lower(),
                 "entry_price": entry_price,
@@ -416,7 +424,8 @@ class QuoTradingBot:
                 "exit_vwap": self.vwap,
                 "exit_rsi": self.rsi,
                 "ml_confidence": self.ml_confidence_used,
-                "duration": duration
+                "duration": duration,
+                "signal": side.upper()  # For ML filtering
             }
             
             async with self.http_session.post(
@@ -425,7 +434,7 @@ class QuoTradingBot:
             ) as response:
                 if response.status == 200:
                     data = await response.json()
-                    logger.info(f"Trade experience saved: ID {data.get('experience_id')}")
+                    logger.info(f"Trade experience saved - User trades: {data.get('user_total_trades')}, Win rate: {data.get('user_win_rate', 0):.1%}")
                 else:
                     logger.warning(f"Failed to save trade experience: {response.status}")
         except Exception as e:

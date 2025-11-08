@@ -369,8 +369,17 @@ async def update_market_data(bar: Dict):
 # ============================================================================
 
 # In-memory storage for trade experiences (will move to database later)
-signal_experiences = []
-exit_experiences = []
+# CRITICAL: Separated by user_id + symbol to prevent data contamination
+# Format: {user_id: {symbol: [experiences]}}
+user_experiences = {}
+
+def get_user_experiences(user_id: str, symbol: str) -> List:
+    """Get experiences for specific user + symbol (isolated data)"""
+    if user_id not in user_experiences:
+        user_experiences[user_id] = {}
+    if symbol not in user_experiences[user_id]:
+        user_experiences[user_id][symbol] = []
+    return user_experiences[user_id][symbol]
 
 @app.post("/api/ml/get_confidence")
 async def get_ml_confidence(request: Dict):
@@ -378,6 +387,7 @@ async def get_ml_confidence(request: Dict):
     Get ML confidence score for a trade setup
     
     Request: {
+        user_id: str,  # REQUIRED - for data isolation
         symbol: str,
         vwap: float,
         vwap_std_dev: float,
@@ -394,28 +404,40 @@ async def get_ml_confidence(request: Dict):
     }
     """
     try:
+        # CRITICAL: Require user_id for data isolation
+        user_id = request.get('user_id', '')
+        if not user_id:
+            return {
+                "error": "user_id required",
+                "ml_confidence": 0.0,
+                "action": "NONE"
+            }
+        
         symbol = request.get('symbol', 'ES')
         vwap = request.get('vwap', 0.0)
-        vwap_std_dev = request.get('vwap_std_dev', 0.0)
         rsi = request.get('rsi', 50.0)
         price = request.get('price', 0.0)
         signal = request.get('signal', 'NONE')
         
-        # Simple ML confidence based on historical performance
-        # TODO: Replace with actual RL model inference
+        # Get user-specific experiences for ML calculation
+        user_trades = get_user_experiences(user_id, symbol)
+        
+        # Simple ML confidence based on user's historical performance
+        # TODO: Replace with actual RL model inference per user
         confidence = calculate_signal_confidence(
-            symbol=symbol,
+            user_experiences=user_trades,
             vwap_distance=abs(price - vwap) / vwap if vwap > 0 else 0,
             rsi=rsi,
             signal=signal
         )
         
-        logger.info(f"ML Confidence Request: {symbol} {signal} @ {price}, RSI={rsi:.1f}, Confidence={confidence:.2%}")
+        logger.info(f"[{user_id}] ML Confidence: {symbol} {signal} @ {price}, RSI={rsi:.1f}, Confidence={confidence:.2%}, Trades={len(user_trades)}")
         
         return {
             "ml_confidence": confidence,
             "action": signal if confidence >= 0.5 else "NONE",
-            "model_version": "v1.0-simple",
+            "model_version": "v2.0-user-isolated",
+            "user_trade_count": len(user_trades),
             "timestamp": datetime.utcnow().isoformat()
         }
         
@@ -430,13 +452,30 @@ async def get_ml_confidence(request: Dict):
         }
 
 
-def calculate_signal_confidence(symbol: str, vwap_distance: float, rsi: float, signal: str) -> float:
+def calculate_signal_confidence(user_experiences: List, vwap_distance: float, rsi: float, signal: str) -> float:
     """
-    Calculate ML confidence based on historical patterns
+    Calculate ML confidence based on user's historical patterns
     
-    This is a simple heuristic model. Will be replaced with trained RL model.
+    This is a simple heuristic model that learns from each user's trades.
+    Will be replaced with trained RL model.
+    
+    Args:
+        user_experiences: List of this user's past trades (user-specific learning)
+        vwap_distance: Distance from VWAP
+        rsi: Current RSI value
+        signal: 'LONG' or 'SHORT'
     """
     confidence = 0.5  # Start neutral
+    
+    # Learn from user's past performance (user-specific RL)
+    if len(user_experiences) > 5:
+        # Calculate user's win rate for this signal type
+        similar_trades = [t for t in user_experiences if t.get('signal') == signal]
+        if len(similar_trades) > 0:
+            wins = sum(1 for t in similar_trades if t.get('pnl', 0) > 0)
+            user_win_rate = wins / len(similar_trades)
+            # Adjust confidence based on user's history
+            confidence = (confidence + user_win_rate) / 2
     
     # RSI confidence (stronger signals at extremes)
     if signal == "LONG":
@@ -463,9 +502,10 @@ def calculate_signal_confidence(symbol: str, vwap_distance: float, rsi: float, s
 @app.post("/api/ml/save_trade")
 async def save_trade_experience(trade: Dict):
     """
-    Save trade experience for RL model training
+    Save trade experience for RL model training (user-isolated)
     
     Request: {
+        user_id: str,  # REQUIRED - for data isolation
         symbol: str,
         side: str,  # 'LONG' or 'SHORT'
         entry_price: float,
@@ -477,48 +517,59 @@ async def save_trade_experience(trade: Dict):
         entry_rsi: float,
         exit_reason: str,
         duration_seconds: int,
-        ml_confidence_used: float,
-        user_id: str  # Hashed for privacy
+        ml_confidence_used: float
     }
     
     Returns: {
         saved: bool,
         experience_id: str,
-        total_experiences: int
+        user_total_trades: int,
+        user_win_rate: float
     }
     """
     try:
+        # CRITICAL: Require user_id for data isolation
+        user_id = trade.get('user_id', '')
+        if not user_id:
+            return {
+                "saved": False,
+                "error": "user_id required"
+            }
+        
         # Validate required fields
         required_fields = ['symbol', 'side', 'entry_price', 'exit_price', 'pnl']
         for field in required_fields:
             if field not in trade:
                 raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
         
+        symbol = trade['symbol']
+        
         # Add timestamp and ID
         experience = {
             **trade,
             "saved_at": datetime.utcnow().isoformat(),
-            "experience_id": f"{trade['symbol']}_{datetime.utcnow().timestamp()}"
+            "experience_id": f"{user_id}_{symbol}_{datetime.utcnow().timestamp()}"
         }
         
-        # Store in memory (will move to database)
-        signal_experiences.append(experience)
+        # Store in user-specific array (data isolation!)
+        user_trades = get_user_experiences(user_id, symbol)
+        user_trades.append(experience)
         
-        # Calculate win rate for logging
-        if len(signal_experiences) > 0:
-            wins = sum(1 for exp in signal_experiences if exp.get('pnl', 0) > 0)
-            win_rate = wins / len(signal_experiences)
+        # Calculate THIS USER's win rate (not global)
+        if len(user_trades) > 0:
+            wins = sum(1 for exp in user_trades if exp.get('pnl', 0) > 0)
+            win_rate = wins / len(user_trades)
         else:
             win_rate = 0.0
         
-        logger.info(f"Trade Saved: {trade['symbol']} {trade['side']} P&L=${trade['pnl']:.2f} | "
-                   f"Total: {len(signal_experiences)} trades, Win Rate: {win_rate:.1%}")
+        logger.info(f"[{user_id}] Trade Saved: {symbol} {trade['side']} P&L=${trade['pnl']:.2f} | "
+                   f"User Total: {len(user_trades)} trades, Win Rate: {win_rate:.1%}")
         
         return {
             "saved": True,
             "experience_id": experience["experience_id"],
-            "total_experiences": len(signal_experiences),
-            "current_win_rate": win_rate
+            "user_total_trades": len(user_trades),
+            "user_win_rate": win_rate
         }
         
     except HTTPException:
@@ -529,26 +580,52 @@ async def save_trade_experience(trade: Dict):
 
 
 @app.get("/api/ml/stats")
-async def get_ml_stats():
-    """Get ML model statistics"""
-    if len(signal_experiences) == 0:
+async def get_ml_stats(user_id: str = None, symbol: str = None):
+    """
+    Get ML model statistics
+    
+    Query params:
+        user_id: Optional - get stats for specific user
+        symbol: Optional - get stats for specific symbol
+    """
+    if user_id and symbol:
+        # User-specific stats
+        user_trades = get_user_experiences(user_id, symbol)
+        if len(user_trades) == 0:
+            return {
+                "user_id": user_id,
+                "symbol": symbol,
+                "total_trades": 0,
+                "win_rate": 0.0,
+                "avg_pnl": 0.0,
+                "total_pnl": 0.0
+            }
+        
+        wins = sum(1 for exp in user_trades if exp.get('pnl', 0) > 0)
+        total_pnl = sum(exp.get('pnl', 0) for exp in user_trades)
+        
         return {
-            "total_trades": 0,
-            "win_rate": 0.0,
-            "avg_pnl": 0.0,
-            "total_pnl": 0.0
+            "user_id": user_id,
+            "symbol": symbol,
+            "total_trades": len(user_trades),
+            "win_rate": wins / len(user_trades),
+            "avg_pnl": total_pnl / len(user_trades),
+            "total_pnl": total_pnl,
+            "last_updated": datetime.utcnow().isoformat()
         }
-    
-    wins = sum(1 for exp in signal_experiences if exp.get('pnl', 0) > 0)
-    total_pnl = sum(exp.get('pnl', 0) for exp in signal_experiences)
-    
-    return {
-        "total_trades": len(signal_experiences),
-        "win_rate": wins / len(signal_experiences),
-        "avg_pnl": total_pnl / len(signal_experiences),
-        "total_pnl": total_pnl,
-        "last_updated": datetime.utcnow().isoformat()
-    }
+    else:
+        # Global stats (all users)
+        total_users = len(user_experiences)
+        total_trades = sum(len(symbols.get(sym, [])) 
+                          for symbols in user_experiences.values() 
+                          for sym in symbols)
+        
+        return {
+            "total_users": total_users,
+            "total_trades": total_trades,
+            "message": "Use ?user_id=XXX&symbol=XXX for user-specific stats",
+            "last_updated": datetime.utcnow().isoformat()
+        }
 
 
 # ============================================================================

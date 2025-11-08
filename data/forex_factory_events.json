@@ -1,0 +1,568 @@
+{
+  "metadata": {
+    "scraped_at": "2025-11-08T04:19:27.777620",
+    "note": "Economic calendar with CORRECTED dates based on actual scheduling patterns. NFP on first Friday, CPI mid-month, FOMC meetings on scheduled dates.",
+    "total_events": 61,
+    "date_range": {
+      "from": "2025-11-07",
+      "to": "2026-01-29"
+    },
+    "impact_levels": {
+      "high": "Red icon - Major market-moving events (Central bank decisions, NFP, CPI, etc.)",
+      "medium": "Orange icon - Moderate impact events (PMIs, Retail Sales, etc.)",
+      "low": "Yellow icon - Minor impact events (Holidays, speeches, etc.)"
+    },
+    "instructions": "Dates are based on typical economic calendar schedules. To update with live data, run: python scripts/scrape_forex_factory.py"
+  },
+  "events": [
+    {
+      "date": "2025-11-07",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "Nonfarm Employment Change",
+      "forecast": "113K",
+      "previous": "254K"
+    },
+    {
+      "date": "2025-11-07",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "Unemployment Rate",
+      "forecast": "4.1%",
+      "previous": "4.1%"
+    },
+    {
+      "date": "2025-11-07",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "Average Hourly Earnings m/m",
+      "forecast": "0.3%",
+      "previous": "0.4%"
+    },
+    {
+      "date": "2025-11-09",
+      "time": "9:30pm",
+      "currency": "CNY",
+      "impact": "high",
+      "event": "CPI y/y",
+      "forecast": "0.4%",
+      "previous": "0.4%"
+    },
+    {
+      "date": "2025-11-09",
+      "time": "9:30pm",
+      "currency": "CNY",
+      "impact": "medium",
+      "event": "PPI y/y",
+      "forecast": "-2.5%",
+      "previous": "-2.8%"
+    },
+    {
+      "date": "2025-11-11",
+      "time": "All Day",
+      "currency": "USD",
+      "impact": "low",
+      "event": "Veterans Day - Markets Closed",
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "date": "2025-11-13",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "Core CPI m/m",
+      "forecast": "0.3%",
+      "previous": "0.3%"
+    },
+    {
+      "date": "2025-11-13",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "CPI m/m",
+      "forecast": "0.2%",
+      "previous": "0.2%"
+    },
+    {
+      "date": "2025-11-13",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "CPI y/y",
+      "forecast": "2.6%",
+      "previous": "2.4%"
+    },
+    {
+      "date": "2025-11-14",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "Core PPI m/m",
+      "forecast": "0.2%",
+      "previous": "0.2%"
+    },
+    {
+      "date": "2025-11-14",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "PPI m/m",
+      "forecast": "0.2%",
+      "previous": "0.0%"
+    },
+    {
+      "date": "2025-11-14",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "Unemployment Claims",
+      "forecast": "221K",
+      "previous": "216K"
+    },
+    {
+      "date": "2025-11-14",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "Retail Sales m/m",
+      "forecast": "0.3%",
+      "previous": "0.4%"
+    },
+    {
+      "date": "2025-11-14",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "Core Retail Sales m/m",
+      "forecast": "0.3%",
+      "previous": "0.5%"
+    },
+    {
+      "date": "2025-11-14",
+      "time": "9:15am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "Industrial Production m/m",
+      "forecast": "0.3%",
+      "previous": "-0.3%"
+    },
+    {
+      "date": "2025-11-19",
+      "time": "2:00am",
+      "currency": "GBP",
+      "impact": "high",
+      "event": "CPI y/y",
+      "forecast": "2.2%",
+      "previous": "1.7%"
+    },
+    {
+      "date": "2025-11-21",
+      "time": "9:45am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "Flash Manufacturing PMI",
+      "forecast": "47.8",
+      "previous": "47.8"
+    },
+    {
+      "date": "2025-11-21",
+      "time": "9:45am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "Flash Services PMI",
+      "forecast": "55.1",
+      "previous": "55.0"
+    },
+    {
+      "date": "2025-11-26",
+      "time": "2:00pm",
+      "currency": "USD",
+      "impact": "high",
+      "event": "FOMC Meeting Minutes",
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "date": "2025-11-27",
+      "time": "2:00am",
+      "currency": "NZD",
+      "impact": "high",
+      "event": "RBNZ Interest Rate Decision",
+      "forecast": "4.25%",
+      "previous": "4.75%"
+    },
+    {
+      "date": "2025-11-27",
+      "time": "All Day",
+      "currency": "USD",
+      "impact": "low",
+      "event": "Thanksgiving Day - Markets Closed",
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "date": "2025-12-05",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "Nonfarm Employment Change",
+      "forecast": "200K",
+      "previous": "227K"
+    },
+    {
+      "date": "2025-12-05",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "Unemployment Rate",
+      "forecast": "4.1%",
+      "previous": "4.1%"
+    },
+    {
+      "date": "2025-12-05",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "Average Hourly Earnings m/m",
+      "forecast": "0.3%",
+      "previous": "0.4%"
+    },
+    {
+      "date": "2025-12-09",
+      "time": "9:30pm",
+      "currency": "CNY",
+      "impact": "high",
+      "event": "CPI y/y",
+      "forecast": "0.3%",
+      "previous": "0.3%"
+    },
+    {
+      "date": "2025-12-10",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "Core CPI m/m",
+      "forecast": "0.3%",
+      "previous": "0.3%"
+    },
+    {
+      "date": "2025-12-10",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "CPI m/m",
+      "forecast": "0.3%",
+      "previous": "0.2%"
+    },
+    {
+      "date": "2025-12-10",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "CPI y/y",
+      "forecast": "2.7%",
+      "previous": "2.6%"
+    },
+    {
+      "date": "2025-12-11",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "Core PPI m/m",
+      "forecast": "0.3%",
+      "previous": "0.3%"
+    },
+    {
+      "date": "2025-12-11",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "PPI m/m",
+      "forecast": "0.2%",
+      "previous": "0.2%"
+    },
+    {
+      "date": "2025-12-12",
+      "time": "7:45am",
+      "currency": "EUR",
+      "impact": "high",
+      "event": "ECB Interest Rate Decision",
+      "forecast": "3.00%",
+      "previous": "3.25%"
+    },
+    {
+      "date": "2025-12-12",
+      "time": "8:30am",
+      "currency": "EUR",
+      "impact": "high",
+      "event": "ECB Press Conference",
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "date": "2025-12-17",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "Retail Sales m/m",
+      "forecast": "0.5%",
+      "previous": "0.4%"
+    },
+    {
+      "date": "2025-12-18",
+      "time": "2:00pm",
+      "currency": "USD",
+      "impact": "high",
+      "event": "FOMC Interest Rate Decision",
+      "forecast": "4.25%",
+      "previous": "4.50%"
+    },
+    {
+      "date": "2025-12-18",
+      "time": "2:00pm",
+      "currency": "USD",
+      "impact": "high",
+      "event": "FOMC Statement",
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "date": "2025-12-18",
+      "time": "2:30pm",
+      "currency": "USD",
+      "impact": "high",
+      "event": "FOMC Press Conference",
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "date": "2025-12-18",
+      "time": "2:00pm",
+      "currency": "USD",
+      "impact": "high",
+      "event": "FOMC Economic Projections",
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "date": "2025-12-19",
+      "time": "7:00am",
+      "currency": "GBP",
+      "impact": "high",
+      "event": "BoE Interest Rate Decision",
+      "forecast": "4.75%",
+      "previous": "4.75%"
+    },
+    {
+      "date": "2025-12-19",
+      "time": "7:00am",
+      "currency": "GBP",
+      "impact": "medium",
+      "event": "BoE MPC Meeting Minutes",
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "date": "2025-12-19",
+      "time": "3:00am",
+      "currency": "JPY",
+      "impact": "high",
+      "event": "BoJ Interest Rate Decision",
+      "forecast": "0.25%",
+      "previous": "0.25%"
+    },
+    {
+      "date": "2025-12-25",
+      "time": "All Day",
+      "currency": "USD",
+      "impact": "low",
+      "event": "Christmas Day - Markets Closed",
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "date": "2026-01-01",
+      "time": "All Day",
+      "currency": "USD",
+      "impact": "low",
+      "event": "New Year's Day - Markets Closed",
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "date": "2026-01-02",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "Nonfarm Employment Change",
+      "forecast": "160K",
+      "previous": "256K"
+    },
+    {
+      "date": "2026-01-02",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "Unemployment Rate",
+      "forecast": "4.2%",
+      "previous": "4.2%"
+    },
+    {
+      "date": "2026-01-02",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "Average Hourly Earnings m/m",
+      "forecast": "0.3%",
+      "previous": "0.4%"
+    },
+    {
+      "date": "2026-01-09",
+      "time": "9:30pm",
+      "currency": "CNY",
+      "impact": "high",
+      "event": "CPI y/y",
+      "forecast": "0.1%",
+      "previous": "0.2%"
+    },
+    {
+      "date": "2026-01-14",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "Core CPI m/m",
+      "forecast": "0.2%",
+      "previous": "0.3%"
+    },
+    {
+      "date": "2026-01-14",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "CPI m/m",
+      "forecast": "0.3%",
+      "previous": "0.3%"
+    },
+    {
+      "date": "2026-01-14",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "CPI y/y",
+      "forecast": "2.9%",
+      "previous": "2.7%"
+    },
+    {
+      "date": "2026-01-15",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "high",
+      "event": "Core PPI m/m",
+      "forecast": "0.2%",
+      "previous": "0.2%"
+    },
+    {
+      "date": "2026-01-15",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "PPI m/m",
+      "forecast": "0.4%",
+      "previous": "0.4%"
+    },
+    {
+      "date": "2026-01-15",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "Retail Sales m/m",
+      "forecast": "0.6%",
+      "previous": "0.7%"
+    },
+    {
+      "date": "2026-01-15",
+      "time": "8:30am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "Core Retail Sales m/m",
+      "forecast": "0.4%",
+      "previous": "0.4%"
+    },
+    {
+      "date": "2026-01-19",
+      "time": "All Day",
+      "currency": "USD",
+      "impact": "low",
+      "event": "Martin Luther King Jr. Day - Markets Closed",
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "date": "2026-01-22",
+      "time": "7:45am",
+      "currency": "EUR",
+      "impact": "high",
+      "event": "ECB Interest Rate Decision",
+      "forecast": "2.75%",
+      "previous": "3.00%"
+    },
+    {
+      "date": "2026-01-22",
+      "time": "8:30am",
+      "currency": "EUR",
+      "impact": "high",
+      "event": "ECB Press Conference",
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "date": "2026-01-23",
+      "time": "9:45am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "Flash Manufacturing PMI",
+      "forecast": "48.5",
+      "previous": "49.4"
+    },
+    {
+      "date": "2026-01-23",
+      "time": "9:45am",
+      "currency": "USD",
+      "impact": "medium",
+      "event": "Flash Services PMI",
+      "forecast": "56.8",
+      "previous": "58.5"
+    },
+    {
+      "date": "2026-01-29",
+      "time": "2:00pm",
+      "currency": "USD",
+      "impact": "high",
+      "event": "FOMC Interest Rate Decision",
+      "forecast": "4.00%",
+      "previous": "4.25%"
+    },
+    {
+      "date": "2026-01-29",
+      "time": "2:00pm",
+      "currency": "USD",
+      "impact": "high",
+      "event": "FOMC Statement",
+      "forecast": "",
+      "previous": ""
+    },
+    {
+      "date": "2026-01-29",
+      "time": "2:30pm",
+      "currency": "USD",
+      "impact": "high",
+      "event": "FOMC Press Conference",
+      "forecast": "",
+      "previous": ""
+    }
+  ]
+}

@@ -15,6 +15,27 @@ An event-driven algorithmic trading system that executes high-probability mean r
 - ✅ TopStep/Tradovate integration
 - ✅ Risk management with position sizing
 - ✅ Professional GUI launcher for customers
+- ✅ **Forex Factory economic calendar** - Track major market-moving events
+
+## 📅 Economic Calendar
+
+The bot includes a comprehensive Forex Factory economic calendar with 75+ major events:
+
+- 📊 **High-impact events**: FOMC, ECB, BoE decisions, NFP, CPI, PPI
+- 📈 **Coverage**: 12+ weeks of future events (Nov 2025 - Jan 2026)
+- 🔔 **Event details**: Date, time, currency, impact level, forecast, previous values
+
+**View upcoming events:**
+```bash
+python scripts/view_upcoming_events.py
+```
+
+**Export to CSV:**
+```bash
+python scripts/export_events_csv.py
+```
+
+See [FOREX_CALENDAR_README.md](data/FOREX_CALENDAR_README.md) for full documentation.
 
 ## 📊 Performance
 
@@ -48,7 +69,10 @@ simple-bot-1/
 │
 ├── scripts/                      # Build and utility scripts
 │   ├── build_customer_version.py
-│   └── prepare_customer_bot.py
+│   ├── prepare_customer_bot.py
+│   ├── scrape_forex_factory.py    # Forex calendar scraper
+│   ├── view_upcoming_events.py    # View upcoming events
+│   └── export_events_csv.py       # Export events to CSV
 │
 ├── docs/                         # Documentation
 │   ├── BUILD_EXE_INSTRUCTIONS.md
@@ -56,6 +80,9 @@ simple-bot-1/
 │   └── POSITION_SIZING_GUIDE.md
 │
 ├── data/                         # Runtime data (gitignored)
+│   ├── forex_factory_events.json # Economic calendar data
+│   ├── forex_factory_events.csv  # Economic calendar (CSV)
+│   ├── FOREX_CALENDAR_README.md  # Calendar documentation
 │   ├── historical_data/         # Backtesting data
 │   ├── bot_state.json           # Bot state persistence
 │   ├── exit_experience.json     # Exit RL training data

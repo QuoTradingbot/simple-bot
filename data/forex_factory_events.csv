@@ -1,0 +1,62 @@
+Date,Day,Time,Currency,Impact,Event,Forecast,Previous
+2025-11-07,Friday,8:30am,USD,HIGH,Nonfarm Employment Change,113K,254K
+2025-11-07,Friday,8:30am,USD,HIGH,Unemployment Rate,4.1%,4.1%
+2025-11-07,Friday,8:30am,USD,MEDIUM,Average Hourly Earnings m/m,0.3%,0.4%
+2025-11-09,Sunday,9:30pm,CNY,HIGH,CPI y/y,0.4%,0.4%
+2025-11-09,Sunday,9:30pm,CNY,MEDIUM,PPI y/y,-2.5%,-2.8%
+2025-11-11,Tuesday,All Day,USD,LOW,Veterans Day - Markets Closed,,
+2025-11-13,Thursday,8:30am,USD,HIGH,Core CPI m/m,0.3%,0.3%
+2025-11-13,Thursday,8:30am,USD,HIGH,CPI m/m,0.2%,0.2%
+2025-11-13,Thursday,8:30am,USD,HIGH,CPI y/y,2.6%,2.4%
+2025-11-14,Friday,8:30am,USD,HIGH,Core PPI m/m,0.2%,0.2%
+2025-11-14,Friday,8:30am,USD,MEDIUM,PPI m/m,0.2%,0.0%
+2025-11-14,Friday,8:30am,USD,MEDIUM,Unemployment Claims,221K,216K
+2025-11-14,Friday,8:30am,USD,MEDIUM,Retail Sales m/m,0.3%,0.4%
+2025-11-14,Friday,8:30am,USD,MEDIUM,Core Retail Sales m/m,0.3%,0.5%
+2025-11-14,Friday,9:15am,USD,MEDIUM,Industrial Production m/m,0.3%,-0.3%
+2025-11-19,Wednesday,2:00am,GBP,HIGH,CPI y/y,2.2%,1.7%
+2025-11-21,Friday,9:45am,USD,MEDIUM,Flash Manufacturing PMI,47.8,47.8
+2025-11-21,Friday,9:45am,USD,MEDIUM,Flash Services PMI,55.1,55.0
+2025-11-26,Wednesday,2:00pm,USD,HIGH,FOMC Meeting Minutes,,
+2025-11-27,Thursday,2:00am,NZD,HIGH,RBNZ Interest Rate Decision,4.25%,4.75%
+2025-11-27,Thursday,All Day,USD,LOW,Thanksgiving Day - Markets Closed,,
+2025-12-05,Friday,8:30am,USD,HIGH,Nonfarm Employment Change,200K,227K
+2025-12-05,Friday,8:30am,USD,HIGH,Unemployment Rate,4.1%,4.1%
+2025-12-05,Friday,8:30am,USD,MEDIUM,Average Hourly Earnings m/m,0.3%,0.4%
+2025-12-09,Tuesday,9:30pm,CNY,HIGH,CPI y/y,0.3%,0.3%
+2025-12-10,Wednesday,8:30am,USD,HIGH,Core CPI m/m,0.3%,0.3%
+2025-12-10,Wednesday,8:30am,USD,HIGH,CPI m/m,0.3%,0.2%
+2025-12-10,Wednesday,8:30am,USD,HIGH,CPI y/y,2.7%,2.6%
+2025-12-11,Thursday,8:30am,USD,HIGH,Core PPI m/m,0.3%,0.3%
+2025-12-11,Thursday,8:30am,USD,MEDIUM,PPI m/m,0.2%,0.2%
+2025-12-12,Friday,7:45am,EUR,HIGH,ECB Interest Rate Decision,3.00%,3.25%
+2025-12-12,Friday,8:30am,EUR,HIGH,ECB Press Conference,,
+2025-12-17,Wednesday,8:30am,USD,MEDIUM,Retail Sales m/m,0.5%,0.4%
+2025-12-18,Thursday,2:00pm,USD,HIGH,FOMC Interest Rate Decision,4.25%,4.50%
+2025-12-18,Thursday,2:00pm,USD,HIGH,FOMC Statement,,
+2025-12-18,Thursday,2:30pm,USD,HIGH,FOMC Press Conference,,
+2025-12-18,Thursday,2:00pm,USD,HIGH,FOMC Economic Projections,,
+2025-12-19,Friday,7:00am,GBP,HIGH,BoE Interest Rate Decision,4.75%,4.75%
+2025-12-19,Friday,7:00am,GBP,MEDIUM,BoE MPC Meeting Minutes,,
+2025-12-19,Friday,3:00am,JPY,HIGH,BoJ Interest Rate Decision,0.25%,0.25%
+2025-12-25,Thursday,All Day,USD,LOW,Christmas Day - Markets Closed,,
+2026-01-01,Thursday,All Day,USD,LOW,New Year's Day - Markets Closed,,
+2026-01-02,Friday,8:30am,USD,HIGH,Nonfarm Employment Change,160K,256K
+2026-01-02,Friday,8:30am,USD,HIGH,Unemployment Rate,4.2%,4.2%
+2026-01-02,Friday,8:30am,USD,MEDIUM,Average Hourly Earnings m/m,0.3%,0.4%
+2026-01-09,Friday,9:30pm,CNY,HIGH,CPI y/y,0.1%,0.2%
+2026-01-14,Wednesday,8:30am,USD,HIGH,Core CPI m/m,0.2%,0.3%
+2026-01-14,Wednesday,8:30am,USD,HIGH,CPI m/m,0.3%,0.3%
+2026-01-14,Wednesday,8:30am,USD,HIGH,CPI y/y,2.9%,2.7%
+2026-01-15,Thursday,8:30am,USD,HIGH,Core PPI m/m,0.2%,0.2%
+2026-01-15,Thursday,8:30am,USD,MEDIUM,PPI m/m,0.4%,0.4%
+2026-01-15,Thursday,8:30am,USD,MEDIUM,Retail Sales m/m,0.6%,0.7%
+2026-01-15,Thursday,8:30am,USD,MEDIUM,Core Retail Sales m/m,0.4%,0.4%
+2026-01-19,Monday,All Day,USD,LOW,Martin Luther King Jr. Day - Markets Closed,,
+2026-01-22,Thursday,7:45am,EUR,HIGH,ECB Interest Rate Decision,2.75%,3.00%
+2026-01-22,Thursday,8:30am,EUR,HIGH,ECB Press Conference,,
+2026-01-23,Friday,9:45am,USD,MEDIUM,Flash Manufacturing PMI,48.5,49.4
+2026-01-23,Friday,9:45am,USD,MEDIUM,Flash Services PMI,56.8,58.5
+2026-01-29,Thursday,2:00pm,USD,HIGH,FOMC Interest Rate Decision,4.00%,4.25%
+2026-01-29,Thursday,2:00pm,USD,HIGH,FOMC Statement,,
+2026-01-29,Thursday,2:30pm,USD,HIGH,FOMC Press Conference,,

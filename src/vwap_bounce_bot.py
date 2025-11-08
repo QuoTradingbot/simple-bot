@@ -200,7 +200,7 @@ USER_ID = get_user_id()
 
 async def get_ml_confidence_async(rl_state: Dict[str, Any], side: str) -> Tuple[bool, float, str]:
     """
-    Get ML confidence from cloud API (shared RL learning pool).
+    Get ML confidence from cloud API (shared RL learning pool) with automatic retry.
     Returns: (take_signal, confidence, reason)
     """
     if not USE_CLOUD_SIGNALS:
@@ -209,52 +209,67 @@ async def get_ml_confidence_async(rl_state: Dict[str, Any], side: str) -> Tuple[
             return rl_brain.should_take_signal(rl_state)
         return True, 0.5, "Cloud API disabled, no local RL"
     
-    try:
-        # Prepare payload for cloud API
-        payload = {
-            "user_id": USER_ID,
-            "symbol": CONFIG["instrument"],
-            "side": side,
-            "rsi": rl_state.get("rsi", 50),
-            "vwap_distance": rl_state.get("vwap_distance", 0),
-            "volume_ratio": rl_state.get("volume_ratio", 1.0),
-            "streak": rl_state.get("streak", 0),
-            "time_of_day_score": rl_state.get("time_of_day_score", 0.5),
-            "volatility": rl_state.get("volatility", 1.0)
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{CLOUD_ML_API_URL}/api/ml/get_confidence",
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=3.0)
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    confidence = data.get("confidence", 0.5)
-                    take_signal = data.get("should_trade", False)
-                    reason = data.get("reason", "Cloud RL evaluation")
-                    
-                    logger.debug(f"[CLOUD RL] {side.upper()} signal: {take_signal} (confidence: {confidence:.1%}) - {reason}")
-                    logger.debug(f"   Shared pool: {data.get('total_trades', 0)} trades, WR: {data.get('win_rate', 0):.1%}")
-                    
-                    return take_signal, confidence, reason
-                else:
-                    logger.warning(f"Cloud ML API returned status {response.status}, falling back to local RL")
-                    if rl_brain is not None:
-                        return rl_brain.should_take_signal(rl_state)
-                    return True, 0.5, "Cloud API error, no local RL"
-                    
-    except asyncio.TimeoutError:
-        logger.warning("Cloud ML API timeout, falling back to local RL")
-        if rl_brain is not None:
-            return rl_brain.should_take_signal(rl_state)
-        return True, 0.5, "API timeout, no local RL"
-    except Exception as e:
-        logger.warning(f"Cloud ML API error: {e}, falling back to local RL")
-        if rl_brain is not None:
-            return rl_brain.should_take_signal(rl_state)
-        return True, 0.5, f"API error: {e}"
+    # Retry up to 3 times with exponential backoff
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # Prepare payload for cloud API
+            payload = {
+                "user_id": USER_ID,
+                "symbol": CONFIG["instrument"],
+                "side": side,
+                "rsi": rl_state.get("rsi", 50),
+                "vwap_distance": rl_state.get("vwap_distance", 0),
+                "volume_ratio": rl_state.get("volume_ratio", 1.0),
+                "streak": rl_state.get("streak", 0),
+                "time_of_day_score": rl_state.get("time_of_day_score", 0.5),
+                "volatility": rl_state.get("volatility", 1.0)
+            }
+            
+            # Increase timeout slightly on retries
+            timeout_seconds = 3.0 + (attempt * 1.0)  # 3s, 4s, 5s
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{CLOUD_ML_API_URL}/api/ml/get_confidence",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=timeout_seconds)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        confidence = data.get("confidence", 0.5)
+                        take_signal = data.get("should_trade", False)
+                        reason = data.get("reason", "Cloud RL evaluation")
+                        
+                        if attempt > 0:
+                            logger.info(f"[CLOUD RL] ✅ Success on retry {attempt + 1}")
+                        
+                        logger.debug(f"[CLOUD RL] {side.upper()} signal: {take_signal} (confidence: {confidence:.1%}) - {reason}")
+                        logger.debug(f"   Shared pool: {data.get('total_trades', 0)} trades, WR: {data.get('win_rate', 0):.1%}")
+                        
+                        return take_signal, confidence, reason
+                    else:
+                        logger.warning(f"Cloud ML API returned status {response.status} (attempt {attempt + 1}/{max_retries})")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(0.5 * (attempt + 1))  # 0.5s, 1s, 1.5s backoff
+                            continue
+                        return True, 0.5, "Cloud API error, conservative mode"
+                        
+        except asyncio.TimeoutError:
+            logger.warning(f"Cloud ML API timeout (attempt {attempt + 1}/{max_retries})")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(0.5 * (attempt + 1))
+                continue
+            return True, 0.5, "API timeout after retries, conservative mode"
+        except Exception as e:
+            logger.warning(f"Cloud ML API error: {e} (attempt {attempt + 1}/{max_retries})")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(0.5 * (attempt + 1))
+                continue
+            return True, 0.5, f"API error after retries: {e}"
+    
+    # Should never reach here, but just in case
+    return True, 0.5, "Unknown error after retries"
 
 
 def get_ml_confidence(rl_state: Dict[str, Any], side: str) -> Tuple[bool, float, str]:
@@ -275,7 +290,7 @@ async def save_trade_experience_async(
     execution_data: Dict[str, Any]
 ) -> None:
     """
-    Save trade result to cloud API (shared RL learning pool).
+    Save trade result to cloud API (shared RL learning pool) with automatic retry.
     All users contribute to and learn from the same experience pool.
     """
     if not USE_CLOUD_SIGNALS:
@@ -284,43 +299,57 @@ async def save_trade_experience_async(
             rl_brain.record_outcome(rl_state, True, pnl, duration_minutes, execution_data)
         return
     
-    try:
-        # Prepare trade experience payload
-        payload = {
-            "user_id": USER_ID,
-            "symbol": CONFIG["instrument"],
-            "side": side,
-            "signal": f"{side}_bounce",  # "long_bounce" or "short_bounce"
-            "rsi": rl_state.get("rsi", 50),
-            "vwap_distance": rl_state.get("vwap_distance", 0),
-            "volume_ratio": rl_state.get("volume_ratio", 1.0),
-            "streak": rl_state.get("streak", 0),
-            "time_of_day_score": rl_state.get("time_of_day_score", 0.5),
-            "volatility": rl_state.get("volatility", 1.0),
-            "pnl": pnl,
-            "duration_minutes": duration_minutes,
-            "exit_reason": execution_data.get("exit_reason", "unknown")
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{CLOUD_ML_API_URL}/api/ml/save_trade",
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=5.0)
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    logger.info(f"[CLOUD RL] Trade saved to shared pool: ${pnl:+.2f}")
-                    logger.info(f"   Shared pool: {data.get('total_trades', 0)} total trades, {data.get('recent_trades', 0)} recent")
-                else:
-                    logger.warning(f"Failed to save trade to cloud (status {response.status}), saving locally")
-                    if rl_brain is not None:
-                        rl_brain.record_outcome(rl_state, True, pnl, duration_minutes, execution_data)
+    # Retry up to 2 times for saves (less critical than getting confidence)
+    max_retries = 2
+    for attempt in range(max_retries):
+        try:
+            # Prepare trade experience payload
+            payload = {
+                "user_id": USER_ID,
+                "symbol": CONFIG["instrument"],
+                "side": side,
+                "signal": f"{side}_bounce",  # "long_bounce" or "short_bounce"
+                "rsi": rl_state.get("rsi", 50),
+                "vwap_distance": rl_state.get("vwap_distance", 0),
+                "volume_ratio": rl_state.get("volume_ratio", 1.0),
+                "streak": rl_state.get("streak", 0),
+                "time_of_day_score": rl_state.get("time_of_day_score", 0.5),
+                "volatility": rl_state.get("volatility", 1.0),
+                "pnl": pnl,
+                "duration_minutes": duration_minutes,
+                "exit_reason": execution_data.get("exit_reason", "unknown")
+            }
+            
+            # Increase timeout on retries
+            timeout_seconds = 5.0 + (attempt * 2.0)  # 5s, 7s
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{CLOUD_ML_API_URL}/api/ml/save_trade",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=timeout_seconds)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if attempt > 0:
+                            logger.info(f"[CLOUD RL] ✅ Trade saved on retry {attempt + 1}")
+                        else:
+                            logger.info(f"[CLOUD RL] ✅ Trade saved to hive mind: ${pnl:+.2f}")
+                        logger.info(f"   🧠 Shared pool: {data.get('total_shared_trades', 0):,} total trades, WR: {data.get('shared_win_rate', 0):.1%}")
+                        return  # Success!
+                    else:
+                        logger.warning(f"Failed to save trade (status {response.status}, attempt {attempt + 1}/{max_retries})")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(1.0 * (attempt + 1))  # 1s, 2s backoff
+                            continue
+                        logger.error(f"❌ Trade NOT saved to cloud after {max_retries} attempts - data point lost")
                         
-    except Exception as e:
-        logger.warning(f"Error saving trade to cloud: {e}, saving locally")
-        if rl_brain is not None:
-            rl_brain.record_outcome(rl_state, True, pnl, duration_minutes, execution_data)
+        except Exception as e:
+            logger.warning(f"Error saving trade: {e} (attempt {attempt + 1}/{max_retries})")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1.0 * (attempt + 1))
+                continue
+            logger.error(f"❌ Trade NOT saved to cloud after {max_retries} attempts - data point lost")
 
 
 def save_trade_experience(
@@ -6327,29 +6356,11 @@ def main(symbol_override: str = None) -> None:
             logger.warning(f"Failed to subscribe to quotes: {e}")
             logger.warning("Continuing without bid/ask quote data")
     
-    # Initialize RL brain at startup (not lazy-loaded)
-    global rl_brain
-    if CONFIG.get("rl_enabled", True):  # RL enabled by default
-        logger.info("Initializing RL brain at startup...")
-        # Get confidence threshold from config (if set)
-        confidence_threshold = CONFIG.get('rl_confidence_threshold', None)
-        rl_brain = SignalConfidenceRL(
-            experience_file="data/signal_experience.json",
-            backtest_mode=_bot_config.backtest_mode,
-            confidence_threshold=confidence_threshold
-        )
-        logger.info("[RL] RL BRAIN READY - Ready to evaluate signals with learned intelligence")
-    
-    # Initialize Adaptive Exit Manager at startup (not lazy-loaded)
-    global adaptive_manager
-    if CONFIG.get("adaptive_exits_enabled", True):  # Adaptive exits enabled by default
-        logger.info("Initializing Adaptive Exit Manager at startup...")
-        from adaptive_exits import AdaptiveExitManager
-        adaptive_manager = AdaptiveExitManager(
-            config=CONFIG,
-            experience_file="data/exit_experience.json"
-        )
-        logger.info("[ADAPTIVE] ADAPTIVE EXITS READY - Ready to manage exits with learned intelligence")
+    # RL and Adaptive Exits are CLOUD-ONLY - no local RL components
+    # Users get confidence from cloud, contribute to cloud hive mind
+    # Only the dev (Kevin) gets the experience data saved to cloud
+    logger.info("Cloud RL Mode: All learning goes to shared hive mind")
+    logger.info("No local RL files - everything saved to cloud for collective intelligence")
     
     logger.info("Bot initialization complete")
     logger.info("Starting event loop...")

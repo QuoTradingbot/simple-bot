@@ -42,15 +42,16 @@
       "type": "prop_firm"
     }
   ],
-  "selected_account": "TopStep Account (alvarezjose4201@gmail.com) - $50,000.00",
+  "selected_account": "Click 'Fetch Account Info' to load accounts",
   "fetched_account_balance": 50000.0,
   "fetched_account_type": "prop_firm",
   "max_trades": 12,
-  "confidence_threshold": 65.0,
+  "confidence_threshold": 70.0,
   "shadow_mode": false,
   "dynamic_contracts": false,
   "recovery_mode": false,
   "remember_credentials": true,
   "dynamic_confidence": true,
-  "topstep_starting_balance": 50000.0
+  "topstep_starting_balance": 50000.0,
+  "confidence_trading": false
 }

@@ -1512,10 +1512,24 @@ class QuoTradingLauncher:
         conf_mode_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         
         self.confidence_trading_var = tk.BooleanVar(value=self.config.get("confidence_trading", False))
+        
+        def on_confidence_trading_toggle():
+            """Disable Recovery Mode if Confidence Trading is enabled."""
+            if self.confidence_trading_var.get():
+                # Confidence Trading enabled - disable Recovery Mode
+                if self.recovery_mode_var.get():
+                    messagebox.showinfo(
+                        "Mode Conflict",
+                        "Confidence Trading and Recovery Mode cannot be enabled at the same time.\n\n"
+                        "Recovery Mode has been automatically disabled."
+                    )
+                    self.recovery_mode_var.set(False)
+        
         tk.Checkbutton(
             conf_mode_frame,
             text="⚖️ Confidence Trading",
             variable=self.confidence_trading_var,
+            command=on_confidence_trading_toggle,
             font=("Segoe UI", 7, "bold"),
             bg=self.colors['card'],
             fg=self.colors['text'],
@@ -1527,7 +1541,7 @@ class QuoTradingLauncher:
         
         tk.Label(
             conf_mode_frame,
-            text="Scales down near limits, STOPS at limit",
+            text="Smart contract sizing based on account risk level",
             font=("Segoe UI", 6),
             bg=self.colors['card'],
             fg=self.colors['text_secondary']
@@ -1564,10 +1578,51 @@ class QuoTradingLauncher:
         recovery_mode_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
         self.recovery_mode_var = tk.BooleanVar(value=self.config.get("recovery_mode", False))
-        tk.Checkbutton(
+        
+        def on_recovery_mode_toggle():
+            """Show warning when enabling Recovery Mode."""
+            if self.recovery_mode_var.get():
+                # Check if Confidence Trading is enabled
+                if self.confidence_trading_var.get():
+                    messagebox.showinfo(
+                        "Mode Conflict",
+                        "Confidence Trading and Recovery Mode cannot be enabled at the same time.\n\n"
+                        "Confidence Trading has been automatically disabled."
+                    )
+                    self.confidence_trading_var.set(False)
+                
+                # User is trying to enable it - show warning
+                warning_msg = (
+                    "⚠️ RECOVERY MODE WARNING ⚠️\n\n"
+                    "Recovery Mode is designed for advanced traders who understand the risks.\n\n"
+                    "What Recovery Mode Does:\n"
+                    "• Automatically reduces contract size when your account is losing money\n"
+                    "• Continues trading even AFTER hitting your daily loss limit\n"
+                    "• Attempts to recover losses by taking smaller positions\n\n"
+                    "IMPORTANT RISKS:\n"
+                    "• Can exceed your daily loss limit significantly\n"
+                    "• May violate broker/prop firm rules that require stopping at daily limit\n"
+                    "• Could result in account termination or larger losses\n"
+                    "• Not recommended for funded/prop accounts with strict rules\n\n"
+                    "⚠️ Use Recovery Mode at your own risk ⚠️\n\n"
+                    "Do you want to enable Recovery Mode?"
+                )
+                
+                response = messagebox.askyesno(
+                    "Recovery Mode Warning",
+                    warning_msg,
+                    icon='warning'
+                )
+                
+                if not response:
+                    # User clicked No - disable it
+                    self.recovery_mode_var.set(False)
+        
+        recovery_checkbox = tk.Checkbutton(
             recovery_mode_frame,
             text="🔄 Recovery Mode",
             variable=self.recovery_mode_var,
+            command=on_recovery_mode_toggle,
             font=("Segoe UI", 7, "bold"),
             bg=self.colors['card'],
             fg=self.colors['text'],
@@ -1575,11 +1630,12 @@ class QuoTradingLauncher:
             activebackground=self.colors['card'],
             activeforeground=self.colors['success'],
             cursor="hand2"
-        ).pack(anchor=tk.W)
+        )
+        recovery_checkbox.pack(anchor=tk.W)
         
         tk.Label(
             recovery_mode_frame,
-            text="Scales down near limits, CONTINUES",
+            text="Reduces contract size when losing, keeps trading past daily limit",
             font=("Segoe UI", 6),
             bg=self.colors['card'],
             fg=self.colors['text_secondary']
@@ -1716,14 +1772,14 @@ class QuoTradingLauncher:
         trades_spin.pack(fill=tk.X, ipady=2)
         
         # ========================================
-        # CONFIDENCE SLIDER - PROFESSIONAL DESIGN
+        # CONFIDENCE SLIDER - COMPACT
         # ========================================
         confidence_section = tk.Frame(content, bg=self.colors['card'])
-        confidence_section.pack(fill=tk.X, pady=(8, 3))
+        confidence_section.pack(fill=tk.X, pady=(2, 1))
         
         # Header with title
         conf_header = tk.Frame(confidence_section, bg=self.colors['card'])
-        conf_header.pack(fill=tk.X, pady=(0, 6))
+        conf_header.pack(fill=tk.X, pady=(0, 1))
         
         # Title and description on same line
         tk.Label(
@@ -1743,7 +1799,7 @@ class QuoTradingLauncher:
         ).pack(side=tk.LEFT, padx=(4, 0))
         
         # Current value display with trading style
-        self.confidence_var = tk.DoubleVar(value=self.config.get("confidence_threshold", 65.0))
+        self.confidence_var = tk.DoubleVar(value=self.config.get("confidence_threshold", 70.0))
         
         self.confidence_style_label = tk.Label(
             conf_header,
@@ -1763,118 +1819,35 @@ class QuoTradingLauncher:
         )
         self.confidence_display.pack(side=tk.RIGHT)
         
-        # Slider with threshold zones
+        # Slider container - simple and clean
         slider_container = tk.Frame(confidence_section, bg=self.colors['card'])
-        slider_container.pack(fill=tk.X, padx=15, pady=(0, 6))
+        slider_container.pack(fill=tk.X, padx=15, pady=(3, 0))
         
-        # Create a frame to hold threshold bars and slider
-        threshold_frame = tk.Frame(slider_container, bg=self.colors['card'], height=30)
-        threshold_frame.pack(fill=tk.X)
-        threshold_frame.pack_propagate(False)
-        
-        # Create canvas for threshold zones (behind slider)
-        self.threshold_canvas = tk.Canvas(
-            threshold_frame,
-            height=8,
-            bg=self.colors['card'],
-            highlightthickness=0,
-            bd=0
-        )
-        self.threshold_canvas.place(relx=0, rely=0.5, relwidth=1, anchor='w')
-        
-        # Draw threshold zones with clean bars and separator lines
-        def draw_thresholds():
-            canvas_width = self.threshold_canvas.winfo_width()
-            if canvas_width <= 1:  # Not yet rendered
-                self.threshold_canvas.after(50, draw_thresholds)
-                return
-            
-            # Clear canvas
-            self.threshold_canvas.delete("all")
-            
-            # Calculate positions for 10-100 range
-            def value_to_x(value):
-                return ((value - 10) / 90) * canvas_width
-            
-            bar_height = 8
-            
-            # Single continuous bar with color zones
-            # Zone 1: 10-40% - AGGRESSIVE (Red)
-            x1 = value_to_x(10)
-            x2 = value_to_x(40)
-            self.threshold_canvas.create_rectangle(
-                x1, 0, x2, bar_height,
-                fill="#DC2626", outline="", width=0
-            )
-            
-            # Zone 2: 40-65% - MODERATE (Orange/Yellow)
-            x1 = value_to_x(40)
-            x2 = value_to_x(65)
-            self.threshold_canvas.create_rectangle(
-                x1, 0, x2, bar_height,
-                fill="#F59E0B", outline="", width=0
-            )
-            
-            # Zone 3: 65-85% - BALANCED (Green)
-            x1 = value_to_x(65)
-            x2 = value_to_x(85)
-            self.threshold_canvas.create_rectangle(
-                x1, 0, x2, bar_height,
-                fill="#10B981", outline="", width=0
-            )
-            
-            # Zone 4: 85-100% - CONSERVATIVE (Blue)
-            x1 = value_to_x(85)
-            x2 = value_to_x(100)
-            self.threshold_canvas.create_rectangle(
-                x1, 0, x2, bar_height,
-                fill="#3B82F6", outline="", width=0
-            )
-            
-            # Draw vertical separator lines at thresholds
-            separator_color = "#404040"
-            line_width = 2
-            
-            # Line at 40%
-            x = value_to_x(40)
-            self.threshold_canvas.create_line(x, 0, x, bar_height, fill=separator_color, width=line_width)
-            
-            # Line at 65%
-            x = value_to_x(65)
-            self.threshold_canvas.create_line(x, 0, x, bar_height, fill=separator_color, width=line_width)
-            
-            # Line at 85%
-            x = value_to_x(85)
-            self.threshold_canvas.create_line(x, 0, x, bar_height, fill=separator_color, width=line_width)
-        
-        # Delay drawing until canvas is rendered
-        self.threshold_canvas.after(100, draw_thresholds)
-        
-        # Place slider on top
+        # Create slider with dynamic color
         self.confidence_slider = tk.Scale(
-            threshold_frame,
+            slider_container,
             from_=10,
             to=100,
             resolution=5,
             variable=self.confidence_var,
             orient=tk.HORIZONTAL,
-            bg=self.colors['card'],
+            bg=self.get_style_color(self.confidence_var.get()),
             fg=self.colors['text'],
             activebackground=self.get_style_color(self.confidence_var.get()),
-            troughcolor=self.colors['card'],
+            troughcolor=self.get_style_color(self.confidence_var.get()),
             highlightthickness=0,
             bd=0,
             length=500,
             showvalue=0,
-            sliderlength=30,
-            width=12,
+            sliderlength=25,
+            width=15,
             command=self.update_confidence_display
         )
-        self.confidence_slider.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self.confidence_slider.pack(fill=tk.X)
         
         # Trade details below slider - with emojis and colored text
         trade_details = tk.Frame(confidence_section, bg=self.colors['card'])
-        trade_details.pack(fill=tk.X, padx=15, pady=(4, 8))
+        trade_details.pack(fill=tk.X, padx=15, pady=(0, 1))
         
         # Create frame for trade information
         self.trade_info_frame = tk.Frame(trade_details, bg=self.colors['card'])
@@ -1883,29 +1856,16 @@ class QuoTradingLauncher:
         # Initialize trade info display
         self.update_trade_info(self.confidence_var.get())
         
-        # Dynamic description
-        self.confidence_description = tk.Label(
-            confidence_section,
-            text=self.get_confidence_description(self.confidence_var.get()),
-            font=("Segoe UI", 7, "italic"),
-            bg=self.colors['card'],
-            fg=self.colors['text_secondary'],
-            wraplength=550,
-            justify=tk.CENTER
-        )
-        self.confidence_description.pack(fill=tk.X, pady=(0, 2))
-        
         # Summary display - COMPACT
         summary_frame = tk.Frame(content, bg=self.colors['card'])
-        summary_frame.pack(fill=tk.X, pady=(2, 2))
+        summary_frame.pack(fill=tk.X, pady=(0, 1))
         
         # Center container for launch button
         launch_container = tk.Frame(summary_frame, bg=self.colors['card'])
         launch_container.pack()
         
-        # Launch AI button (replaces summary)
         launch_btn = self.create_button(launch_container, "LAUNCH AI", self.start_bot, "next")
-        launch_btn.pack(pady=4, ipady=3)
+        launch_btn.pack(pady=2, ipady=3)
     
     def _update_account_size_from_fetched(self, balance: float):
         """Helper method to update account size field with fetched balance."""
@@ -2646,32 +2606,11 @@ BOT_LOG_LEVEL=INFO
         self.confidence_display.config(fg=color)
         self.confidence_style_label.config(fg=color)
         
-        # Update slider thumb color to match zone
-        self.confidence_slider.config(activebackground=color)
-        # Also update the slider handle color
-        self.confidence_slider.config(troughcolor=self.colors['card'])
-        
-        # Update description
-        description = self.get_confidence_description(conf_value)
-        self.confidence_description.config(text=description)
+        # Update slider thumb color to match zone (both when idle and when clicked)
+        self.confidence_slider.config(bg=color, activebackground=color, troughcolor=color)
         
         # Update trade info with colored text
         self.update_trade_info(conf_value)
-    
-    def get_confidence_description(self, value):
-        """Get description based on confidence threshold value."""
-        if value <= 30:
-            return "⚡ Maximum Activity: Bot takes almost all signals - highest trade volume, maximum risk exposure"
-        elif value <= 50:
-            return "⚡ Very Aggressive: Actively seeks many trading opportunities - high trade volume, elevated risk"
-        elif value <= 65:
-            return "⚡ Aggressive: Takes quality signals frequently - good trade volume, moderate-high risk"
-        elif value <= 75:
-            return "⚖️ Balanced (Recommended): Selective with quality signals - moderate trades, balanced risk/reward"
-        elif value <= 85:
-            return "🛡️ Conservative: Only high-confidence signals - fewer trades, controlled risk"
-        else:
-            return "🛡️ Very Conservative: Only exceptional top-tier signals - minimal trades, lowest risk"
     
     def save_config(self):
         """Save current configuration.

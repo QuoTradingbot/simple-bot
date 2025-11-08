@@ -602,9 +602,9 @@ async def save_trade_experience(trade: Dict):
         if len(signal_experiences) % 10 == 0:
             save_experiences()
         
-        # Calculate SHARED win rate (collective wisdom)
+        # Calculate SHARED win rate (collective wisdom) - handle both formats
         if len(signal_experiences) > 0:
-            wins = sum(1 for exp in signal_experiences if exp.get('pnl', 0) > 0)
+            wins = sum(1 for exp in signal_experiences if exp.get('pnl', exp.get('reward', 0)) > 0)
             win_rate = wins / len(signal_experiences)
         else:
             win_rate = 0.0
@@ -640,8 +640,9 @@ async def get_ml_stats():
             "message": "No trades yet - shared learning pool is empty"
         }
     
-    wins = sum(1 for exp in signal_experiences if exp.get('pnl', 0) > 0)
-    total_pnl = sum(exp.get('pnl', 0) for exp in signal_experiences)
+    # Handle both loaded format (reward) and new trades (pnl)
+    wins = sum(1 for exp in signal_experiences if exp.get('pnl', exp.get('reward', 0)) > 0)
+    total_pnl = sum(exp.get('pnl', exp.get('reward', 0)) for exp in signal_experiences)
     
     return {
         "total_trades": len(signal_experiences),

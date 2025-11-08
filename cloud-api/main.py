@@ -253,17 +253,14 @@ async def create_subscription(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Define pricing tiers (in cents)
+    # Single pricing tier: $200/month
     pricing = {
-        "basic": {"monthly": 9900, "contract_limit": 3, "accounts": 1},      # $99/mo
-        "pro": {"monthly": 19900, "contract_limit": 10, "accounts": 3},      # $199/mo
-        "enterprise": {"monthly": 49900, "contract_limit": 25, "accounts": 10}  # $499/mo
+        "premium": {"monthly": 20000, "contract_limit": 25, "accounts": 10}  # $200/mo
     }
     
-    if sub_data.tier not in pricing:
-        raise HTTPException(status_code=400, detail="Invalid subscription tier")
-    
-    tier_config = pricing[sub_data.tier]
+    # Force premium tier (only option)
+    tier = "premium"
+    tier_config = pricing[tier]
     
     try:
         # Create or get Stripe customer
@@ -294,7 +291,7 @@ async def create_subscription(
         # Update user record
         user.stripe_subscription_id = subscription.id
         user.subscription_status = "active"
-        user.subscription_tier = sub_data.tier
+        user.subscription_tier = "premium"
         user.subscription_start = datetime.utcnow()
         user.subscription_end = datetime.utcnow() + timedelta(days=30)
         user.max_contract_size = tier_config["contract_limit"]
@@ -306,7 +303,7 @@ async def create_subscription(
             "success": True,
             "subscription_id": subscription.id,
             "status": subscription.status,
-            "message": f"Successfully subscribed to {sub_data.tier.title()} plan!"
+            "message": "Successfully subscribed to QuoTrading Premium!"
         }
         
     except stripe.error.CardError as e:
@@ -414,33 +411,8 @@ async def admin_dashboard(
     past_due = len([u for u in all_users if u.subscription_status == "past_due"])
     canceled = len([u for u in all_users if u.subscription_status == "canceled"])
     
-    # Revenue calculation (monthly)
-    tier_prices = {"basic": 99, "pro": 199, "enterprise": 499}
-    monthly_revenue = sum(
-        tier_prices.get(u.subscription_tier, 0) 
-        for u in all_users 
-        if u.subscription_status == "active"
-    )
-    
-    # Tier breakdown
-    tier_counts = {
-        "basic": len([u for u in all_users if u.subscription_tier == "basic" and u.subscription_status == "active"]),
-        "pro": len([u for u in all_users if u.subscription_tier == "pro" and u.subscription_status == "active"]),
-        "enterprise": len([u for u in all_users if u.subscription_tier == "enterprise" and u.subscription_status == "active"])
-    }
-    
-    # Expiring soon (next 7 days)
-    from datetime import timedelta
-    seven_days = datetime.utcnow() + timedelta(days=7)
-    expiring_soon = [
-        {
-            "email": u.email,
-            "tier": u.subscription_tier,
-            "expires": u.subscription_end
-        }
-        for u in all_users 
-        if u.subscription_end and u.subscription_end <= seven_days and u.subscription_status == "active"
-    ]
+    # Revenue calculation - Single $200/month tier
+    monthly_revenue = active_subscriptions * 200
     
     # User list
     users_list = [
@@ -465,8 +437,6 @@ async def admin_dashboard(
             "canceled": canceled,
             "monthly_revenue": f"${monthly_revenue:,.2f}"
         },
-        "tier_breakdown": tier_counts,
-        "expiring_soon": expiring_soon,
         "users": users_list
     }
 

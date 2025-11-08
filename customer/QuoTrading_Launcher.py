@@ -7,6 +7,10 @@ Professional GUI application for easy setup and launch.
 Flow:
 1. Screen 0: Broker Setup (Broker credentials, QuoTrading API key, account size)
 2. Screen 1: Trading Controls (Symbol selection, risk settings, launch)
+
+HYBRID ARCHITECTURE:
+- USE_CLOUD_SIGNALS = False: Local mode (testing, development)
+- USE_CLOUD_SIGNALS = True: Production mode (cloud ML/RL brain)
 """
 
 import tkinter as tk
@@ -22,6 +26,18 @@ import threading
 import time
 import requests  # For cloud API calls
 import platform  # For cross-platform mouse wheel support
+
+# ========================================
+# CONFIGURATION
+# ========================================
+
+# Toggle between local and cloud signal generation
+USE_CLOUD_SIGNALS = False  # Set to True for production (cloud ML/RL)
+
+# Cloud API endpoints
+CLOUD_API_BASE_URL = "https://quotrading-api.onrender.com"  # TODO: Change to Azure after deployment
+CLOUD_SIGNAL_ENDPOINT = f"{CLOUD_API_BASE_URL}/api/v1/signals/generate"
+CLOUD_SIGNAL_POLL_INTERVAL = 5  # Seconds between signal polls
 
 
 class QuoTradingLauncher:

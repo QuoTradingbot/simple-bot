@@ -7,7 +7,7 @@
   "symbols": [
     "ES"
   ],
-  "account_size": "50000",
+  "account_size": 50000.0,
   "max_contracts": 1,
   "max_trades_per_day": 9999,
   "risk_per_trade": 0.012,
@@ -42,7 +42,7 @@
       "type": "prop_firm"
     }
   ],
-  "selected_account": "50KTC-V2-398684-33989413 - $50,000.00",
+  "selected_account": "50KTC-V2-398684-33989413",
   "fetched_account_balance": 50000.0,
   "fetched_account_type": "prop_firm",
   "max_trades": 3,

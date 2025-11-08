@@ -1,13 +1,14 @@
 """
 QuoTrading Subscription API - FastAPI Backend
 Handles user authentication, license validation, and Stripe subscriptions
+PLUS: Signal generation endpoint (ML/RL brain)
 """
 
-from fastapi import FastAPI, HTTPException, Depends, Header, status
+from fastapi import FastAPI, HTTPException, Depends, Header, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import os
 import secrets
 import hashlib
@@ -16,6 +17,9 @@ from sqlalchemy import create_engine, Column, String, Boolean, DateTime, Integer
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 import stripe
+
+# Import signal engine
+from signal_engine import signal_engine
 
 # ========================================
 # Configuration
@@ -439,6 +443,98 @@ async def admin_dashboard(
         },
         "users": users_list
     }
+
+
+# ========================================
+# Signal Generation Endpoints (ML/RL Brain)
+# ========================================
+
+class SignalRequest(BaseModel):
+    """Request to generate trading signal."""
+    user_id: str
+    symbol: str
+    bars: List[Dict[str, Any]]  # List of 1-min bars: {timestamp, open, high, low, close, volume}
+    current_position: Optional[Dict[str, Any]] = None  # {side, quantity, entry_price}
+    settings: Dict[str, Any]  # User settings: {account_size, risk_per_trade, etc.}
+
+
+class SignalResponse(BaseModel):
+    """Signal generation response."""
+    action: str  # LONG, SHORT, HOLD, CLOSE
+    contracts: int
+    entry: float
+    stop: float
+    target: float
+    confidence: float
+    reason: str
+    timestamp: str
+    vwap: Optional[float] = None
+    rsi: Optional[float] = None
+
+
+@app.post("/api/v1/signals/generate", response_model=SignalResponse)
+async def generate_signal(
+    request: SignalRequest,
+    api_key: str = Header(..., alias="X-API-Key")
+):
+    """
+    Generate personalized trading signal for user.
+    
+    This is the HEART of the system - runs VWAP/ML/RL analysis
+    and returns trading decisions.
+    
+    Flow:
+    1. Client sends market data + user settings
+    2. Server runs ML/RL brain on data
+    3. Returns personalized signal
+    4. Client executes locally via TopStep
+    
+    **Requires valid API key in X-API-Key header**
+    """
+    db = SessionLocal()
+    try:
+        # Validate API key
+        user = db.query(User).filter(User.api_key == api_key).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+        
+        # Check subscription is active
+        if user.subscription_status != "active":
+            raise HTTPException(status_code=403, detail=f"Subscription not active: {user.subscription_status}")
+        
+        # Update last login
+        user.last_login = datetime.utcnow()
+        db.commit()
+        
+        # Generate signal
+        signal = signal_engine.generate_signal(
+            user_id=request.user_id,
+            symbol=request.symbol,
+            bars=request.bars,
+            current_position=request.current_position,
+            settings=request.settings
+        )
+        
+        return signal
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Signal generation failed: {str(e)}")
+    finally:
+        db.close()
+
+
+@app.get("/api/v1/signals/health")
+async def signal_health():
+    """Check if signal engine is healthy."""
+    return {
+        "status": "healthy",
+        "engine": "VWAPSignalEngine",
+        "version": "1.0.0",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
 
 if __name__ == "__main__":
     import uvicorn

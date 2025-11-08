@@ -113,9 +113,23 @@ class QuoTradingBot:
         self.ml_confidence_used: Optional[float] = None
         
         # User settings (from config)
-        self.symbol = self.config.instrument_symbol  # e.g., "ES", "NQ", "CL"
+        # Support both single symbol and multi-symbol configs
+        if hasattr(self.config, 'instruments') and self.config.instruments:
+            self.symbol = self.config.instruments[0]  # Use first symbol for now
+        elif hasattr(self.config, 'instrument'):
+            self.symbol = self.config.instrument
+        else:
+            self.symbol = "ES"  # Default fallback
+            
+        # ML confidence threshold (user configurable via GUI)
         self.min_confidence_threshold = getattr(self.config, 'ml_confidence_threshold', 0.70)
-        self.position_size = self.config.position_size_contracts
+        if not self.min_confidence_threshold:
+            # Try alternate field name from GUI
+            confidence_pct = getattr(self.config, 'confidence_threshold', 70.0)
+            self.min_confidence_threshold = confidence_pct / 100.0
+            
+        # Position size (user configurable via GUI)
+        self.position_size = getattr(self.config, 'max_contracts', 1)
         
         self.license_valid = False
         

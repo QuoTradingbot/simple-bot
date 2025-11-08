@@ -369,13 +369,55 @@ async def update_market_data(bar: Dict):
 # ============================================================================
 
 # ============================================================================
-# RL EXPERIENCE STORAGE
+# RL EXPERIENCE STORAGE - HIVE MIND
 # ============================================================================
 
 # Single shared RL experience pool (everyone runs same strategy)
-# All users contribute to and learn from the same proven strategy
+# Starts with Kevin's 178K signal + 121K exit experiences
+# Grows as all users contribute (collective learning - hive mind!)
 signal_experiences = []  # Shared across all users
 exit_experiences = []    # Shared across all users
+
+def load_initial_experiences():
+    """Load Kevin's proven experiences to seed the hive mind"""
+    global signal_experiences, exit_experiences
+    import json
+    import os
+    
+    try:
+        # Load signal experiences (178K trades)
+        if os.path.exists("signal_experience.json"):
+            with open("signal_experience.json", "r") as f:
+                signal_experiences = json.load(f)
+            logger.info(f"✅ Loaded {len(signal_experiences):,} signal experiences from Kevin's backtests")
+        
+        # Load exit experiences (121K exits)
+        if os.path.exists("exit_experience.json"):
+            with open("exit_experience.json", "r") as f:
+                exit_experiences = json.load(f)
+            logger.info(f"✅ Loaded {len(exit_experiences):,} exit experiences from Kevin's backtests")
+        
+        logger.info(f"🧠 HIVE MIND INITIALIZED: {len(signal_experiences):,} signals + {len(exit_experiences):,} exits")
+        logger.info(f"   All users will learn from and contribute to this shared wisdom pool!")
+        
+    except Exception as e:
+        logger.warning(f"Could not load initial experiences: {e}")
+        logger.info("Starting with empty experience pool")
+
+# Load experiences at startup
+load_initial_experiences()
+
+def save_experiences():
+    """Save updated experiences back to disk (persist hive mind growth)"""
+    import json
+    try:
+        with open("signal_experience.json", "w") as f:
+            json.dump(signal_experiences, f)
+        with open("exit_experience.json", "w") as f:
+            json.dump(exit_experiences, f)
+        logger.info(f"💾 Saved hive mind: {len(signal_experiences):,} signals + {len(exit_experiences):,} exits")
+    except Exception as e:
+        logger.error(f"Failed to save experiences: {e}")
 
 def get_all_experiences() -> List:
     """Get all RL experiences (shared learning - same strategy for everyone)"""
@@ -554,6 +596,10 @@ async def save_trade_experience(trade: Dict):
         # Store in SHARED array (everyone contributes to same strategy learning)
         signal_experiences.append(experience)
         
+        # Persist the hive mind to disk every 10 trades
+        if len(signal_experiences) % 10 == 0:
+            save_experiences()
+        
         # Calculate SHARED win rate (collective wisdom)
         if len(signal_experiences) > 0:
             wins = sum(1 for exp in signal_experiences if exp.get('pnl', 0) > 0)
@@ -562,7 +608,7 @@ async def save_trade_experience(trade: Dict):
             win_rate = 0.0
         
         logger.info(f"[{user_id}] Trade Saved: {symbol} {trade['side']} P&L=${trade['pnl']:.2f} | "
-                   f"Total Shared Trades: {len(signal_experiences)}, Shared Win Rate: {win_rate:.1%}")
+                   f"🧠 HIVE MIND: {len(signal_experiences):,} trades, WR: {win_rate:.1%}")
         
         return {
             "saved": True,

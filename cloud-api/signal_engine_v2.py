@@ -1275,6 +1275,197 @@ async def refresh_calendar(data: dict):
     }
 
 # ============================================================================
+# TIME SERVICE - SINGLE SOURCE OF TRUTH
+# ============================================================================
+
+def get_market_hours_status(now_et: datetime) -> str:
+    """
+    Determine current market status
+    
+    Returns: pre_market, market_open, after_hours, futures_open, weekend_closed
+    """
+    weekday = now_et.weekday()
+    current_time = now_et.time()
+    
+    # Weekend (Saturday = 5, Sunday = 6)
+    if weekday == 5:  # Saturday
+        return "weekend_closed"
+    elif weekday == 6:  # Sunday
+        # Futures open at 6 PM ET on Sunday
+        if current_time >= datetime_time(18, 0):
+            return "futures_open"
+        else:
+            return "weekend_closed"
+    
+    # Weekdays (Monday-Friday)
+    if current_time < datetime_time(9, 30):
+        # Before 9:30 AM
+        if current_time >= datetime_time(6, 0):
+            return "pre_market"
+        else:
+            return "futures_open"
+    elif datetime_time(9, 30) <= current_time < datetime_time(16, 0):
+        # 9:30 AM - 4:00 PM
+        return "market_open"
+    elif datetime_time(16, 0) <= current_time < datetime_time(18, 0):
+        # 4:00 PM - 6:00 PM
+        return "after_hours"
+    else:
+        # After 6:00 PM
+        return "futures_open"
+
+def get_trading_session(now_et: datetime) -> str:
+    """
+    Determine current trading session
+    
+    Returns: asian, european, us, overlap
+    """
+    current_time = now_et.time()
+    
+    # Asian session: 6 PM - 3 AM ET (Tokyo/Hong Kong)
+    if current_time >= datetime_time(18, 0) or current_time < datetime_time(3, 0):
+        return "asian"
+    # European session: 3 AM - 12 PM ET (London)
+    elif datetime_time(3, 0) <= current_time < datetime_time(12, 0):
+        # Overlap with US: 9:30 AM - 12 PM ET
+        if datetime_time(9, 30) <= current_time < datetime_time(12, 0):
+            return "overlap"
+        return "european"
+    # US session: 9:30 AM - 4 PM ET
+    elif datetime_time(9, 30) <= current_time < datetime_time(16, 0):
+        return "us"
+    else:
+        return "asian"
+
+def check_if_event_active(events: List[Dict], now_et: datetime) -> tuple:
+    """
+    Check if any high-impact economic event is currently active
+    
+    Returns: (is_active, event_name, event_window)
+    """
+    today_str = now_et.date().strftime("%Y-%m-%d")
+    current_time = now_et.time()
+    
+    # Filter today's events
+    todays_events = [e for e in events if e["date"] == today_str and e["impact"] == "high"]
+    
+    for event in todays_events:
+        event_time_str = event["time"]
+        
+        # Parse event time (e.g., "8:30am" or "2:00pm")
+        event_time_str = event_time_str.lower().replace("am", "").replace("pm", "").strip()
+        hour, minute = map(int, event_time_str.split(":"))
+        
+        # Adjust for PM
+        if "pm" in event["time"].lower() and hour != 12:
+            hour += 12
+        elif "am" in event["time"].lower() and hour == 12:
+            hour = 0
+        
+        event_time = datetime_time(hour, minute)
+        
+        # Event window: 30 minutes before to 1 hour after
+        event_start = (datetime.combine(now_et.date(), event_time) - timedelta(minutes=30)).time()
+        event_end = (datetime.combine(now_et.date(), event_time) + timedelta(hours=1)).time()
+        
+        # Check if we're in the event window
+        if event_start <= current_time <= event_end:
+            window = f"{event_start.strftime('%I:%M %p')} - {event_end.strftime('%I:%M %p')}"
+            return (True, event["event"], window)
+    
+    return (False, None, None)
+
+@app.get("/api/time")
+async def get_time_service():
+    """
+    Centralized time service - Single source of truth for all bots
+    
+    Provides:
+    - Current ET time
+    - Market hours status
+    - Trading session
+    - Economic event awareness
+    - Trading permission
+    
+    Bots should call this every 30-60 seconds to stay synchronized
+    """
+    # Get current ET time
+    et_tz = pytz.timezone("America/New_York")
+    now_et = datetime.now(et_tz)
+    
+    # Market status
+    market_status = get_market_hours_status(now_et)
+    session = get_trading_session(now_et)
+    
+    # Check for active economic events
+    event_active, event_name, event_window = check_if_event_active(economic_calendar["events"], now_et)
+    
+    # Determine if trading is allowed
+    trading_allowed = True
+    halt_reason = None
+    
+    if event_active:
+        trading_allowed = False
+        halt_reason = f"{event_name} in progress ({event_window})"
+    
+    # Get today's upcoming events
+    today_str = now_et.date().strftime("%Y-%m-%d")
+    todays_events = [
+        {
+            "event": e["event"],
+            "time": e["time"],
+            "impact": e["impact"]
+        }
+        for e in economic_calendar["events"]
+        if e["date"] == today_str and e["impact"] == "high"
+    ]
+    
+    return {
+        # Time information
+        "current_et": now_et.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "current_timestamp": now_et.isoformat(),
+        "timezone": "America/New_York",
+        
+        # Market information
+        "market_status": market_status,
+        "trading_session": session,
+        "weekday": now_et.strftime("%A"),
+        
+        # Economic events
+        "event_active": event_active,
+        "active_event": event_name if event_active else None,
+        "event_window": event_window if event_active else None,
+        "events_today": todays_events,
+        "events_count": len(todays_events),
+        
+        # Trading permission
+        "trading_allowed": trading_allowed,
+        "halt_reason": halt_reason,
+        
+        # Calendar info
+        "calendar_last_updated": economic_calendar.get("last_updated"),
+        "calendar_next_update": economic_calendar.get("next_update")
+    }
+
+@app.get("/api/time/simple")
+async def get_simple_time():
+    """
+    Lightweight time check - Just ET time and trading permission
+    For bots that need quick checks without full details
+    """
+    et_tz = pytz.timezone("America/New_York")
+    now_et = datetime.now(et_tz)
+    
+    # Check for active events
+    event_active, event_name, _ = check_if_event_active(economic_calendar["events"], now_et)
+    
+    return {
+        "current_et": now_et.strftime("%Y-%m-%d %H:%M:%S"),
+        "trading_allowed": not event_active,
+        "halt_reason": event_name if event_active else None
+    }
+
+# ============================================================================
 # STARTUP
 # ============================================================================
 

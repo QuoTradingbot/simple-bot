@@ -7,6 +7,7 @@ Customers connect to fetch signals and execute locally on their TopStep accounts
 """
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from datetime import datetime, time as datetime_time, timedelta
 from typing import Dict, Optional, List
 from collections import deque
@@ -16,6 +17,7 @@ import stripe
 import secrets
 import hashlib
 import json
+import time as time_module
 
 # Initialize FastAPI
 app = FastAPI(
@@ -27,6 +29,87 @@ app = FastAPI(
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ============================================================================
+# RATE LIMITING (Beta Protection)
+# ============================================================================
+
+# Simple in-memory rate limiting for beta
+# Format: {ip_address: {"requests": deque([timestamps]), "blocked_until": timestamp}}
+rate_limit_storage = {}
+
+# Rate limit settings
+RATE_LIMIT_REQUESTS = 100  # requests
+RATE_LIMIT_WINDOW = 60  # seconds (1 minute)
+RATE_LIMIT_BLOCK_TIME = 300  # 5 minutes block after exceeding
+
+def check_rate_limit(request: Request) -> bool:
+    """
+    Check if request should be rate limited
+    
+    Returns:
+        True if allowed, False if rate limited
+    """
+    client_ip = request.client.host
+    current_time = time_module.time()
+    
+    # Initialize storage for new IPs
+    if client_ip not in rate_limit_storage:
+        rate_limit_storage[client_ip] = {
+            "requests": deque(),
+            "blocked_until": 0
+        }
+    
+    client_data = rate_limit_storage[client_ip]
+    
+    # Check if still blocked
+    if current_time < client_data["blocked_until"]:
+        remaining = int(client_data["blocked_until"] - current_time)
+        logger.warning(f"⛔ Rate limit: {client_ip} blocked for {remaining}s more")
+        return False
+    
+    # Remove requests outside the time window
+    requests = client_data["requests"]
+    while requests and requests[0] < current_time - RATE_LIMIT_WINDOW:
+        requests.popleft()
+    
+    # Check if limit exceeded
+    if len(requests) >= RATE_LIMIT_REQUESTS:
+        # Block this IP
+        client_data["blocked_until"] = current_time + RATE_LIMIT_BLOCK_TIME
+        logger.warning(f"🚫 Rate limit exceeded: {client_ip} blocked for {RATE_LIMIT_BLOCK_TIME}s ({len(requests)} requests in {RATE_LIMIT_WINDOW}s)")
+        return False
+    
+    # Add current request
+    requests.append(current_time)
+    
+    return True
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Apply rate limiting to all requests"""
+    
+    # Skip rate limit for health check
+    if request.url.path == "/health":
+        return await call_next(request)
+    
+    # Check rate limit
+    if not check_rate_limit(request):
+        client_ip = request.client.host
+        client_data = rate_limit_storage[client_ip]
+        remaining = int(client_data["blocked_until"] - time_module.time())
+        
+        return JSONResponse(
+            status_code=429,
+            content={
+                "error": "Rate limit exceeded",
+                "message": f"Too many requests. Please try again in {remaining} seconds.",
+                "retry_after": remaining
+            }
+        )
+    
+    response = await call_next(request)
+    return response
 
 # ============================================================================
 # STRIPE CONFIGURATION
@@ -64,6 +147,43 @@ async def root():
 async def health():
     """Health check for monitoring"""
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
+
+@app.get("/api/rate-limit/status")
+async def rate_limit_status(request: Request):
+    """Check current rate limit status for this IP"""
+    client_ip = request.client.host
+    current_time = time_module.time()
+    
+    if client_ip not in rate_limit_storage:
+        return {
+            "ip": client_ip,
+            "requests_used": 0,
+            "requests_remaining": RATE_LIMIT_REQUESTS,
+            "limit": RATE_LIMIT_REQUESTS,
+            "window_seconds": RATE_LIMIT_WINDOW,
+            "blocked": False
+        }
+    
+    client_data = rate_limit_storage[client_ip]
+    
+    # Remove old requests
+    requests = client_data["requests"]
+    while requests and requests[0] < current_time - RATE_LIMIT_WINDOW:
+        requests.popleft()
+    
+    # Check if blocked
+    blocked = current_time < client_data["blocked_until"]
+    blocked_seconds = int(client_data["blocked_until"] - current_time) if blocked else 0
+    
+    return {
+        "ip": client_ip,
+        "requests_used": len(requests),
+        "requests_remaining": max(0, RATE_LIMIT_REQUESTS - len(requests)),
+        "limit": RATE_LIMIT_REQUESTS,
+        "window_seconds": RATE_LIMIT_WINDOW,
+        "blocked": blocked,
+        "blocked_seconds_remaining": blocked_seconds
+    }
 
 # ============================================================================
 # ML/RL ENDPOINTS

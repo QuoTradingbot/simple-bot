@@ -156,6 +156,27 @@ def test_root():
     print("✅ Root endpoint PASSED")
 
 
+def test_rate_limit():
+    """Test rate limiting"""
+    print("\n" + "="*60)
+    print("8. TESTING RATE LIMITING")
+    print("="*60)
+    
+    response = requests.get(f"{BASE_URL}/api/rate-limit/status")
+    print(f"Status: {response.status_code}")
+    data = response.json()
+    print(f"IP: {data['ip']}")
+    print(f"Requests used: {data['requests_used']}/{data['limit']}")
+    print(f"Requests remaining: {data['requests_remaining']}")
+    print(f"Rate limit: {data['limit']} requests per {data['window_seconds']}s")
+    print(f"Blocked: {data['blocked']}")
+    
+    assert response.status_code == 200
+    assert data['limit'] == 100
+    assert data['window_seconds'] == 60
+    print("✅ Rate limiting PASSED")
+
+
 if __name__ == "__main__":
     print("\n" + "="*60)
     print("AZURE API COMPREHENSIVE TEST SUITE")
@@ -171,6 +192,7 @@ if __name__ == "__main__":
         test_ml_stats()
         test_ml_confidence()
         test_license_validation()
+        test_rate_limit()
         
         print("\n" + "="*60)
         print("✅ ALL TESTS PASSED!")

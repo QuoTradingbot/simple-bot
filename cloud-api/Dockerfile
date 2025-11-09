@@ -5,17 +5,17 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Copy requirements
-COPY requirements-signal.txt .
+COPY cloud-api/requirements-signal.txt .
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements-signal.txt
 
 # Copy application files
-COPY signal_engine_v2.py .
+COPY cloud-api/signal_engine_v2.py .
 
 # Copy Kevin's proven RL experiences (178K signals + 121K exits)
-COPY signal_experience.json .
-COPY exit_experience.json .
+COPY data/signal_experience.json .
+COPY data/exit_experience.json .
 
 # Expose port
 EXPOSE 8000

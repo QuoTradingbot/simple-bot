@@ -47,6 +47,60 @@ import aiohttp
 import asyncio
 import hashlib
 
+# ===== EXE-COMPATIBLE FILE PATH HELPERS =====
+# These ensure files are saved in the correct location whether running as:
+# - Python script (development)
+# - PyInstaller EXE (customer distribution)
+
+def get_application_path() -> 'Path':
+    """
+    Get the application's base directory.
+    Works correctly whether running as script or frozen EXE.
+    
+    When frozen (EXE): Returns directory containing the EXE
+    When script: Returns project root directory
+    
+    Returns:
+        Path: Application base directory where data/ and logs/ folders live
+    """
+    from pathlib import Path
+    
+    if getattr(sys, 'frozen', False):
+        # Running as compiled EXE (PyInstaller)
+        # Use the directory containing the EXE, not the temp _MEIPASS
+        application_path = Path(sys.executable).parent
+    else:
+        # Running as Python script - go up one level from src/
+        application_path = Path(__file__).parent.parent
+    
+    return application_path
+
+
+def get_data_file_path(filename: str) -> 'Path':
+    """
+    Get full path to a data file, creating directory if needed.
+    Works for both script and EXE modes.
+    
+    Args:
+        filename: Relative path like "data/bot_state.json" or "logs/vwap_bot.log"
+    
+    Returns:
+        Path: Full absolute path to file
+        
+    Example:
+        # Development: C:/Users/kevin/Downloads/simple-bot-1/data/bot_state.json
+        # Customer EXE: C:/Users/customer/QuoTrading/data/bot_state.json
+    """
+    from pathlib import Path
+    
+    app_path = get_application_path()
+    file_path = app_path / filename
+    
+    # Create parent directory if it doesn't exist
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    return file_path
+
 # Import new production modules
 from config import load_config, BotConfiguration
 from event_loop import EventLoop, EventType, EventPriority, TimerManager
@@ -1115,16 +1169,18 @@ def save_position_state(symbol: str) -> None:
     - Network failures
     - Any errors
     
+    EXE-COMPATIBLE: Uses get_data_file_path() to work in both:
+    - Development (Python script)
+    - Production (PyInstaller EXE on customer machines)
+    
     Args:
         symbol: Instrument symbol
     """
     try:
-        from pathlib import Path
         import json
         
-        # Save to data/bot_state.json
-        state_file = Path("data/bot_state.json")
-        state_file.parent.mkdir(exist_ok=True)
+        # EXE-COMPATIBLE: Get proper path whether script or frozen EXE
+        state_file = get_data_file_path("data/bot_state.json")
         
         # Extract critical position info
         position = state[symbol]["position"]
@@ -1145,7 +1201,7 @@ def save_position_state(symbol: str) -> None:
         }
         
         # Write to file with backup
-        backup_file = Path("data/bot_state.json.backup")
+        backup_file = get_data_file_path("data/bot_state.json.backup")
         if state_file.exists():
             # Delete existing backup if it exists (Windows workaround)
             if backup_file.exists():
@@ -1171,6 +1227,10 @@ def load_position_state(symbol: str) -> bool:
     Load position state from disk on startup.
     Returns True if a position was restored, False otherwise.
     
+    EXE-COMPATIBLE: Uses get_data_file_path() to work in both:
+    - Development (Python script)
+    - Production (PyInstaller EXE on customer machines)
+    
     Args:
         symbol: Instrument symbol
     
@@ -1178,10 +1238,10 @@ def load_position_state(symbol: str) -> bool:
         True if position was restored from disk
     """
     try:
-        from pathlib import Path
         import json
         
-        state_file = Path("data/bot_state.json")
+        # EXE-COMPATIBLE: Get proper path whether script or frozen EXE
+        state_file = get_data_file_path("data/bot_state.json")
         if not state_file.exists():
             logger.info("No saved position state found (clean start)")
             return False

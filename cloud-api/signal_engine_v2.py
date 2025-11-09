@@ -1483,17 +1483,49 @@ async def get_simple_time():
     """
     Lightweight time check - Just ET time and trading permission
     For bots that need quick checks without full details
+    
+    Checks:
+    - Economic events (FOMC/NFP/CPI)
+    - Maintenance windows (Mon-Thu 5-6 PM, Fri 5 PM - Sun 6 PM)
+    - Weekend closure
     """
     et_tz = pytz.timezone("America/New_York")
     now_et = datetime.now(et_tz)
     
+    # Get market status
+    market_status = get_market_hours_status(now_et)
+    
     # Check for active events
-    event_active, event_name, _ = check_if_event_active(economic_calendar["events"], now_et)
+    event_active, event_name, event_window = check_if_event_active(economic_calendar["events"], now_et)
+    
+    # Determine if trading is allowed
+    trading_allowed = True
+    halt_reason = None
+    
+    # Priority 1: Economic events
+    if event_active:
+        trading_allowed = False
+        halt_reason = f"{event_name} ({event_window})"
+    # Priority 2: Maintenance windows
+    elif market_status == "maintenance":
+        trading_allowed = False
+        halt_reason = "Daily maintenance (5-6 PM ET)"
+    # Priority 3: Weekend closure
+    elif market_status == "weekend_closed":
+        trading_allowed = False
+        weekday = now_et.weekday()
+        if weekday == 5:  # Saturday
+            halt_reason = "Weekend - Market closed (opens Sunday 6 PM ET)"
+        elif weekday == 6:  # Sunday before 6 PM
+            halt_reason = "Weekend - Market opens at 6:00 PM ET"
+        else:  # Friday after 5 PM
+            halt_reason = "Weekend - Market closed (opens Sunday 6 PM ET)"
     
     return {
-        "current_et": now_et.strftime("%Y-%m-%d %H:%M:%S"),
-        "trading_allowed": not event_active,
-        "halt_reason": event_name if event_active else None
+        "current_et": now_et.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "trading_allowed": trading_allowed,
+        "halt_reason": halt_reason,
+        "market_status": market_status  # Added for debugging
     }
 
 # ============================================================================

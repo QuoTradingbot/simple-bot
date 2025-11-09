@@ -134,7 +134,9 @@ logs/
 
 # Bot specific - Runtime data
 /data/bot_state.json
+/data/bot_state_*.json
 /data/bot_state.json.backup
+/data/bot_state_*.json.backup
 /data/*.json.backup
 /data/signal_experience.json
 /data/exit_experience.json
@@ -143,7 +145,9 @@ logs/
 # Bot specific - Old locations (to be removed - files created in wrong location)
 /historical_data/
 /bot_state.json
+/bot_state_*.json
 /bot_state.json.backup
+/bot_state_*.json.backup
 
 # Bot specific - Temporary files
 /tmp/

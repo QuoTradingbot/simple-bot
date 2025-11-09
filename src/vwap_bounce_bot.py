@@ -1472,7 +1472,9 @@ def save_position_state(symbol: str) -> None:
         import json
         
         # EXE-COMPATIBLE: Get proper path whether script or frozen EXE
-        state_file = get_data_file_path("data/bot_state.json")
+        # Add account ID for multi-user support
+        account_id = os.getenv('SELECTED_ACCOUNT_ID', 'default')
+        state_file = get_data_file_path(f"data/bot_state_{account_id}.json")
         
         # Extract critical position info
         position = state[symbol]["position"]
@@ -1493,7 +1495,7 @@ def save_position_state(symbol: str) -> None:
         }
         
         # Write to file with backup
-        backup_file = get_data_file_path("data/bot_state.json.backup")
+        backup_file = get_data_file_path(f"data/bot_state_{account_id}.json.backup")
         if state_file.exists():
             # Delete existing backup if it exists (Windows workaround)
             if backup_file.exists():
@@ -1533,7 +1535,9 @@ def load_position_state(symbol: str) -> bool:
         import json
         
         # EXE-COMPATIBLE: Get proper path whether script or frozen EXE
-        state_file = get_data_file_path("data/bot_state.json")
+        # Add account ID for multi-user support
+        account_id = os.getenv('SELECTED_ACCOUNT_ID', 'default')
+        state_file = get_data_file_path(f"data/bot_state_{account_id}.json")
         if not state_file.exists():
             logger.info("No saved position state found (clean start)")
             return False

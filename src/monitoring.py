@@ -126,7 +126,9 @@ def setup_logging(config: Dict[str, Any]) -> logging.Logger:
     log_dir = config.get('log_directory', './logs')
     os.makedirs(log_dir, exist_ok=True)
     
-    log_file = os.path.join(log_dir, 'vwap_bot.log')
+    # Add account ID to log filename for multi-user support
+    account_id = os.getenv('SELECTED_ACCOUNT_ID', 'default')
+    log_file = os.path.join(log_dir, f'vwap_bot_{account_id}.log')
     file_handler = logging.handlers.TimedRotatingFileHandler(
         log_file,
         when='midnight',
@@ -141,7 +143,8 @@ def setup_logging(config: Dict[str, Any]) -> logging.Logger:
     logger.addHandler(file_handler)
     
     # Performance log handler (separate file for performance metrics)
-    perf_log_file = os.path.join(log_dir, 'performance.log')
+    # Also add account ID to performance log for isolation
+    perf_log_file = os.path.join(log_dir, f'performance_{account_id}.log')
     perf_handler = logging.handlers.TimedRotatingFileHandler(
         perf_log_file,
         when='midnight',

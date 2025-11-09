@@ -232,13 +232,19 @@ class StatePersistence:
     Handles saving and loading critical bot state to disk.
     """
     
-    def __init__(self, state_file: str = "data/bot_state.json"):
+    def __init__(self, state_file: str = None):
         """
         Initialize state persistence.
         
         Args:
-            state_file: Path to state file
+            state_file: Path to state file (if None, uses account-specific default)
         """
+        if state_file is None:
+            # Use account ID for multi-user support
+            import os
+            account_id = os.getenv('SELECTED_ACCOUNT_ID', 'default')
+            state_file = f"data/bot_state_{account_id}.json"
+        
         self.state_file = state_file
         logger.info(f"State persistence initialized (file={state_file})")
     

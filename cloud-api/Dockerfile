@@ -18,9 +18,9 @@ COPY cloud-api/redis_manager.py .
 # Copy admin dashboard
 COPY admin-dashboard/ ./admin-dashboard/
 
-# Copy Kevin's proven RL experiences (178K signals + 121K exits)
-COPY ../data/signal_experience.json .
-COPY ../data/exit_experience.json .
+# Copy Kevin's proven RL experiences (6,880 signals + 2,961 exits)
+COPY data/signal_experience.json .
+COPY data/exit_experience.json .
 
 # Expose port
 EXPOSE 8000

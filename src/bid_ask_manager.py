@@ -1114,6 +1114,23 @@ class ExitOrderOptimizer:
         Returns:
             Exit strategy parameters
         """
+        # HIGH URGENCY: Always use aggressive for fast exit
+        if urgency == "high":
+            if side == "long":
+                return {
+                    "order_type": "aggressive",
+                    "limit_price": quote.bid_price,
+                    "timeout": 0,
+                    "reason": f"High urgency ({exit_type}) - aggressive market order"
+                }
+            else:  # short
+                return {
+                    "order_type": "aggressive",
+                    "limit_price": quote.ask_price,
+                    "timeout": 0,
+                    "reason": f"High urgency ({exit_type}) - aggressive market order"
+                }
+        
         if exit_type == "target":
             # Taking profit at target - use passive to collect spread
             if side == "long":

@@ -997,6 +997,7 @@ def initialize_state(symbol: str) -> None:
         "rsi": None,  # RSI value (0-100)
         "macd": None,  # MACD data dict with 'macd', 'signal', 'histogram'
         "avg_volume": None,  # Average volume for spike detection
+        "recent_volume_history": deque(maxlen=20),  # Last 20 bars for volume surge detection
         
         # Signal tracking
         "last_signal": None,
@@ -1665,6 +1666,7 @@ def update_macd(symbol: str) -> None:
 def update_volume_average(symbol: str) -> None:
     """
     Update average volume for spike detection.
+    Also tracks recent volume history for surge detection.
     
     Args:
         symbol: Instrument symbol
@@ -1682,7 +1684,77 @@ def update_volume_average(symbol: str) -> None:
     avg_volume = sum(volumes) / len(volumes)
     
     state[symbol]["avg_volume"] = avg_volume
+    
+    # Track recent volume history for surge detection (last 20 1-min bars)
+    bars_1min = state[symbol]["bars_1min"]
+    if len(bars_1min) > 0:
+        current_volume = bars_1min[-1]["volume"]
+        state[symbol]["recent_volume_history"].append(current_volume)
+    
     logger.debug(f"Average volume (last {lookback} bars): {avg_volume:.0f}")
+
+
+def detect_volume_surge(symbol: str) -> Tuple[bool, float]:
+    """
+    Detect if volume is surging (potential reversal signal).
+    Uses recent volume history to identify sudden spikes.
+    
+    Args:
+        symbol: Instrument symbol
+    
+    Returns:
+        Tuple of (is_surging, surge_ratio)
+        - is_surging: True if volume surge detected
+        - surge_ratio: Current volume / average recent volume
+    """
+    recent_volumes = state[symbol]["recent_volume_history"]
+    
+    if len(recent_volumes) < 10:
+        return False, 1.0  # Not enough data
+    
+    # Calculate average of recent volumes (excluding current bar)
+    recent_avg = statistics.mean(list(recent_volumes)[:-1]) if len(recent_volumes) > 1 else recent_volumes[0]
+    current_volume = recent_volumes[-1]
+    
+    if recent_avg == 0:
+        return False, 1.0
+    
+    surge_ratio = current_volume / recent_avg
+    
+    # Consider it a surge if current volume is 2.5x recent average
+    surge_threshold = CONFIG.get("volume_surge_threshold", 2.5)
+    
+    if surge_ratio >= surge_threshold:
+        return True, surge_ratio
+    
+    return False, surge_ratio
+
+
+def check_market_divergence(symbol: str) -> Tuple[bool, str]:
+    """
+    Check if current position is diverging from broader market (S&P 500).
+    This is a simplified correlation check - in production you'd fetch ES data.
+    
+    For now, this is a placeholder that can be enabled when multi-symbol support is added.
+    
+    Args:
+        symbol: Current symbol being traded
+    
+    Returns:
+        Tuple of (is_diverging, reason)
+        - is_diverging: True if position diverging from market
+        - reason: Explanation of divergence
+    """
+    # PLACEHOLDER: This requires ES/SPY data feed
+    # When enabled, it would:
+    # 1. Track ES direction over last 5-10 bars
+    # 2. Compare to current position direction
+    # 3. If opposite directions for >3 bars = divergence
+    # 4. Suggest tightening stops when diverging
+    
+    # For single-symbol bot, always return False
+    # TODO: Enable when multi-symbol data feed is available
+    return False, "Market correlation check disabled (single symbol mode)"
 
 
 # ============================================================================
@@ -3040,29 +3112,29 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
             
             if entry_slippage_ticks > entry_slippage_alert_threshold:
                 # HIGH ENTRY SLIPPAGE DETECTED
-                    logger.warning("=" * 80)
-                    logger.warning("[WARN] CRITICAL: HIGH ENTRY SLIPPAGE DETECTED!")
-                    logger.warning("=" * 80)
-                    logger.warning(f"  Expected Entry: ${actual_fill_price:.2f}")
-                    logger.warning(f"  Actual Fill: ${actual_fill_from_broker:.2f}")
-                    logger.warning(f"  Slippage: {entry_slippage_ticks:.1f} ticks (${entry_slippage_cost:.2f})")
-                    logger.warning(f"  Side: {side.upper()}, Contracts: {contracts}")
-                    logger.warning(f"  [WARN] Entry slippage >{entry_slippage_alert_threshold} ticks - consider tighter price validation or avoid volatile periods")
-                    logger.warning("=" * 80)
-                    
-                    # Track for session statistics
-                    if "high_entry_slippage_count" not in bot_status:
-                        bot_status["high_entry_slippage_count"] = 0
-                    bot_status["high_entry_slippage_count"] += 1
-                elif entry_slippage_ticks > 0:
-                    # Normal slippage logging
-                    logger.info(f"  Entry Slippage: {entry_slippage_ticks:.1f} ticks (${entry_slippage_cost:.2f})")
+                logger.warning("=" * 80)
+                logger.warning("[WARN] CRITICAL: HIGH ENTRY SLIPPAGE DETECTED!")
+                logger.warning("=" * 80)
+                logger.warning(f"  Expected Entry: ${actual_fill_price:.2f}")
+                logger.warning(f"  Actual Fill: ${actual_fill_from_broker:.2f}")
+                logger.warning(f"  Slippage: {entry_slippage_ticks:.1f} ticks (${entry_slippage_cost:.2f})")
+                logger.warning(f"  Side: {side.upper()}, Contracts: {contracts}")
+                logger.warning(f"  [WARN] Entry slippage >{entry_slippage_alert_threshold} ticks - consider tighter price validation or avoid volatile periods")
+                logger.warning("=" * 80)
                 
-                # Use actual fill price for position tracking
-                actual_fill_price = actual_fill_from_broker
-                logger.info(f"  Validated Fill Price: ${actual_fill_price:.2f}")
-        except Exception as e:
-            logger.debug(f"Could not validate entry fill price: {e}")
+                # Track for session statistics
+                if "high_entry_slippage_count" not in bot_status:
+                    bot_status["high_entry_slippage_count"] = 0
+                bot_status["high_entry_slippage_count"] += 1
+            elif entry_slippage_ticks > 0:
+                # Normal slippage logging
+                logger.info(f"  Entry Slippage: {entry_slippage_ticks:.1f} ticks (${entry_slippage_cost:.2f})")
+            
+            # Use actual fill price for position tracking
+            actual_fill_price = actual_fill_from_broker
+            logger.info(f"  Validated Fill Price: ${actual_fill_price:.2f}")
+    except Exception as e:
+        logger.debug(f"Could not validate entry fill price: {e}")
     
     logger.info(f"  Final Entry Price: ${actual_fill_price:.2f}")
     
@@ -4567,11 +4639,28 @@ def handle_exit_orders(symbol: str, position: Dict[str, Any], exit_price: float,
     # Use bid/ask manager for intelligent exit routing
     if bid_ask_manager is not None:
         try:
+            # Determine urgency based on volume surge and exit reason
+            urgency = "normal"
+            
+            # Check for volume surge (potential reversal)
+            is_surging, surge_ratio = detect_volume_surge(symbol)
+            if is_surging:
+                urgency = "high"
+                logger.warning(f"⚡ Volume surge detected ({surge_ratio:.1f}x) - using high urgency exit")
+            
+            # Override urgency for critical exits
+            if reason in ["stop_loss", "proactive_stop", "signal_reversal"]:
+                urgency = "high"
+                logger.info(f"Critical exit ({reason}) - using high urgency")
+            elif reason in ["flatten_mode_exit", "emergency_forced_flatten", "time_based_loss_cut"]:
+                urgency = "high"
+                logger.info(f"Time-critical exit ({reason}) - using high urgency")
+            
             strategy = bid_ask_manager.get_exit_order_strategy(
                 exit_type=exit_type,
                 symbol=symbol,
                 side=position["side"],
-                urgency="normal"
+                urgency=urgency
             )
             
             logger.info(f"Exit Strategy: {strategy['order_type']} - {strategy['reason']}")
@@ -4729,35 +4818,35 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
     # ADAPTIVE EXIT LEARNING - Record exit parameters and outcome
     try:
         if adaptive_manager is not None and hasattr(adaptive_manager, 'record_exit_outcome'):
-                # Get exit parameters that were used
-                if "exit_params_used" in position:
-                    exit_params = position["exit_params_used"]
-                    regime = exit_params.get("market_regime", "UNKNOWN")
-                    
-                    # Calculate trade duration
-                    entry_time = position.get("entry_time")
-                    duration_minutes = 0
-                    if entry_time:
-                        duration = exit_time - entry_time
-                        duration_minutes = duration.total_seconds() / 60
-                    
-                    # Record for learning
-                    adaptive_manager.record_exit_outcome(
-                        regime=regime,
-                        exit_params=exit_params,
-                        trade_outcome={
-                            'pnl': pnl,
-                            'duration': duration_minutes,
-                            'exit_reason': reason,
-                            'side': position["side"],
-                            'contracts': position["quantity"],
-                            'win': pnl > 0
-                        }
-                    )
-                    
-                    logger.info(f"[EXIT RL] Learned {regime} exit -> ${pnl:+.2f} in {duration_minutes:.1f}min")
-        except Exception as e:
-            logger.debug(f"Exit learning failed: {e}")
+            # Get exit parameters that were used
+            if "exit_params_used" in position:
+                exit_params = position["exit_params_used"]
+                regime = exit_params.get("market_regime", "UNKNOWN")
+                
+                # Calculate trade duration
+                entry_time = position.get("entry_time")
+                duration_minutes = 0
+                if entry_time:
+                    duration = exit_time - entry_time
+                    duration_minutes = duration.total_seconds() / 60
+                
+                # Record for learning
+                adaptive_manager.record_exit_outcome(
+                    regime=regime,
+                    exit_params=exit_params,
+                    trade_outcome={
+                        'pnl': pnl,
+                        'duration': duration_minutes,
+                        'exit_reason': reason,
+                        'side': position["side"],
+                        'contracts': position["quantity"],
+                        'win': pnl > 0
+                    }
+                )
+                
+                logger.info(f"[EXIT RL] Learned {regime} exit -> ${pnl:+.2f} in {duration_minutes:.1f}min")
+    except Exception as e:
+        logger.debug(f"Exit learning failed: {e}")
     
     # Log time-based exits with detailed audit trail
     time_based_reasons = [

@@ -1224,19 +1224,18 @@ async def startup_event():
     logger.info("=" * 60)
     logger.info("QuoTrading Signal Engine v2.0 - STARTING")
     logger.info("=" * 60)
-    logger.info(f"Instrument: {config.INSTRUMENT}")
-    logger.info(f"VWAP Entry Band: {config.VWAP_STD_DEV_2} std dev")
-    logger.info(f"VWAP Stop Band: {config.VWAP_STD_DEV_3} std dev")
-    logger.info(f"RSI Period: {config.RSI_PERIOD}")
-    logger.info(f"RSI Levels: {config.RSI_OVERSOLD}/{config.RSI_OVERBOUGHT}")
-    logger.info("=" * 60)
-    logger.info("Signal Engine Ready! Waiting for market data...")
+    logger.info("Multi-instrument support: ES, NQ, YM, RTY")
+    logger.info("Features: ML/RL signals, licensing, economic calendar")
     logger.info("=" * 60)
     
     # Initialize economic calendar
     logger.info("📅 Initializing economic calendar...")
     update_calendar()  # Initial fetch
     start_calendar_updater()  # Start background updater
+    
+    logger.info("=" * 60)
+    logger.info("Signal Engine Ready!")
+    logger.info("=" * 60)
 
 
 if __name__ == "__main__":

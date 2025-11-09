@@ -836,9 +836,8 @@ async def stripe_webhook(request: Request):
 async def create_checkout_session():
     """Create a Stripe Checkout session for subscription"""
     try:
-        # Get the price ID from Stripe (you'll need to update this)
-        # For now, using a placeholder - you'll get this from Stripe dashboard
-        PRICE_ID = "price_PLACEHOLDER"  # TODO: Update with actual price ID
+        # QuoTrading Bot - $200/month subscription
+        PRICE_ID = "price_1SRMSvBcgS15fNXbyHGeG9IZ"
         
         checkout_session = stripe.checkout.Session.create(
             mode="subscription",

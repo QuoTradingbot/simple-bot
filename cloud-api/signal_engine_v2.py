@@ -642,6 +642,65 @@ async def save_trade_experience(trade: Dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/ml/save_rejected_signal")
+async def save_rejected_signal(signal: Dict):
+    """
+    Save rejected signal for RL learning - helps model understand when to skip trades.
+    
+    Request: {
+        user_id: str,
+        symbol: str,
+        side: str,
+        signal: str,  # e.g., "long_bounce"
+        rsi: float,
+        vwap_distance: float,
+        volume_ratio: float,
+        streak: int,
+        took_trade: bool (False),
+        rejection_reason: str,
+        price_move_ticks: float
+    }
+    
+    Returns: {
+        saved: bool,
+        total_rejections: int
+    }
+    """
+    try:
+        user_id = signal.get('user_id', '')
+        if not user_id:
+            return {"saved": False, "error": "user_id required"}
+        
+        # Add timestamp
+        experience = {
+            **signal,
+            "timestamp": datetime.utcnow().isoformat(),
+            "took_trade": False  # Always false for rejections
+        }
+        
+        # Store in shared experience pool with negative reward (represents opportunity cost)
+        # The RL will learn: "Was skipping this signal the right decision?"
+        signal_experiences.append(experience)
+        
+        # Persist every 25 rejected signals (less frequently than trades)
+        if len(signal_experiences) % 25 == 0:
+            save_experiences()
+        
+        rejections = sum(1 for exp in signal_experiences if not exp.get('took_trade', True))
+        
+        logger.debug(f"[{user_id}] Rejected signal saved: {signal.get('rejection_reason')} | "
+                    f"Total rejections tracked: {rejections}")
+        
+        return {
+            "saved": True,
+            "total_rejections": rejections
+        }
+        
+    except Exception as e:
+        logger.error(f"Error saving rejected signal: {e}")
+        return {"saved": False, "error": str(e)}
+
+
 @app.get("/api/ml/stats")
 async def get_ml_stats():
     """

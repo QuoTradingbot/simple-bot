@@ -346,6 +346,78 @@ async def save_trade_experience_async(
             logger.error(f"❌ Trade NOT saved to cloud after {max_retries} attempts - data point lost")
 
 
+async def save_rejected_signal_async(
+    rl_state: Dict[str, Any],
+    side: str,
+    rejection_reason: str,
+    price_move_ticks: float
+) -> None:
+    """
+    Save rejected signal to cloud API so RL can learn from missed opportunities.
+    Helps RL understand: "Should I have taken this trade anyway?"
+    """
+    if not USE_CLOUD_SIGNALS:
+        return
+    
+    # Only retry once for rejected signals (less critical than actual trades)
+    max_retries = 1
+    for attempt in range(max_retries):
+        try:
+            payload = {
+                "user_id": USER_ID,
+                "symbol": CONFIG["instrument"],
+                "side": side,
+                "signal": f"{side}_bounce",
+                "rsi": rl_state.get("rsi", 50),
+                "vwap_distance": rl_state.get("vwap_distance", 0),
+                "volume_ratio": rl_state.get("volume_ratio", 1.0),
+                "streak": rl_state.get("streak", 0),
+                "time_of_day_score": rl_state.get("time_of_day_score", 0.5),
+                "volatility": rl_state.get("volatility", 1.0),
+                "took_trade": False,
+                "rejection_reason": rejection_reason,
+                "price_move_ticks": price_move_ticks
+            }
+            
+            timeout_seconds = 3.0
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{CLOUD_ML_API_URL}/api/ml/save_rejected_signal",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=timeout_seconds)
+                ) as response:
+                    if response.status == 200:
+                        logger.debug(f"[CLOUD RL] Rejected signal saved: {rejection_reason}")
+                        return  # Success!
+                    else:
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(0.5)
+                            continue
+                        
+        except Exception as e:
+            if attempt < max_retries - 1:
+                await asyncio.sleep(0.5)
+                continue
+
+
+def save_rejected_signal(
+    rl_state: Dict[str, Any],
+    side: str,
+    rejection_reason: str,
+    price_move_ticks: float
+) -> None:
+    """Synchronous wrapper for save_rejected_signal_async"""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.ensure_future(save_rejected_signal_async(rl_state, side, rejection_reason, price_move_ticks))
+        else:
+            loop.run_until_complete(save_rejected_signal_async(rl_state, side, rejection_reason, price_move_ticks))
+    except Exception as e:
+        logger.debug(f"Failed to save rejected signal: {e}")
+
+
 def save_trade_experience(
     rl_state: Dict[str, Any],
     side: str,
@@ -2393,16 +2465,11 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
 def validate_entry_price_still_valid(symbol: str, signal_price: float, side: str) -> Tuple[bool, str, float]:
     """
     Validate that current market price hasn't moved too far from signal.
-    NOW ADAPTIVE: Will wait for price to come back if it moved away temporarily!
+    SIMPLIFIED: Check once and decide immediately - no waiting.
     
-    CRITICAL FIX: Execution Risk #1 - Price Deterioration Protection (ADAPTIVE)
-    
-    SAFEGUARDS PREVENT "DUMB" BEHAVIOR:
-    - Max 5 second wait (prevents stale signals)
-    - Trending price detection (abort if getting worse)
-    - Max checks limit (prevents infinite loops)
-    - Fast deterioration abort (exit if price running away)
-    - Worst price tracking (abort if deteriorating too far)
+    If price moved away, skip the entry and let the next bar generate a new signal
+    if conditions persist. This keeps the bot responsive and lets the RL system
+    learn optimal entry timing patterns.
     
     Args:
         symbol: Instrument symbol
@@ -2412,137 +2479,46 @@ def validate_entry_price_still_valid(symbol: str, signal_price: float, side: str
     Returns:
         Tuple of (is_valid, reason, current_market_price)
     """
-    import time
-    
     max_deterioration_ticks = CONFIG.get("max_entry_price_deterioration_ticks", 3)
-    wait_for_improvement = CONFIG.get("entry_price_wait_enabled", True)
-    max_wait_seconds = CONFIG.get("entry_price_wait_max_seconds", 5)
-    check_interval = CONFIG.get("entry_price_check_interval", 0.2)
-    
-    # SAFETY LIMITS (prevent "dumb" behavior)
-    max_checks = int(max_wait_seconds / check_interval) + 5  # ~30 checks max
-    abort_if_worse_than_ticks = CONFIG.get("entry_abort_if_worse_than_ticks", 10)  # Hard limit
-    trending_away_threshold = 3  # Abort if worse 3 checks in a row
-    
     tick_size = CONFIG["tick_size"]
     max_deterioration = max_deterioration_ticks * tick_size
-    abort_threshold = abort_if_worse_than_ticks * tick_size
     
-    start_time = time.time()
-    best_price_seen = None
-    worst_price_seen = None
-    check_count = 0
-    consecutive_worse_count = 0
-    previous_price = None
+    # Get current market price from bid/ask if available
+    current_price = signal_price  # Default to signal price
+    if bid_ask_manager is not None:
+        quote = bid_ask_manager.get_current_quote(symbol)
+        if quote:
+            # For longs, use ask (what we'd pay)
+            # For shorts, use bid (what we'd receive)
+            current_price = quote.ask_price if side == "long" else quote.bid_price
     
-    while True:
-        check_count += 1
-        elapsed = time.time() - start_time
-        
-        # SAFETY #1: Max checks limit (prevent infinite loops)
-        if check_count > max_checks:
-            reason = f"Max checks ({max_checks}) exceeded - signal too stale"
-            logger.warning(f"  [FAIL] ENTRY ABORTED - {reason}")
-            return False, reason, signal_price
-        
-        # Get current market price from bid/ask if available
-        current_price = signal_price  # Default to signal price
-        if bid_ask_manager is not None:
-            quote = bid_ask_manager.get_current_quote(symbol)
-            if quote:
-                # For longs, use ask (what we'd pay)
-                # For shorts, use bid (what we'd receive)
-                current_price = quote.ask_price if side == "long" else quote.bid_price
-        
-        # Track best/worst prices seen during wait
-        if best_price_seen is None:
-            best_price_seen = current_price
-            worst_price_seen = current_price
-        else:
-            # Update best price
-            if (side == "long" and current_price < best_price_seen) or \
-               (side == "short" and current_price > best_price_seen):
-                best_price_seen = current_price
-                consecutive_worse_count = 0  # Reset - price improving!
-            
-            # Update worst price
-            if (side == "long" and current_price > worst_price_seen) or \
-               (side == "short" and current_price < worst_price_seen):
-                worst_price_seen = current_price
-        
-        # Check price movement
-        price_move = current_price - signal_price
-        price_move_ticks = abs(price_move) / tick_size
-        
-        # SAFETY #2: Hard abort threshold (price running away)
-        if side == "long" and price_move > abort_threshold:
-            reason = f"Price running away UP {price_move_ticks:.1f} ticks (>{abort_if_worse_than_ticks}) - HARD ABORT"
-            logger.warning(f"  [FAIL] ENTRY ABORTED - {reason}")
-            logger.warning(f"     Signal: ${signal_price:.2f} → Current: ${current_price:.2f}")
-            return False, reason, current_price
-        
-        if side == "short" and price_move < -abort_threshold:
-            reason = f"Price running away DOWN {price_move_ticks:.1f} ticks (>{abort_if_worse_than_ticks}) - HARD ABORT"
-            logger.warning(f"  [FAIL] ENTRY ABORTED - {reason}")
-            logger.warning(f"     Signal: ${signal_price:.2f} → Current: ${current_price:.2f}")
-            return False, reason, current_price
-        
-        # SAFETY #3: Trending away detection (getting worse consistently)
-        if previous_price is not None:
-            if (side == "long" and current_price > previous_price) or \
-               (side == "short" and current_price < previous_price):
-                consecutive_worse_count += 1
-                
-                if consecutive_worse_count >= trending_away_threshold:
-                    reason = f"Price trending away ({consecutive_worse_count} worse checks) - aborting early"
-                    logger.warning(f"  [FAIL] ENTRY ABORTED - {reason}")
-                    logger.warning(f"     Signal: ${signal_price:.2f} → Current: ${current_price:.2f} (trend: worse)")
-                    return False, reason, current_price
-            else:
-                consecutive_worse_count = 0  # Reset if price improves
-        
-        previous_price = current_price
-        
-        # For longs: price moving UP is bad (paying more)
-        # For shorts: price moving DOWN is bad (receiving less)
-        is_acceptable = False
-        
+    # Check price movement
+    price_move = current_price - signal_price
+    price_move_ticks = abs(price_move) / tick_size
+    
+    # For longs: price moving UP is bad (paying more)
+    # For shorts: price moving DOWN is bad (receiving less)
+    is_acceptable = False
+    
+    if side == "long":
+        is_acceptable = price_move <= max_deterioration
+    else:  # short
+        is_acceptable = price_move >= -max_deterioration
+    
+    # Instant decision - no waiting
+    if is_acceptable:
+        logger.info(f"  ✅ Entry price valid: ${signal_price:.2f} → ${current_price:.2f} ({price_move_ticks:+.1f} ticks, limit: {max_deterioration_ticks})")
+        return True, "Price acceptable", current_price
+    else:
         if side == "long":
-            is_acceptable = price_move <= max_deterioration
-        else:  # short
-            is_acceptable = price_move >= -max_deterioration
+            reason = f"Price moved UP {price_move_ticks:.1f} ticks (limit: {max_deterioration_ticks})"
+        else:
+            reason = f"Price moved DOWN {price_move_ticks:.1f} ticks (limit: {max_deterioration_ticks})"
         
-        # PRICE IS GOOD - GO!
-        if is_acceptable:
-            if check_count > 1:
-                logger.info(f"  [OK] Price validation passed after {elapsed:.1f}s wait (checked {check_count}x)")
-                logger.info(f"    Signal: ${signal_price:.2f} -> Current: ${current_price:.2f} ({price_move_ticks:+.1f} ticks)")
-            else:
-                logger.info(f"  [OK] Price validation passed: ${signal_price:.2f} -> ${current_price:.2f} ({price_move_ticks:+.1f} ticks)")
-            return True, "Price acceptable", current_price
-        
-        # Price BAD - should we wait for it to come back?
-        if not wait_for_improvement or elapsed >= max_wait_seconds:
-            # SAFETY #4: Time's up or waiting disabled - ABORT
-            if side == "long":
-                reason = f"Price moved UP {price_move_ticks:.1f} ticks - too expensive"
-            else:
-                reason = f"Price moved DOWN {price_move_ticks:.1f} ticks - too cheap to short"
-            
-            logger.warning(f"  [FAIL] ENTRY ABORTED - {reason}")
-            logger.warning(f"     Signal: ${signal_price:.2f} → Current: ${current_price:.2f}")
-            if check_count > 1:
-                logger.warning(f"     Waited {elapsed:.1f}s, checked {check_count}x, best seen: ${best_price_seen:.2f}")
-            return False, reason, current_price
-        
-        # Price bad but we can still wait - log once and retry
-        if check_count == 1:
-            if side == "long":
-                logger.info(f"  [WAIT] Price too high (${current_price:.2f}, +{price_move_ticks:.1f} ticks) - waiting for pullback...")
-            else:
-                logger.info(f"  [WAIT] Price too low (${current_price:.2f}, -{price_move_ticks:.1f} ticks) - waiting for bounce...")
-        
-        time.sleep(check_interval)
+        logger.warning(f"  ❌ Entry skipped - {reason}")
+        logger.warning(f"     Signal: ${signal_price:.2f} → Current: ${current_price:.2f}")
+        logger.info(f"     Will retry on next bar if signal persists")
+        return False, reason, current_price
 
 
 def handle_partial_fill(symbol: str, side: str, expected_qty: int, timeout_seconds: float = 10) -> Tuple[int, bool]:
@@ -2916,6 +2892,34 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
         logger.warning(f"  {price_reason}")
         logger.warning(f"  Signal: {side.upper()} @ ${entry_price:.2f}")
         logger.warning(SEPARATOR_LINE)
+        
+        # Track rejected signal for RL learning
+        rl_state = state[symbol].get("entry_rl_state")
+        if rl_state is not None:
+            # Extract price movement from reason (e.g., "Price moved UP 5.0 ticks")
+            import re
+            match = re.search(r'(\d+\.?\d*)\s+ticks', price_reason)
+            price_move_ticks = float(match.group(1)) if match else 0.0
+            
+            # Save to cloud so RL learns: "Should I take trades when price moved X ticks?"
+            save_rejected_signal(
+                rl_state=rl_state,
+                side=side,
+                rejection_reason=f"price_moved_{price_move_ticks:.0f}_ticks",
+                price_move_ticks=price_move_ticks
+            )
+            
+            # Store for potential shadow outcome tracking
+            state[symbol]["last_rejected_signal"] = {
+                "time": get_current_time(),
+                "state": rl_state,
+                "side": side,
+                "reason": price_reason,
+                "price_move_ticks": price_move_ticks,
+                "signal_price": entry_price,
+                "current_price": current_market_price
+            }
+        
         return
     
     # Use current market price instead of stale signal price

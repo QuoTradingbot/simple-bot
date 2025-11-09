@@ -1730,31 +1730,54 @@ def detect_volume_surge(symbol: str) -> Tuple[bool, float]:
     return False, surge_ratio
 
 
-def check_market_divergence(symbol: str) -> Tuple[bool, str]:
+def check_market_divergence(symbol: str, position_side: str) -> Tuple[bool, str]:
     """
-    Check if current position is diverging from broader market (S&P 500).
-    This is a simplified correlation check - in production you'd fetch ES data.
-    
-    For now, this is a placeholder that can be enabled when multi-symbol support is added.
+    Check if current position is diverging from recent price momentum.
+    Uses recent bar direction as proxy for market trend.
     
     Args:
         symbol: Current symbol being traded
+        position_side: Current position side ('long' or 'short')
     
     Returns:
         Tuple of (is_diverging, reason)
-        - is_diverging: True if position diverging from market
+        - is_diverging: True if position fighting against momentum
         - reason: Explanation of divergence
     """
-    # PLACEHOLDER: This requires ES/SPY data feed
-    # When enabled, it would:
-    # 1. Track ES direction over last 5-10 bars
-    # 2. Compare to current position direction
-    # 3. If opposite directions for >3 bars = divergence
-    # 4. Suggest tightening stops when diverging
+    if not CONFIG.get("market_correlation_enabled", False):
+        return False, "Market correlation disabled in config"
     
-    # For single-symbol bot, always return False
-    # TODO: Enable when multi-symbol data feed is available
-    return False, "Market correlation check disabled (single symbol mode)"
+    bars = state[symbol]["bars_1min"]
+    if len(bars) < 5:
+        return False, "Not enough bars for momentum check"
+    
+    # Check last 5 bars for momentum direction
+    recent_bars = list(bars)[-5:]
+    price_changes = []
+    
+    for i in range(1, len(recent_bars)):
+        change = recent_bars[i]["close"] - recent_bars[i-1]["close"]
+        price_changes.append(change)
+    
+    # Count up/down moves
+    up_moves = sum(1 for change in price_changes if change > 0)
+    down_moves = sum(1 for change in price_changes if change < 0)
+    
+    # Strong upward momentum = 4+ up moves
+    # Strong downward momentum = 4+ down moves
+    has_strong_up_momentum = up_moves >= 4
+    has_strong_down_momentum = down_moves >= 4
+    
+    # Check for divergence
+    if position_side == "long" and has_strong_down_momentum:
+        total_change = sum(price_changes)
+        return True, f"Long position fighting downward momentum ({down_moves}/4 down bars, {total_change:.2f} total change)"
+    
+    if position_side == "short" and has_strong_up_momentum:
+        total_change = sum(price_changes)
+        return True, f"Short position fighting upward momentum ({up_moves}/4 up bars, {total_change:.2f} total change)"
+    
+    return False, "Position aligned with momentum"
 
 
 # ============================================================================
@@ -4393,7 +4416,47 @@ def check_exit_conditions(symbol: str) -> None:
     # SIXTH - Trailing stop (only runs if breakeven already active)
     check_trailing_stop(symbol, current_bar["close"])
     
-    # SEVENTH - Time-decay tightening (last priority, gradual adjustment)
+    # SEVENTH - Market divergence check (tighten stops if fighting momentum)
+    if position["active"]:
+        is_diverging, divergence_reason = check_market_divergence(symbol, position["side"])
+        if is_diverging:
+            logger.warning(f"⚠️ DIVERGENCE DETECTED: {divergence_reason}")
+            
+            # Tighten stop by 30% when fighting momentum
+            current_stop = position["stop_price"]
+            entry_price = position["entry_price"]
+            tick_size = CONFIG["tick_size"]
+            
+            # Calculate tightened stop (30% closer to entry)
+            stop_distance = abs(entry_price - current_stop)
+            new_stop_distance = stop_distance * 0.70  # Tighten by 30%
+            
+            if side == "long":
+                new_stop = entry_price - new_stop_distance
+            else:
+                new_stop = entry_price + new_stop_distance
+            
+            new_stop = round_to_tick(new_stop)
+            
+            # Only tighten (never loosen)
+            should_tighten = False
+            if side == "long" and new_stop > current_stop:
+                should_tighten = True
+            elif side == "short" and new_stop < current_stop:
+                should_tighten = True
+            
+            if should_tighten:
+                logger.warning(f"🔒 Tightening stop due to divergence: ${current_stop:.2f} → ${new_stop:.2f}")
+                stop_side = "SELL" if side == "long" else "BUY"
+                contracts = position["quantity"]
+                new_stop_order = place_stop_order(symbol, stop_side, contracts, new_stop)
+                
+                if new_stop_order:
+                    position["stop_price"] = new_stop
+                    if new_stop_order.get("order_id"):
+                        position["stop_order_id"] = new_stop_order.get("order_id")
+    
+    # EIGHTH - Time-decay tightening (last priority, gradual adjustment)
     check_time_decay_tightening(symbol, bar_time)
     
     # Check for signal reversal (lowest priority)

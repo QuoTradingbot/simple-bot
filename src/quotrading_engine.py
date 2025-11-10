@@ -144,12 +144,10 @@ try:
         CONFIG["slippage_ticks"] = SYMBOL_SPEC.typical_slippage_ticks
         _bot_config.slippage_ticks = SYMBOL_SPEC.typical_slippage_ticks
     
-    print(f"✓ Symbol specs loaded: {SYMBOL_SPEC.name} ({SYMBOL_SPEC.symbol})")
-    print(f"  Tick Value: ${SYMBOL_SPEC.tick_value:.2f} | Tick Size: ${SYMBOL_SPEC.tick_size}")
-    print(f"  Slippage: {SYMBOL_SPEC.typical_slippage_ticks} ticks")
+    # Symbol specs loaded - dashboard will show this information
 except Exception as e:
     # Symbol specs not available - will use defaults from config
-    print(f"Symbol specs not loaded (using defaults): {e}")
+    pass  # Symbol specs not loaded - will use defaults
     pass
 
 # String constants
@@ -218,12 +216,14 @@ bot_status: Dict[str, Any] = {
 
 
 def setup_logging() -> logging.Logger:
-    """Configure logging for the bot - Console only (no log files for customers)"""
+    """Configure logging for the bot - Dashboard only display (logs suppressed except CRITICAL)"""
+    # Create a null handler to suppress all logs except CRITICAL errors
+    # Dashboard is the primary display - only show critical system errors in logs
     logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.CRITICAL,  # Only show CRITICAL errors - dashboard handles everything else
+        format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.StreamHandler()  # Console output only - customers don't need log files
+            logging.StreamHandler()  # Console output only for critical errors
         ]
     )
     return logging.getLogger(__name__)
@@ -7053,9 +7053,8 @@ def main(symbol_override: str = None) -> None:
         trading_symbols = [trading_symbol]
     
     # Initialize dashboard FIRST (before any logging)
-    logger.info("Initializing dashboard display...")
     dashboard = get_dashboard(trading_symbols, CONFIG)
-    dashboard.start()
+    dashboard.start()  # This clears screen and initializes dashboard display
     
     # Update dashboard with initial bot data
     initial_account = CONFIG.get("account_size", 50000)
@@ -7071,8 +7070,7 @@ def main(symbol_override: str = None) -> None:
     # Initial display
     dashboard.display()
     
-    logger.info(SEPARATOR_LINE)
-    logger.info(f"QuoTrading AI Bot Starting {trading_symbols}")
+    # Dashboard is now active - all status shown via dashboard only
     logger.info(SEPARATOR_LINE)
     
     # Use first symbol as primary

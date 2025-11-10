@@ -774,6 +774,14 @@ def check_azure_time_service() -> str:
                             logger.warning("  Will auto-resume when event window closes")
                             logger.warning("=" * 80)
                             bot_status["event_block_active"] = True
+                            
+                            # Update dashboard with FOMC block
+                            if dashboard:
+                                dashboard.update_bot_data({
+                                    "fomc_active": True,
+                                    "fomc_message": halt_reason
+                                })
+                                dashboard.display()
                     else:
                         logger.info(f"[TIME SERVICE] Economic event active but FOMC blocking disabled: {halt_reason}")
                         state = "entry_window"  # User disabled event blocking
@@ -788,6 +796,14 @@ def check_azure_time_service() -> str:
                     logger.info("✅ ECONOMIC EVENT ENDED - Trading resumed")
                     logger.info("=" * 80)
                     bot_status["event_block_active"] = False
+                    
+                    # Clear FOMC notification from dashboard
+                    if dashboard:
+                        dashboard.update_bot_data({
+                            "fomc_active": False,
+                            "fomc_message": ""
+                        })
+                        dashboard.display()
                 
                 # Trading allowed - check if we're approaching maintenance (flatten mode)
                 # Azure doesn't send flatten mode, so we check local time

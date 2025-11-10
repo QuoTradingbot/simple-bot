@@ -1667,7 +1667,7 @@ def update_1min_bar(symbol: str, price: float, volume: int, dt: datetime) -> Non
                 if vwap_data and isinstance(vwap_data, dict):
                     vwap_val = vwap_data.get('vwap', 0)
                     std_dev = vwap_data.get('std_dev', 0)
-                    logger.info(f"[VWAP] ${vwap_val:.2f} | StdDev: ${std_dev:.2f}")
+                    logger.info(f"[PRICE] ${vwap_val:.2f} | StdDev: ${std_dev:.2f}")
                     bands = vwap_data.get('bands', {})
                     if bands and isinstance(bands, dict):
                         logger.info(f"[BANDS] U2: ${bands.get('upper_2', 0):.2f} | L2: ${bands.get('lower_2', 0):.2f}")
@@ -2198,7 +2198,7 @@ def calculate_vwap(symbol: str) -> None:
     # Log VWAP update every 10 bars to show bot is working
     bar_count = len(bars)
     if bar_count % 10 == 0:
-        logger.info(f"[VWAP] ${vwap:.2f} | StdDev: ${std_dev:.2f} | Bars: {bar_count} | "
+        logger.info(f"[MARKET] ${vwap:.2f} | StdDev: ${std_dev:.2f} | Bars: {bar_count} | "
                    f"U2: ${state[symbol]['vwap_bands']['upper_2']:.2f} | "
                    f"L2: ${state[symbol]['vwap_bands']['lower_2']:.2f}")
     else:
@@ -2306,7 +2306,7 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
     # Check VWAP bands
     vwap_bands = state[symbol]["vwap_bands"]
     if any(v is None for v in vwap_bands.values()):
-        logger.info("VWAP bands not yet calculated")
+        logger.info("Price bands not yet calculated")
         return False, "VWAP not ready"
     
     # Check trend (optional - DOES NOT block signals if neutral)
@@ -2443,7 +2443,7 @@ def check_long_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
                 return False
             logger.debug(f"Volume spike: {current_volume} >= {avg_volume * volume_mult:.0f} ")
     
-    logger.info(f" LONG SIGNAL (WITH-TREND DIP): VWAP bounce at {current_bar['close']:.2f} (band: {vwap_bands['lower_2']:.2f})")
+    logger.info(f" LONG SIGNAL: Price reversal at {current_bar['close']:.2f} (entry zone: {vwap_bands['lower_2']:.2f})")
     return True
 
 
@@ -2512,7 +2512,7 @@ def check_short_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
                 return False
             logger.debug(f"Volume spike: {current_volume} >= {avg_volume * volume_mult:.0f} ")
     
-    logger.info(f" SHORT SIGNAL (WITH-TREND RALLY): VWAP bounce at {current_bar['close']:.2f} (band: {vwap_bands['upper_2']:.2f})")
+    logger.info(f" SHORT SIGNAL: Price reversal at {current_bar['close']:.2f} (entry zone: {vwap_bands['upper_2']:.2f})")
     return True
 
 
@@ -5645,7 +5645,7 @@ def check_vwap_reset(symbol: str, current_time: datetime) -> None:
     if state[symbol]["vwap_day"] is None:
         # First run - initialize VWAP day
         state[symbol]["vwap_day"] = current_date
-        logger.info(f"VWAP day initialized: {current_date}")
+        logger.info(f"Trading day initialized: {current_date}")
         return
     
     # If it's a new day and we're past 6 PM, reset VWAP
@@ -5668,8 +5668,8 @@ def perform_vwap_reset(symbol: str, new_date: Any, reset_time: datetime) -> None
         reset_time: Time of the reset
     """
     logger.info(SEPARATOR_LINE)
-    logger.info(f"VWAP RESET at {reset_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-    logger.info(f"Futures trading day start (6 PM ET) - New VWAP day: {new_date}")
+    logger.info(f"DAILY RESET at {reset_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+    logger.info(f"Futures trading day start (6 PM ET) - New trading day: {new_date}")
     logger.info(SEPARATOR_LINE)
     
     # Clear accumulated 1-minute bars for VWAP calculation
@@ -5689,7 +5689,7 @@ def perform_vwap_reset(symbol: str, new_date: Any, reset_time: datetime) -> None
     state[symbol]["vwap_day"] = new_date
     
     # Note: 15-minute trend bars continue running - trend carries from overnight
-    logger.info("VWAP data cleared - 15-minute trend bars continue running")
+    logger.info("Market data cleared - 15-minute trend bars continue running")
     logger.info(f"Current 15-min bars: {len(state[symbol]['bars_15min'])}")
     logger.info(SEPARATOR_LINE)
 
@@ -6839,7 +6839,7 @@ def main(symbol_override: str = None) -> None:
     trading_symbol = symbol_override if symbol_override else CONFIG["instrument"]
     
     logger.info(SEPARATOR_LINE)
-    logger.info(f"VWAP Bounce Bot Starting [{trading_symbol}]")
+    logger.info(f"QuoTrading AI Bot Starting [{trading_symbol}]")
     logger.info(SEPARATOR_LINE)
     
     # Log symbol specifications if loaded

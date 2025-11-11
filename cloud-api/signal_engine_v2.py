@@ -941,6 +941,18 @@ async def should_take_signal(request: Dict):
         recent_pnl = request.get('recent_pnl', 0.0)
         streak = request.get('streak', 0)
         
+        # PRODUCTION OPTIMIZATION: Check Redis cache first
+        # Same market conditions = same answer (60 second cache)
+        # Reduces DB load for multi-user production
+        cache_key = f"signal_rl:{signal}:{int(rsi)}:{int(vix)}:{int(volume_ratio*100)}"
+        redis_mgr = get_redis()
+        
+        if redis_mgr:
+            cached = redis_mgr.get_cached_data(cache_key)
+            if cached:
+                logger.info(f"⚡ Cache HIT: {cache_key}")
+                return cached
+        
         # Calculate VWAP distance
         vwap_distance = abs(entry_price - vwap) / vwap if vwap > 0 else 0
         
@@ -970,7 +982,7 @@ async def should_take_signal(request: Dict):
         decision = "✅ TAKE TRADE" if result['should_take'] else "⚠️ SKIP TRADE"
         logger.info(f"🎯 {decision}: {symbol} {signal} @ {entry_price}, {result['reason']}, Risk: {risk_level}")
         
-        return {
+        response = {
             "take_trade": result['should_take'],
             "confidence": result['confidence'],
             "win_rate": result['win_rate'],
@@ -981,6 +993,12 @@ async def should_take_signal(request: Dict):
             "model_version": "v5.0-advanced-pattern-matching",
             "timestamp": datetime.utcnow().isoformat()
         }
+        
+        # Cache the result for 60 seconds (multi-user optimization)
+        if redis_mgr:
+            redis_mgr.cache_data(cache_key, response, ttl=60)
+        
+        return response
         
     except Exception as e:
         logger.error(f"Error in should_take_signal: {e}")
@@ -1388,15 +1406,25 @@ def calculate_signal_confidence(
     current_hour = current_time.hour  # 0-23
     
     # STEP 1: Filter experiences by context (signal type, VIX, day of week)
+    # SMART APPROACH: Filter by relevance FIRST, then limit to most recent 3000
+    # This gives maximum relevant data without stale patterns or slow queries
     logger.info(f"🧠 RL Pattern Matching: Analyzing {len(all_experiences)} total experiences for {signal} signal")
     
     contextual_experiences = filter_experiences_by_context(
-        experiences=all_experiences,
+        experiences=all_experiences,  # Use ALL experiences for filtering
         signal_type=signal,
         current_day=current_day_of_week,
         current_vix=current_vix,
         min_similarity=similarity_threshold
     )
+    
+    # PERFORMANCE: After filtering by context, limit to 3000 most recent RELEVANT experiences
+    # This balances data quality (more experiences) with speed (not querying 10,000+)
+    if len(contextual_experiences) > 3000:
+        contextual_experiences = contextual_experiences[-3000:]
+        logger.info(f"   Filtered to {len(contextual_experiences)} most recent relevant experiences (from context filter)")
+    else:
+        logger.info(f"   Found {len(contextual_experiences)} contextually relevant experiences")
     
     logger.info(f"   → Filtered to {len(contextual_experiences)} contextually relevant experiences")
     
@@ -1970,8 +1998,11 @@ async def get_adaptive_exit_params(request: dict):
             position = request.get('position', {})
             entry_confidence = request.get('entry_confidence', 0.75)
             
-            # Query ALL exit experiences from PostgreSQL
-            all_exits = session.query(ExitExperience).all()
+            # Query ALL exit experiences from PostgreSQL, then filter by relevance
+            # SMART APPROACH: Get all, filter by regime/context, then limit to recent 3000
+            all_exits = session.query(ExitExperience).order_by(ExitExperience.timestamp.desc()).all()
+            
+            logger.info(f"🎯 Exit RL: Analyzing {len(all_exits)} total exit experiences for {regime} regime")
             
             if len(all_exits) == 0:
                 # No experiences yet - return defaults
@@ -1988,6 +2019,12 @@ async def get_adaptive_exit_params(request: dict):
                     "similar_exits_analyzed": 0,
                     "recommendation": "Using defaults (no exit experiences yet)"
                 }
+            
+            # PERFORMANCE: If we have >3000 exits, filter to most recent 3000 BEFORE similarity calculation
+            # This balances quality (more data) with speed (not computing similarity for 10,000+ exits)
+            if len(all_exits) > 3000:
+                all_exits = all_exits[:3000]  # Already sorted by timestamp desc
+                logger.info(f"   Limited to {len(all_exits)} most recent exits for performance")
             
             # Find similar exit situations (same regime, similar market conditions)
             similar_exits = []

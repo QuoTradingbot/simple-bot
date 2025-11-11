@@ -5,22 +5,22 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # Copy requirements
-COPY cloud-api/requirements-signal.txt .
+COPY requirements-signal.txt .
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements-signal.txt
 
 # Copy application files
-COPY cloud-api/signal_engine_v2.py .
-COPY cloud-api/database.py .
-COPY cloud-api/redis_manager.py .
+COPY signal_engine_v2.py .
+COPY database.py .
+COPY redis_manager.py .
 
 # Copy admin dashboard
-COPY cloud-api/admin-dashboard/ ./admin-dashboard/
+COPY admin-dashboard/ ./admin-dashboard/
 
-# Copy Kevin's proven RL experiences (6,880 signals + 2,961 exits = 9,841 total)
-COPY cloud-api/signal_experience.json .
-COPY cloud-api/exit_experience.json .
+# Copy Kevin's proven exit RL experiences (3,105 exits)
+# Signal experiences now stored in PostgreSQL database
+COPY exit_experience.json .
 
 # Expose port
 EXPOSE 8000

@@ -23,6 +23,8 @@ from typing import Dict, List, Tuple, Optional
 import statistics
 import aiohttp
 import asyncio
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from adaptive_exits_backtest import get_adaptive_exit_params
 from adaptive_exits import AdaptiveExitManager  # EXIT RL LEARNING
 
@@ -643,12 +645,13 @@ def run_full_backtest(csv_file: str, days: int = 15):
     print()
     
     # Initialize EXIT RL MANAGER for learning exit patterns
-    print("Initializing Exit RL Manager for pattern learning...")
+    print("Initializing Exit RL Manager with CLOUD API for pattern learning...")
     adaptive_exit_manager = AdaptiveExitManager(
         config=CONFIG,
-        experience_file='cloud-api/exit_experience.json'  # Use cloud's 2,961 experiences
+        experience_file='cloud-api/exit_experience.json',  # Local fallback only
+        cloud_api_url=CLOUD_RL_API_URL  # Fetch/save to cloud for 10k+ shared experiences
     )
-    print(f"  Loaded {len(adaptive_exit_manager.exit_experiences)} past exit experiences from cloud")
+    print(f"  ✅ Loaded {len(adaptive_exit_manager.exit_experiences):,} past exit experiences from {'CLOUD' if adaptive_exit_manager.use_cloud else 'LOCAL'}")
     print()
     
     # Trading state
@@ -1092,4 +1095,4 @@ if __name__ == "__main__":
         print(f"ERROR: Data file not found: {csv_file}")
         print("Please ensure historical data is available.")
     else:
-        df_trades = run_full_backtest(csv_file, days=10)
+        df_trades = run_full_backtest(csv_file, days=15)

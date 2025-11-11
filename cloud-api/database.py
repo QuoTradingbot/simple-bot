@@ -132,22 +132,33 @@ class RLExperience(Base):
     __tablename__ = 'rl_experiences'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
-    account_id = Column(String(100), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True, index=True)
+    account_id = Column(String(100), nullable=True, index=True)
     experience_type = Column(String(20), nullable=False)  # SIGNAL, EXIT
-    symbol = Column(String(20), nullable=False)
-    signal_type = Column(String(10), nullable=False)  # LONG, SHORT
-    outcome = Column(String(10), nullable=False)  # WIN, LOSS
+    symbol = Column(String(20), nullable=True)
+    signal_type = Column(String(10), nullable=True)  # LONG, SHORT
+    outcome = Column(String(10), nullable=True)  # WIN, LOSS
     pnl = Column(Float, nullable=True)
     confidence_score = Column(Float, nullable=True)
     quality_score = Column(Float, nullable=True)  # 0-1, how valuable this experience is
     
-    # NEW: Context for advanced pattern matching
+    # Context for advanced pattern matching (13 features total)
+    # Original 5 features:
     rsi = Column(Float, nullable=True)  # RSI at entry
     vwap_distance = Column(Float, nullable=True)  # Distance from VWAP (percentage)
     vix = Column(Float, nullable=True)  # VIX level at entry
     day_of_week = Column(Integer, nullable=True)  # 0=Monday, 6=Sunday
     hour_of_day = Column(Integer, nullable=True)  # 0-23, Eastern Time
+    
+    # 8 additional features added for full context:
+    atr = Column(Float, nullable=True)  # ATR volatility
+    volume_ratio = Column(Float, nullable=True)  # Volume ratio vs average
+    recent_pnl = Column(Float, nullable=True)  # Recent P&L (psychological state)
+    streak = Column(Integer, nullable=True)  # Win/loss streak
+    entry_price = Column(Float, nullable=True)  # Entry price
+    vwap = Column(Float, nullable=True)  # VWAP value
+    price = Column(Float, nullable=True)  # Current price
+    side = Column(String(10), nullable=True)  # long/short
     
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     
@@ -175,6 +186,56 @@ class RLExperience(Base):
             'day_of_week': self.day_of_week,
             'hour_of_day': self.hour_of_day,
             'timestamp': self.timestamp.isoformat()
+        }
+
+
+class ExitExperience(Base):
+    """
+    Shared exit learning pool - ALL users contribute and benefit!
+    Stores adaptive exit patterns (breakeven, trailing, stop placement, partials)
+    """
+    __tablename__ = 'exit_experiences'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Market regime when exit occurred
+    regime = Column(String(50), nullable=False, index=True)  # HIGH_VOL_TRENDING, NORMAL_CHOPPY, etc.
+    
+    # Exit parameters used (stored as JSON string)
+    exit_params_json = Column(Text, nullable=False)  # {breakeven_threshold_ticks, trailing_distance_ticks, etc.}
+    
+    # Trade outcome (stored as JSON string)
+    outcome_json = Column(Text, nullable=False)  # {pnl, duration, exit_reason, r_multiple, etc.}
+    
+    # Market situation context (stored as JSON string)
+    situation_json = Column(Text, nullable=True)  # {time_of_day, volatility_atr, trend_strength}
+    
+    # Extended market state (9 features for context-aware learning)
+    market_state_json = Column(Text, nullable=True)  # {rsi, volume_ratio, hour, day_of_week, streak, etc.}
+    
+    # Partial exit decisions (stored as JSON string)
+    partial_exits_json = Column(Text, nullable=True)  # [{level, r_multiple, contracts, percentage}, ...]
+    
+    # Metadata
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    quality_score = Column(Float, nullable=True)  # 0-1, how valuable this experience is
+    
+    def __repr__(self):
+        return f"<ExitExperience {self.regime} @ {self.timestamp}>"
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses (matches JSON file format)"""
+        import json
+        return {
+            'id': self.id,
+            'timestamp': self.timestamp.isoformat(),
+            'regime': self.regime,
+            'exit_params': json.loads(self.exit_params_json),
+            'outcome': json.loads(self.outcome_json),
+            'situation': json.loads(self.situation_json) if self.situation_json else {},
+            'market_state': json.loads(self.market_state_json) if self.market_state_json else {},
+            'partial_exits': json.loads(self.partial_exits_json) if self.partial_exits_json else [],
+            'quality_score': self.quality_score
         }
 
 
@@ -222,6 +283,10 @@ class DatabaseManager:
     def get_session(self):
         """Get a new database session"""
         return self.SessionLocal()
+    
+    def get_engine(self):
+        """Get the SQLAlchemy engine"""
+        return self.engine
     
     def close(self):
         """Close database connection"""

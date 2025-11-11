@@ -2851,7 +2851,7 @@ def check_for_signals(symbol: str) -> None:
         logger.critical(f"🎯 LONG SIGNAL DETECTED! Prev Low: ${prev_bar['low']:.2f} | Lower Band: ${vwap_bands['lower_2']:.2f}")
         
         # ADAPTIVE LEARNING - Check if we should skip this trade based on learned patterns
-        should_skip, skip_reason = adaptive_exit_manager.should_skip_trade(symbol, state[symbol])
+        should_skip, skip_reason = adaptive_manager.should_skip_trade(symbol, state[symbol]) if adaptive_manager else (False, "")
         if should_skip:
             logger.info(f"❌ ADAPTIVE FILTER REJECTED LONG: {skip_reason}")
             state[symbol]["last_rejected_signal"] = {
@@ -2958,7 +2958,7 @@ def check_for_signals(symbol: str) -> None:
         logger.critical(f"🎯 SHORT SIGNAL DETECTED! Prev High: ${prev_bar['high']:.2f} | Upper Band: ${vwap_bands['upper_2']:.2f}")
         
         # ADAPTIVE LEARNING - Check if we should skip this trade based on learned patterns
-        should_skip, skip_reason = adaptive_exit_manager.should_skip_trade(symbol, state[symbol])
+        should_skip, skip_reason = adaptive_manager.should_skip_trade(symbol, state[symbol]) if adaptive_manager else (False, "")
         if should_skip:
             logger.info(f"❌ ADAPTIVE FILTER REJECTED SHORT: {skip_reason}")
             state[symbol]["last_rejected_signal"] = {
@@ -4885,9 +4885,12 @@ def check_partial_exits(symbol: str, current_price: float) -> None:
     # Get learned scaling strategy from adaptive exit manager
     from adaptive_exits import get_recommended_scaling_strategy, detect_market_regime
     
+    # Get bars for market state calculation
+    bars = state[symbol]["bars_1min"]
+    
     # Build market state for scaling decision
     market_state = {
-        'rsi': position.get('entry_rsi', calculate_rsi(bars)),
+        'rsi': position.get('entry_rsi', calculate_rsi([bar["close"] for bar in bars[-50:]]) if len(bars) >= 50 else 50.0),
         'volume_ratio': bars[-1]['volume'] / (sum(b['volume'] for b in bars[-20:]) / 20) if len(bars) >= 20 else 1.0,
         'hour': get_current_hour(),
         'streak': position.get('signal_streak', 0)
@@ -4939,17 +4942,42 @@ def check_partial_exits(symbol: str, current_price: float) -> None:
                                 "partial_exit_2_completed", 2, scaling['partial_2_pct'])
             return
     
-    # Third partial (final runner)
+    # Third partial (final runner) - CHECK IF WE SHOULD HOLD LONGER
     if (r_multiple >= scaling['partial_3_r'] and 
         not position["partial_exit_3_completed"]):
         
-        # Close all remaining contracts
-        remaining_quantity = position["remaining_quantity"]
+        # RUNNER HOLD LOGIC: Check if similar big winners went much higher
+        should_hold = False
+        if adaptive_manager:
+            try:
+                # Build market state for runner analysis
+                bars = state[symbol]["bars_1min"]
+                current_bar = bars[-1] if len(bars) > 0 else {}
+                market_state = {
+                    "regime": detect_market_regime(bars, entry_price, CONFIG),
+                    "rsi": calculate_rsi([bar["close"] for bar in bars[-50:]]) if len(bars) >= 50 else 50.0,
+                    "volume_ratio": bars[-1]["volume"] / sum(b["volume"] for b in bars[-20:]) * 20 if len(bars) >= 20 else 1.0,
+                    "hour": get_current_hour(),
+                    "vwap_distance": abs(current_price - current_bar.get("vwap", current_price))
+                }
+                
+                should_hold = adaptive_manager.should_hold_runner(position, market_state, r_multiple)
+                if should_hold:
+                    logger.info(f"[EXIT RL] Holding runner at {r_multiple:.1f}R - similar trades averaged 5R+")
+                    logger.info(f"  Regime: {market_state['regime']}, Trend strength high")
+                    return  # Skip closing runner this bar
+            except Exception as e:
+                logger.debug(f"Runner hold check failed: {e}")
         
-        if remaining_quantity >= 1:
-            execute_partial_exit(symbol, remaining_quantity, current_price, r_multiple,
-                                "partial_exit_3_completed", 3, scaling['partial_3_pct'], is_final=True)
-            return
+        # If not holding, close the runner
+        if not should_hold:
+            # Close all remaining contracts
+            remaining_quantity = position["remaining_quantity"]
+            
+            if remaining_quantity >= 1:
+                execute_partial_exit(symbol, remaining_quantity, current_price, r_multiple,
+                                    "partial_exit_3_completed", 3, scaling['partial_3_pct'], is_final=True)
+                return
 
 
 def execute_partial_exit(symbol: str, contracts: int, exit_price: float, r_multiple: float,
@@ -5334,7 +5362,32 @@ def check_exit_conditions(symbol: str) -> None:
         execute_exit(symbol, price, reason)
         return
     
-    # SECOND - VWAP target hit check
+    # SECOND - Early exit detection (learned from similar losing patterns)
+    # Check if current position matches historical deterioration patterns
+    if position["active"] and adaptive_manager:
+        try:
+            # Get current market state for similarity matching
+            bars = state[symbol]["bars_1min"]
+            market_state = {
+                "regime": detect_market_regime(bars, position["entry_price"], CONFIG),
+                "rsi": calculate_rsi([bar["close"] for bar in bars[-50:]]) if len(bars) >= 50 else 50.0,
+                "volume_ratio": bars[-1]["volume"] / sum(b["volume"] for b in bars[-20:]) * 20 if len(bars) >= 20 else 1.0,
+                "hour": bar_time.hour,
+                "vwap_distance": abs(current_bar["close"] - current_bar.get("vwap", current_bar["close"])),
+                "entry_time": position.get("entry_time", bar_time),
+                "current_time": bar_time
+            }
+            
+            should_exit = adaptive_manager.should_exit_early(position, market_state, current_bar["close"])
+            if should_exit:
+                logger.warning("[EXIT RL] Early exit triggered - similar trades deteriorated from here")
+                logger.warning(f"  Regime: {market_state['regime']}, RSI: {market_state['rsi']:.1f}")
+                execute_exit(symbol, current_bar["close"], "learned_early_exit")
+                return
+        except Exception as e:
+            logger.debug(f"Early exit check failed: {e}")
+    
+    # THIRD - VWAP target hit check
     target_hit, price = check_target_reached(symbol, current_bar, position, bar_time)
     if target_hit:
         if price == position["target_price"]:
@@ -5348,7 +5401,7 @@ def check_exit_conditions(symbol: str) -> None:
             execute_exit(symbol, price, "tightened_target")
         return
     
-    # THIRD - VWAP stop hit check
+    # FOURTH - VWAP stop hit check
     stop_hit, price = check_stop_hit(symbol, current_bar, position)
     if stop_hit:
         execute_exit(symbol, price, "stop_loss")
@@ -5361,16 +5414,16 @@ def check_exit_conditions(symbol: str) -> None:
         execute_exit(symbol, price, "proactive_stop")
         return
     
-    # FOURTH - Partial exits (happens before breakeven/trailing because it reduces position size)
+    # FIFTH - Partial exits (happens before breakeven/trailing because it reduces position size)
     check_partial_exits(symbol, current_bar["close"])
     
-    # FIFTH - Breakeven protection (must activate before trailing)
+    # SIXTH - Breakeven protection (must activate before trailing)
     check_breakeven_protection(symbol, current_bar["close"])
     
-    # SIXTH - Trailing stop (only runs if breakeven already active)
+    # SEVENTH - Trailing stop (only runs if breakeven already active)
     check_trailing_stop(symbol, current_bar["close"])
     
-    # SEVENTH - Market divergence check (tighten stops if fighting momentum)
+    # EIGHTH - Market divergence check (tighten stops if fighting momentum)
     if position["active"]:
         is_diverging, divergence_reason = check_market_divergence(symbol, position["side"])
         if is_diverging:
@@ -5410,7 +5463,7 @@ def check_exit_conditions(symbol: str) -> None:
                     if new_stop_order.get("order_id"):
                         position["stop_order_id"] = new_stop_order.get("order_id")
     
-    # EIGHTH - Time-decay tightening (last priority, gradual adjustment)
+    # NINTH - Time-decay tightening (last priority, gradual adjustment)
     check_time_decay_tightening(symbol, bar_time)
     
     # Check for signal reversal (lowest priority)
@@ -7443,6 +7496,16 @@ def main(symbol_override: str = None) -> None:
     # Initialize bid/ask manager
     logger.info(f"[{primary_symbol}] Initializing bid/ask manager...")
     bid_ask_manager = BidAskManager(CONFIG)
+    
+    # Initialize adaptive exit manager for learned exit patterns
+    logger.info(f"[{primary_symbol}] Initializing adaptive exit manager with CLOUD RL...")
+    from adaptive_exits import AdaptiveExitManager
+    adaptive_manager = AdaptiveExitManager(
+        config=CONFIG,
+        experience_file='cloud-api/exit_experience.json',  # Local fallback only
+        cloud_api_url=CLOUD_ML_API_URL  # Use cloud API for 10k+ shared experiences
+    )
+    logger.info(f"[{primary_symbol}]   ✅ Loaded {len(adaptive_manager.exit_experiences):,} exit experiences from {'CLOUD' if adaptive_manager.use_cloud else 'LOCAL'}")
     
     # Initialize broker (replaces initialize_sdk)
     initialize_broker()

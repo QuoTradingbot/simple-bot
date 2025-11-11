@@ -124476,6 +124476,4617 @@
         "atr": 1.1071428571428572
       },
       "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:12:55.229891",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 37.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 87.5,
+        "duration": 37.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:12",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 42.10526315789474,
+        "volume_ratio": 1.5646785437645236,
+        "hour": 1,
+        "day_of_week": 0,
+        "streak": 1,
+        "recent_pnl": 87.5,
+        "vix": 15.0,
+        "vwap_distance": -4.352737009163356e-05,
+        "atr": 0.7321428571428571
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:12:59.949327",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 14.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 12.5,
+        "duration": 14.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:12",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 36.666666666666664,
+        "volume_ratio": 1.6677089847821556,
+        "hour": 3,
+        "day_of_week": 0,
+        "streak": 2,
+        "recent_pnl": 100.0,
+        "vix": 15.0,
+        "vwap_distance": 0.0007493426586132833,
+        "atr": 1.375
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:02.143421",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 31.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 150.0,
+        "duration": 31.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 57.692307692307686,
+        "volume_ratio": 1.019736842105263,
+        "hour": 5,
+        "day_of_week": 0,
+        "streak": 3,
+        "recent_pnl": 250.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0006048183851158371,
+        "atr": 1.4464285714285714
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:04.721091",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 43.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 475.0,
+        "duration": 43.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 50.0,
+        "volume_ratio": 1.1967020023557127,
+        "hour": 7,
+        "day_of_week": 0,
+        "streak": 4,
+        "recent_pnl": 725.0,
+        "vix": 15.0,
+        "vwap_distance": -0.000826004183583231,
+        "atr": 1.0535714285714286
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:18.757233",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 27.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 0.0,
+        "duration": 27.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 1,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 50.0,
+        "volume_ratio": 1.6768665850673194,
+        "hour": 1,
+        "day_of_week": 1,
+        "streak": -1,
+        "recent_pnl": 725.0,
+        "vix": 15.0,
+        "vwap_distance": -0.00020759451237756103,
+        "atr": 0.7857142857142857
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:20.242200",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 22.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -275.0,
+        "duration": 22.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 25.0,
+        "volume_ratio": 7.667493796526055,
+        "hour": 1,
+        "day_of_week": 1,
+        "streak": -2,
+        "recent_pnl": 362.5,
+        "vix": 15.0,
+        "vwap_distance": -0.0008109409086804733,
+        "atr": 0.5892857142857143
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:21.193151",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 10.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 75.0,
+        "duration": 10.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 73.91304347826087,
+        "volume_ratio": 1.299072091363312,
+        "hour": 2,
+        "day_of_week": 1,
+        "streak": 1,
+        "recent_pnl": 425.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0005861268102250719,
+        "atr": 1.0892857142857142
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:22.665292",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 31.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 0.0,
+        "duration": 31.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 1,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 44.827586206896555,
+        "volume_ratio": 0.7959697732997482,
+        "hour": 2,
+        "day_of_week": 1,
+        "streak": -1,
+        "recent_pnl": 275.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0005028758413073486,
+        "atr": 0.9107142857142857
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:31.004813",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 67.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 25.0,
+        "duration": 67.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 27.58620689655173,
+        "volume_ratio": 1.164772727272727,
+        "hour": 8,
+        "day_of_week": 1,
+        "streak": 1,
+        "recent_pnl": -175.0,
+        "vix": 15.0,
+        "vwap_distance": 0.0006828530093990734,
+        "atr": 0.9821428571428571
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:33.356806",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": true,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 33.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 600.0,
+        "duration": 33.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 95.55555555555556,
+        "volume_ratio": 1.101837643624387,
+        "hour": 10,
+        "day_of_week": 1,
+        "streak": 2,
+        "recent_pnl": 425.0,
+        "vix": 15.0,
+        "vwap_distance": 0.0005284984285828311,
+        "atr": 2.8035714285714284
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:35.208643",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": true,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 14.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 250.0,
+        "duration": 14.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 23.07692307692308,
+        "volume_ratio": 0.9981286928846126,
+        "hour": 11,
+        "day_of_week": 1,
+        "streak": 3,
+        "recent_pnl": 950.0,
+        "vix": 15.0,
+        "vwap_distance": 0.001097537808283828,
+        "atr": 2.375
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:44.787750",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 29.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 350.0,
+        "duration": 29.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 42.857142857142854,
+        "volume_ratio": 2.590442161679321,
+        "hour": 2,
+        "day_of_week": 2,
+        "streak": 4,
+        "recent_pnl": 1225.0,
+        "vix": 15.0,
+        "vwap_distance": -6.764253809442895e-05,
+        "atr": 1.1607142857142858
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:46.635565",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 16.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 387.5,
+        "duration": 16.0,
+        "exit_reason": "learned_target",
+        "side": "short",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 11.111111111111114,
+        "volume_ratio": 1.845127825120415,
+        "hour": 3,
+        "day_of_week": 2,
+        "streak": 5,
+        "recent_pnl": 1612.5,
+        "vix": 15.0,
+        "vwap_distance": -0.0007971047719561136,
+        "atr": 1.2857142857142858
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:47.695918",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 39.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 125.0,
+        "duration": 39.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 47.82608695652174,
+        "volume_ratio": 3.5927152317880795,
+        "hour": 3,
+        "day_of_week": 2,
+        "streak": 6,
+        "recent_pnl": 1712.5,
+        "vix": 15.0,
+        "vwap_distance": -0.00020170742352367484,
+        "atr": 0.9107142857142857
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:48.674647",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 17.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 0.0,
+        "duration": 17.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 70.83333333333334,
+        "volume_ratio": 0.8152937868990723,
+        "hour": 4,
+        "day_of_week": 2,
+        "streak": -1,
+        "recent_pnl": 1112.5,
+        "vix": 15.0,
+        "vwap_distance": -0.0011194447637505197,
+        "atr": 1.25
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:50.137858",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 17.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 150.0,
+        "duration": 17.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 100.0,
+        "volume_ratio": 2.0331611851046483,
+        "hour": 5,
+        "day_of_week": 2,
+        "streak": 1,
+        "recent_pnl": 1012.5,
+        "vix": 15.0,
+        "vwap_distance": -0.0007917031207602737,
+        "atr": 1.0892857142857142
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:52.053241",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 12.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 175.0,
+        "duration": 12.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 60.0,
+        "volume_ratio": 1.3884514435695539,
+        "hour": 7,
+        "day_of_week": 2,
+        "streak": 2,
+        "recent_pnl": 837.5,
+        "vix": 15.0,
+        "vwap_distance": -0.0007846556035707523,
+        "atr": 2.142857142857143
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:53.010432",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 13.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 275.0,
+        "duration": 13.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 75.0,
+        "volume_ratio": 2.0659219418011308,
+        "hour": 7,
+        "day_of_week": 2,
+        "streak": 3,
+        "recent_pnl": 725.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0011066492043121138,
+        "atr": 1.6785714285714286
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:55.316242",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": true,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 11.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -1125.0,
+        "duration": 11.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 21.538461538461533,
+        "volume_ratio": 3.234222527962496,
+        "hour": 10,
+        "day_of_week": 2,
+        "streak": -1,
+        "recent_pnl": -525.0,
+        "vix": 15.0,
+        "vwap_distance": -0.002152805830542112,
+        "atr": 3.357142857142857
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:55.876612",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": true,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 3.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 100.0,
+        "duration": 3.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 25.000000000000014,
+        "volume_ratio": 1.0964228947327006,
+        "hour": 10,
+        "day_of_week": 2,
+        "streak": 1,
+        "recent_pnl": -425.0,
+        "vix": 15.0,
+        "vwap_distance": -0.002963845886541967,
+        "atr": 3.857142857142857
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:56.533235",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": true,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 10.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -1475.0,
+        "duration": 10.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 43.0,
+        "volume_ratio": 1.284029428709547,
+        "hour": 10,
+        "day_of_week": 2,
+        "streak": -1,
+        "recent_pnl": -2050.0,
+        "vix": 15.0,
+        "vwap_distance": -0.003696822451521361,
+        "atr": 4.482142857142857
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:57.447098",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": true,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 4.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 250.0,
+        "duration": 4.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 41.57303370786517,
+        "volume_ratio": 0.866605688030461,
+        "hour": 10,
+        "day_of_week": 2,
+        "streak": 1,
+        "recent_pnl": -1975.0,
+        "vix": 15.0,
+        "vwap_distance": -0.002262207768407879,
+        "atr": 4.428571428571429
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:58.568956",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": true,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 19.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 150.0,
+        "duration": 19.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 67.16417910447761,
+        "volume_ratio": 0.5277651169857186,
+        "hour": 11,
+        "day_of_week": 2,
+        "streak": 2,
+        "recent_pnl": -2100.0,
+        "vix": 15.0,
+        "vwap_distance": -0.002202865432895487,
+        "atr": 4.660714285714286
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:13:59.532392",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": true,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 2.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 700.0,
+        "duration": 2.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:13",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 46.48829431438127,
+        "volume_ratio": 1.3384249988357473,
+        "hour": 12,
+        "day_of_week": 2,
+        "streak": 3,
+        "recent_pnl": -275.0,
+        "vix": 15.0,
+        "vwap_distance": -0.003673146747304761,
+        "atr": 9.053571428571429
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:00.911865",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": true,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 9.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 250.0,
+        "duration": 9.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 61.11111111111111,
+        "volume_ratio": 0.598440833523421,
+        "hour": 13,
+        "day_of_week": 2,
+        "streak": 4,
+        "recent_pnl": -125.0,
+        "vix": 15.0,
+        "vwap_distance": -0.005294539659806311,
+        "atr": 4.285714285714286
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:01.524319",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": true,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 9.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 75.0,
+        "duration": 9.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 47.0,
+        "volume_ratio": 0.6709703147977368,
+        "hour": 13,
+        "day_of_week": 2,
+        "streak": 5,
+        "recent_pnl": 1425.0,
+        "vix": 15.0,
+        "vwap_distance": -0.006066478547134796,
+        "atr": 4.642857142857143
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:10.140431",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 36.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 0.0,
+        "duration": 36.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 42.10526315789474,
+        "volume_ratio": 0.39462636439966414,
+        "hour": 2,
+        "day_of_week": 3,
+        "streak": -1,
+        "recent_pnl": 1175.0,
+        "vix": 15.0,
+        "vwap_distance": 0.00042156495925943624,
+        "atr": 1.4107142857142858
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:12.959481",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 6.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 50.0,
+        "duration": 6.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 28.57142857142857,
+        "volume_ratio": 1.8114797261716693,
+        "hour": 5,
+        "day_of_week": 3,
+        "streak": 1,
+        "recent_pnl": 1075.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0008891800830455724,
+        "atr": 1.6071428571428572
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:13.882946",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 23.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 0.0,
+        "duration": 23.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 21.42857142857143,
+        "volume_ratio": 1.1121408711770158,
+        "hour": 5,
+        "day_of_week": 3,
+        "streak": -1,
+        "recent_pnl": 375.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0011743364480408583,
+        "atr": 1.0357142857142858
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:14.595609",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 18.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 375.0,
+        "duration": 18.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 57.692307692307686,
+        "volume_ratio": 0.657769304099142,
+        "hour": 6,
+        "day_of_week": 3,
+        "streak": 1,
+        "recent_pnl": 500.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0008768942259303693,
+        "atr": 1.3035714285714286
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:16.262936",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 7.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -625.0,
+        "duration": 7.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 18.032786885245898,
+        "volume_ratio": 2.692185007974482,
+        "hour": 7,
+        "day_of_week": 3,
+        "streak": -1,
+        "recent_pnl": -200.0,
+        "vix": 15.0,
+        "vwap_distance": -0.001997463139501994,
+        "atr": 2.25
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:17.665935",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 19.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 275.0,
+        "duration": 19.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 48.14814814814815,
+        "volume_ratio": 2.5642869987412333,
+        "hour": 7,
+        "day_of_week": 3,
+        "streak": 1,
+        "recent_pnl": 75.0,
+        "vix": 15.0,
+        "vwap_distance": -0.00129947117677949,
+        "atr": 1.4821428571428572
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:18.927981",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 32.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -525.0,
+        "duration": 32.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 45.45454545454546,
+        "volume_ratio": 1.5024559375902917,
+        "hour": 8,
+        "day_of_week": 3,
+        "streak": -1,
+        "recent_pnl": -500.0,
+        "vix": 15.0,
+        "vwap_distance": -0.002603197414942594,
+        "atr": 1.75
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:19.729686",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 3.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 25.0,
+        "duration": 3.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 53.33333333333333,
+        "volume_ratio": 1.7779473483403283,
+        "hour": 8,
+        "day_of_week": 3,
+        "streak": 1,
+        "recent_pnl": -475.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0021847620230279335,
+        "atr": 2.0714285714285716
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:27.316834",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": true,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 131.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 200.0,
+        "duration": 131.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 24.444444444444443,
+        "volume_ratio": 1.8111534710523982,
+        "hour": 15,
+        "day_of_week": 3,
+        "streak": 2,
+        "recent_pnl": -650.0,
+        "vix": 15.0,
+        "vwap_distance": 0.0017899396060715835,
+        "atr": 1.9107142857142858
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:34.311306",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 32.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -125.0,
+        "duration": 32.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 63.63636363636363,
+        "volume_ratio": 3.0740967544396813,
+        "hour": 2,
+        "day_of_week": 4,
+        "streak": -1,
+        "recent_pnl": -150.0,
+        "vix": 15.0,
+        "vwap_distance": 0.0004929519206470079,
+        "atr": 0.6071428571428571
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:51.832939",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 38.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -75.0,
+        "duration": 38.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 69.23076923076923,
+        "volume_ratio": 3.596638655462185,
+        "hour": 1,
+        "day_of_week": 0,
+        "streak": -2,
+        "recent_pnl": -500.0,
+        "vix": 15.0,
+        "vwap_distance": 0.000264324397711083,
+        "atr": 0.44642857142857145
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:52.564377",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 15.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -87.5,
+        "duration": 15.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 56.25,
+        "volume_ratio": 4.201780415430267,
+        "hour": 1,
+        "day_of_week": 0,
+        "streak": -3,
+        "recent_pnl": -62.5,
+        "vix": 15.0,
+        "vwap_distance": 0.0005302207879119686,
+        "atr": 0.5714285714285714
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:55.202097",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 39.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 50.0,
+        "duration": 39.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 60.0,
+        "volume_ratio": 1.4042821158690175,
+        "hour": 3,
+        "day_of_week": 0,
+        "streak": 1,
+        "recent_pnl": -37.5,
+        "vix": 15.0,
+        "vwap_distance": 0.00019570500675340825,
+        "atr": 0.8214285714285714
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:14:57.834004",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 62.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 50.0,
+        "duration": 62.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:14",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 35.294117647058826,
+        "volume_ratio": 1.1267605633802817,
+        "hour": 5,
+        "day_of_week": 0,
+        "streak": 2,
+        "recent_pnl": -187.5,
+        "vix": 15.0,
+        "vwap_distance": -0.0005435895350481772,
+        "atr": 0.6785714285714286
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:01.030566",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": true,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 4.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 200.0,
+        "duration": 4.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 53.33333333333333,
+        "volume_ratio": 1.4172671819061813,
+        "hour": 9,
+        "day_of_week": 0,
+        "streak": 3,
+        "recent_pnl": 137.5,
+        "vix": 15.0,
+        "vwap_distance": 1.3122105790598874e-06,
+        "atr": 3.0
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:01.863796",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": true,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 10.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 12.5,
+        "duration": 10.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 34.09090909090909,
+        "volume_ratio": 0.778614369929376,
+        "hour": 10,
+        "day_of_week": 0,
+        "streak": 4,
+        "recent_pnl": 225.0,
+        "vix": 15.0,
+        "vwap_distance": 0.0005735454525079847,
+        "atr": 2.375
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:06.481103",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": true,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 85.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 62.5,
+        "duration": 85.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 50.0,
+        "volume_ratio": 1.9889418493803623,
+        "hour": 13,
+        "day_of_week": 0,
+        "streak": 5,
+        "recent_pnl": 375.0,
+        "vix": 15.0,
+        "vwap_distance": 0.0004690372107881673,
+        "atr": 1.1428571428571428
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:11.407571",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": true,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 3.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -187.5,
+        "duration": 3.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 65.38461538461539,
+        "volume_ratio": 2.3854722713307357,
+        "hour": 15,
+        "day_of_week": 0,
+        "streak": -1,
+        "recent_pnl": 137.5,
+        "vix": 15.0,
+        "vwap_distance": 0.0026098113580805687,
+        "atr": 1.2678571428571428
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:12.225972",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": true,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 6.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 0.0,
+        "duration": 6.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 46.15384615384615,
+        "volume_ratio": 0.4715168630355778,
+        "hour": 16,
+        "day_of_week": 0,
+        "streak": -2,
+        "recent_pnl": 87.5,
+        "vix": 15.0,
+        "vwap_distance": 0.002597395278089708,
+        "atr": 1.9464285714285714
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:21.883620",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 30.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 75.0,
+        "duration": 30.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 50.0,
+        "volume_ratio": 5.054054054054054,
+        "hour": 3,
+        "day_of_week": 1,
+        "streak": 1,
+        "recent_pnl": -37.5,
+        "vix": 15.0,
+        "vwap_distance": 7.497663545238026e-05,
+        "atr": 0.625
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:24.692425",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 88.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 175.0,
+        "duration": 88.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 43.75,
+        "volume_ratio": 0.7497741644083107,
+        "hour": 5,
+        "day_of_week": 1,
+        "streak": 2,
+        "recent_pnl": 125.0,
+        "vix": 15.0,
+        "vwap_distance": 5.5858980077242365e-05,
+        "atr": 0.6607142857142857
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:26.582509",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 48.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 12.5,
+        "duration": 48.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 58.82352941176471,
+        "volume_ratio": 1.5279279279279279,
+        "hour": 7,
+        "day_of_week": 1,
+        "streak": 3,
+        "recent_pnl": 75.0,
+        "vix": 15.0,
+        "vwap_distance": 0.00041415142794505095,
+        "atr": 0.6607142857142857
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:28.004039",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 20.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -162.5,
+        "duration": 20.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 70.0,
+        "volume_ratio": 1.3512916758666373,
+        "hour": 7,
+        "day_of_week": 1,
+        "streak": -1,
+        "recent_pnl": 100.0,
+        "vix": 15.0,
+        "vwap_distance": 0.0009097231291467056,
+        "atr": 0.9107142857142857
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:30.604746",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 3.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -125.0,
+        "duration": 3.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 87.5,
+        "volume_ratio": 3.705270006506181,
+        "hour": 8,
+        "day_of_week": 1,
+        "streak": -2,
+        "recent_pnl": -25.0,
+        "vix": 15.0,
+        "vwap_distance": 0.0014109396261911607,
+        "atr": 0.8392857142857143
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:32.942720",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": true,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 37.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 350.0,
+        "duration": 37.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 22.91666666666667,
+        "volume_ratio": 0.9826977994288594,
+        "hour": 9,
+        "day_of_week": 1,
+        "streak": 1,
+        "recent_pnl": 250.0,
+        "vix": 15.0,
+        "vwap_distance": -9.428088160364095e-05,
+        "atr": 3.0357142857142856
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:35.568979",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": true,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 15.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -412.5,
+        "duration": 15.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 62.745098039215684,
+        "volume_ratio": 0.489484372446955,
+        "hour": 12,
+        "day_of_week": 1,
+        "streak": -1,
+        "recent_pnl": -337.5,
+        "vix": 15.0,
+        "vwap_distance": 0.001554169621733374,
+        "atr": 2.7142857142857144
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:38.216105",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 56.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -262.5,
+        "duration": 56.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 43.75,
+        "volume_ratio": 0.6836424707945368,
+        "hour": 14,
+        "day_of_week": 1,
+        "streak": -2,
+        "recent_pnl": -612.5,
+        "vix": 15.0,
+        "vwap_distance": 0.0022503432342077727,
+        "atr": 1.4642857142857142
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:40.536502",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 26.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 100.0,
+        "duration": 26.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 61.111111111111114,
+        "volume_ratio": 0.7677857850336418,
+        "hour": 14,
+        "day_of_week": 1,
+        "streak": 1,
+        "recent_pnl": -350.0,
+        "vix": 15.0,
+        "vwap_distance": 0.0025081189076531806,
+        "atr": 1.1071428571428572
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:51.440051",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 54.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 225.0,
+        "duration": 54.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 65.21739130434783,
+        "volume_ratio": 1.035751840168244,
+        "hour": 6,
+        "day_of_week": 2,
+        "streak": 2,
+        "recent_pnl": 0.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0005772632964724117,
+        "atr": 0.9642857142857143
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:54.439521",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": true,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 12.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 300.0,
+        "duration": 12.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 0.0,
+        "volume_ratio": 0.9235283685084565,
+        "hour": 10,
+        "day_of_week": 2,
+        "streak": 3,
+        "recent_pnl": -50.0,
+        "vix": 15.0,
+        "vwap_distance": 0.0002478186753307795,
+        "atr": 2.142857142857143
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:56.910456",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": true,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 74.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -950.0,
+        "duration": 74.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 19.565217391304344,
+        "volume_ratio": 1.8807429130009776,
+        "hour": 12,
+        "day_of_week": 2,
+        "streak": -1,
+        "recent_pnl": -587.5,
+        "vix": 15.0,
+        "vwap_distance": -0.0013783739826300162,
+        "atr": 1.7857142857142858
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:58.384294",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": true,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 31.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 625.0,
+        "duration": 31.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 48.57142857142857,
+        "volume_ratio": 1.250620347394541,
+        "hour": 12,
+        "day_of_week": 2,
+        "streak": 1,
+        "recent_pnl": 300.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0003600091925939755,
+        "atr": 1.3392857142857142
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:15:59.854223",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": true,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 26.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 425.0,
+        "duration": 26.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:15",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 63.41463414634146,
+        "volume_ratio": 0.6537852919130507,
+        "hour": 13,
+        "day_of_week": 2,
+        "streak": 2,
+        "recent_pnl": 625.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0004686984723280341,
+        "atr": 1.4821428571428572
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:00.556098",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 6.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 225.0,
+        "duration": 6.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 54.54545454545455,
+        "volume_ratio": 0.7787448465414568,
+        "hour": 14,
+        "day_of_week": 2,
+        "streak": 3,
+        "recent_pnl": 625.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0004221924350192458,
+        "atr": 4.535714285714286
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:01.519050",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 3.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -2025.0,
+        "duration": 3.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 23.5,
+        "volume_ratio": 2.4923404392556523,
+        "hour": 14,
+        "day_of_week": 2,
+        "streak": -1,
+        "recent_pnl": -1700.0,
+        "vix": 15.0,
+        "vwap_distance": -0.00661564069382181,
+        "atr": 7.5
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:02.046519",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 4.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 950.0,
+        "duration": 4.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 17.518248175182478,
+        "volume_ratio": 1.3399300482578476,
+        "hour": 14,
+        "day_of_week": 2,
+        "streak": 1,
+        "recent_pnl": 200.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0065571070322313395,
+        "atr": 11.357142857142858
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:02.516343",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 2.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 700.0,
+        "duration": 2.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 43.873517786561266,
+        "volume_ratio": 0.7163175840233804,
+        "hour": 14,
+        "day_of_week": 2,
+        "streak": 2,
+        "recent_pnl": 275.0,
+        "vix": 15.0,
+        "vwap_distance": -0.005656307372860135,
+        "atr": 13.375
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:11.927505",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 24.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 325.0,
+        "duration": 24.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 62.85714285714286,
+        "volume_ratio": 0.5239556289827708,
+        "hour": 6,
+        "day_of_week": 3,
+        "streak": 3,
+        "recent_pnl": 175.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0014946814009469374,
+        "atr": 1.5714285714285714
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:14.064305",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 6.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 100.0,
+        "duration": 6.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 48.611111111111114,
+        "volume_ratio": 0.731295705981624,
+        "hour": 8,
+        "day_of_week": 3,
+        "streak": 4,
+        "recent_pnl": 50.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0020893112379229,
+        "atr": 3.625
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:16.356729",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": true,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 46.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -1150.0,
+        "duration": 46.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 46.666666666666664,
+        "volume_ratio": 9.921775654117376,
+        "hour": 9,
+        "day_of_week": 3,
+        "streak": -1,
+        "recent_pnl": 925.0,
+        "vix": 15.0,
+        "vwap_distance": -0.003411303988730936,
+        "atr": 2.625
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:21.421375",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": true,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 3.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -925.0,
+        "duration": 3.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 35.526315789473685,
+        "volume_ratio": 2.291532752877929,
+        "hour": 15,
+        "day_of_week": 3,
+        "streak": -2,
+        "recent_pnl": -950.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0050653663884327555,
+        "atr": 2.857142857142857
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:21.919612",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": true,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 4.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 475.0,
+        "duration": 4.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 43.0,
+        "volume_ratio": 0.7461178671655753,
+        "hour": 15,
+        "day_of_week": 3,
+        "streak": 1,
+        "recent_pnl": -1175.0,
+        "vix": 15.0,
+        "vwap_distance": -0.004032023416062029,
+        "atr": 3.357142857142857
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:22.862509",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": true,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 19.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -1125.0,
+        "duration": 19.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 20.0,
+        "volume_ratio": 2.971969421186749,
+        "hour": 16,
+        "day_of_week": 3,
+        "streak": -1,
+        "recent_pnl": -2625.0,
+        "vix": 15.0,
+        "vwap_distance": -0.004334539546924842,
+        "atr": 4.017857142857143
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:29.048265",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 22.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -250.0,
+        "duration": 22.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 42.10526315789474,
+        "volume_ratio": 2.0259740259740258,
+        "hour": 1,
+        "day_of_week": 4,
+        "streak": -2,
+        "recent_pnl": -2975.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0004219113002539491,
+        "atr": 0.7678571428571429
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:30.055018",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 24.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -275.0,
+        "duration": 24.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 41.66666666666667,
+        "volume_ratio": 6.3720452209660845,
+        "hour": 1,
+        "day_of_week": 4,
+        "streak": -3,
+        "recent_pnl": -2100.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0006097638151705294,
+        "atr": 0.5892857142857143
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:31.094069",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 26.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 100.0,
+        "duration": 26.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 61.53846153846154,
+        "volume_ratio": 2.142857142857143,
+        "hour": 2,
+        "day_of_week": 4,
+        "streak": 1,
+        "recent_pnl": -1075.0,
+        "vix": 15.0,
+        "vwap_distance": -0.00040886427055917716,
+        "atr": 0.8928571428571429
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:32.519795",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 9.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 0.0,
+        "duration": 9.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 1,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 64.0,
+        "volume_ratio": 1.7060240963855422,
+        "hour": 3,
+        "day_of_week": 4,
+        "streak": -1,
+        "recent_pnl": -1550.0,
+        "vix": 15.0,
+        "vwap_distance": -0.000534450873477607,
+        "atr": 0.9285714285714286
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:34.863900",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 34.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 212.5,
+        "duration": 34.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 58.62068965517242,
+        "volume_ratio": 0.542940071709066,
+        "hour": 4,
+        "day_of_week": 4,
+        "streak": 1,
+        "recent_pnl": -212.5,
+        "vix": 15.0,
+        "vwap_distance": -0.00011397714734528624,
+        "atr": 1.6785714285714286
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:36.505107",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 4.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 0.0,
+        "duration": 4.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 45.94594594594595,
+        "volume_ratio": 0.7068506414911643,
+        "hour": 6,
+        "day_of_week": 4,
+        "streak": -1,
+        "recent_pnl": 37.5,
+        "vix": 15.0,
+        "vwap_distance": -0.0005988238612297838,
+        "atr": 1.4285714285714286
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:39.475325",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 14.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -237.5,
+        "duration": 14.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 76.92307692307693,
+        "volume_ratio": 1.866735805029816,
+        "hour": 8,
+        "day_of_week": 4,
+        "streak": -2,
+        "recent_pnl": 75.0,
+        "vix": 15.0,
+        "vwap_distance": 0.0015235903870334524,
+        "atr": 1.3035714285714286
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:40.133214",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 15.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 100.0,
+        "duration": 15.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 26.470588235294116,
+        "volume_ratio": 4.148629818857408,
+        "hour": 8,
+        "day_of_week": 4,
+        "streak": 1,
+        "recent_pnl": 75.0,
+        "vix": 15.0,
+        "vwap_distance": 0.001100050857153711,
+        "atr": 1.3035714285714286
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:41.168469",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": true,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 2.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 150.0,
+        "duration": 2.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 29.34782608695653,
+        "volume_ratio": 1.1549069389395241,
+        "hour": 9,
+        "day_of_week": 4,
+        "streak": 2,
+        "recent_pnl": 225.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0022204403041919305,
+        "atr": 4.410714285714286
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:43.318778",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": true,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 4.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 37.5,
+        "duration": 4.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 1,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 39.70588235294118,
+        "volume_ratio": 0.5967884983429025,
+        "hour": 12,
+        "day_of_week": 4,
+        "streak": 3,
+        "recent_pnl": 50.0,
+        "vix": 15.0,
+        "vwap_distance": -0.002629947598391895,
+        "atr": 3.6607142857142856
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:44.101233",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": true,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 11.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 500.0,
+        "duration": 11.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 66.29213483146069,
+        "volume_ratio": 0.7799413318467195,
+        "hour": 12,
+        "day_of_week": 4,
+        "streak": 4,
+        "recent_pnl": 550.0,
+        "vix": 15.0,
+        "vwap_distance": -0.002786452216853101,
+        "atr": 3.6785714285714284
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:45.276755",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": true,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 23.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -1225.0,
+        "duration": 23.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 26.92307692307692,
+        "volume_ratio": 1.4540344436955992,
+        "hour": 13,
+        "day_of_week": 4,
+        "streak": -1,
+        "recent_pnl": -437.5,
+        "vix": 15.0,
+        "vwap_distance": -0.005580408429093195,
+        "atr": 3.6964285714285716
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:46.122352",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": true,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 6.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 400.0,
+        "duration": 6.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 62.820512820512825,
+        "volume_ratio": 0.7944784351547666,
+        "hour": 13,
+        "day_of_week": 4,
+        "streak": 1,
+        "recent_pnl": -137.5,
+        "vix": 15.0,
+        "vwap_distance": -0.004645324608411969,
+        "atr": 3.1964285714285716
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:52.949774",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": true
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 4.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -300.0,
+        "duration": 4.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 11.999999999999986,
+        "volume_ratio": 4.219066937119676,
+        "hour": 1,
+        "day_of_week": 0,
+        "streak": -1,
+        "recent_pnl": -587.5,
+        "vix": 15.0,
+        "vwap_distance": -0.0008273423522361398,
+        "atr": 1.0357142857142858
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:53.611509",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 11.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 75.0,
+        "duration": 11.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 60.71428571428571,
+        "volume_ratio": 0.5078416728902165,
+        "hour": 1,
+        "day_of_week": 0,
+        "streak": 1,
+        "recent_pnl": -550.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0003721608681078136,
+        "atr": 1.1964285714285714
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:54.532999",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 11.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 75.0,
+        "duration": 11.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 60.71428571428571,
+        "volume_ratio": 0.5730337078651685,
+        "hour": 1,
+        "day_of_week": 0,
+        "streak": 2,
+        "recent_pnl": -975.0,
+        "vix": 15.0,
+        "vwap_distance": -0.0005038993669938051,
+        "atr": 1.2321428571428572
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:56.501250",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": true,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 71.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": 150.0,
+        "duration": 71.0,
+        "exit_reason": "stop_loss",
+        "side": "long",
+        "contracts": 2,
+        "win": true
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 67.5,
+        "volume_ratio": 1.2550867423431142,
+        "hour": 3,
+        "day_of_week": 0,
+        "streak": 3,
+        "recent_pnl": 400.0,
+        "vix": 15.0,
+        "vwap_distance": -0.00025297866086364777,
+        "atr": 1.8571428571428572
+      },
+      "partial_exits": []
+    },
+    {
+      "timestamp": "2025-11-10T21:16:58.503115",
+      "regime": "NORMAL",
+      "exit_params": {
+        "breakeven_threshold_ticks": 9,
+        "breakeven_offset_ticks": 1,
+        "trailing_distance_ticks": 12,
+        "trailing_min_profit_ticks": 16,
+        "market_regime": "NORMAL",
+        "current_volatility_atr": 2.0,
+        "is_aggressive_mode": false,
+        "situation_factors": {
+          "is_choppy": false,
+          "is_high_vol": false,
+          "is_trending": false,
+          "is_morning": false,
+          "is_lunch": false,
+          "is_close": false,
+          "is_old_trade": false,
+          "is_quick_trade": false
+        },
+        "decision_reasons": [
+          "RL_LEARNED_NORMAL"
+        ],
+        "duration_minutes": 10.0,
+        "learned_multiplier": 1.0
+      },
+      "outcome": {
+        "pnl": -237.5,
+        "duration": 10.0,
+        "exit_reason": "stop_loss",
+        "side": "short",
+        "contracts": 1,
+        "win": false
+      },
+      "situation": {
+        "time_of_day": "21:16",
+        "volatility_atr": 0,
+        "trend_strength": 0
+      },
+      "market_state": {
+        "rsi": 80.95238095238095,
+        "volume_ratio": 0.7038930397168698,
+        "hour": 4,
+        "day_of_week": 0,
+        "streak": -1,
+        "recent_pnl": -237.5,
+        "vix": 15.0,
+        "vwap_distance": 0.002192703276096912,
+        "atr": 1.3035714285714286
+      },
+      "partial_exits": []
     }
   ],
   "learned_params": {
@@ -124508,5 +129119,5 @@
       "trailing_mult": 0.95
     }
   },
-  "total_exits": 3018
+  "total_exits": 3105
 }

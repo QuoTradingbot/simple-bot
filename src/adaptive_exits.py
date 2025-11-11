@@ -13,10 +13,13 @@ Provides smarter profit protection than static parameters.
 import logging
 import json
 import os
+import random
 from typing import Dict, Any, Optional
 from collections import deque
 from datetime import datetime
 import statistics
+import requests
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +31,19 @@ class AdaptiveExitManager:
     LEARNS optimal exit parameters from past outcomes.
     """
     
-    def __init__(self, config: Dict, experience_file: str = "data/exit_experience.json"):
-        """Initialize adaptive exit manager with RL learning."""
+    def __init__(self, config: Dict, experience_file: str = "data/exit_experience.json", cloud_api_url: Optional[str] = None):
+        """
+        Initialize adaptive exit manager with RL learning.
+        
+        Args:
+            config: Bot configuration
+            experience_file: Local file path for fallback (if cloud unavailable)
+            cloud_api_url: Cloud API URL for fetching/saving experiences (e.g., "https://quotrading-signals.icymeadow-86b2969e.eastus.azurecontainerapps.io")
+        """
         self.config = config
         self.experience_file = experience_file
+        self.cloud_api_url = cloud_api_url  # NEW: Cloud API endpoint
+        self.use_cloud = cloud_api_url is not None  # Use cloud if URL provided
         
         # Track recent ATR values for regime detection
         self.recent_atr_values = deque(maxlen=20)
@@ -45,20 +57,63 @@ class AdaptiveExitManager:
         
         # Learned optimal parameters per regime (updated from experiences)
         # MUST be defined BEFORE load_experiences() since it uses it as default
+        # NOW LEARNS: stops, breakeven, trailing, partial exits, sideways timeout
         self.learned_params = {
-            'HIGH_VOL_CHOPPY': {'breakeven_mult': 0.75, 'trailing_mult': 0.7, 'stop_mult': 4.0},
-            'HIGH_VOL_TRENDING': {'breakeven_mult': 0.85, 'trailing_mult': 1.1, 'stop_mult': 4.2},
-            'LOW_VOL_RANGING': {'breakeven_mult': 1.0, 'trailing_mult': 1.0, 'stop_mult': 3.2},
-            'LOW_VOL_TRENDING': {'breakeven_mult': 1.0, 'trailing_mult': 1.15, 'stop_mult': 3.4},
-            'NORMAL': {'breakeven_mult': 1.0, 'trailing_mult': 1.0, 'stop_mult': 3.6},
-            'NORMAL_TRENDING': {'breakeven_mult': 1.0, 'trailing_mult': 1.1, 'stop_mult': 3.6},
-            'NORMAL_CHOPPY': {'breakeven_mult': 0.95, 'trailing_mult': 0.95, 'stop_mult': 3.4}
+            'HIGH_VOL_CHOPPY': {
+                'breakeven_mult': 0.75, 'trailing_mult': 0.7, 'stop_mult': 4.0,
+                'partial_1_r': 2.0, 'partial_1_pct': 0.50,  # 50% @ 2R
+                'partial_2_r': 3.0, 'partial_2_pct': 0.30,  # 30% @ 3R
+                'partial_3_r': 5.0, 'partial_3_pct': 0.20,  # 20% @ 5R (runner)
+                'sideways_timeout_minutes': 15  # Exit runner if sideways 15 min
+            },
+            'HIGH_VOL_TRENDING': {
+                'breakeven_mult': 0.85, 'trailing_mult': 1.1, 'stop_mult': 4.2,
+                'partial_1_r': 2.5, 'partial_1_pct': 0.40,  # Let trends run more
+                'partial_2_r': 4.0, 'partial_2_pct': 0.30,
+                'partial_3_r': 6.0, 'partial_3_pct': 0.30,
+                'sideways_timeout_minutes': 20
+            },
+            'LOW_VOL_RANGING': {
+                'breakeven_mult': 1.0, 'trailing_mult': 1.0, 'stop_mult': 3.2,
+                'partial_1_r': 1.5, 'partial_1_pct': 0.60,  # Take profits quick in ranges
+                'partial_2_r': 2.5, 'partial_2_pct': 0.30,
+                'partial_3_r': 4.0, 'partial_3_pct': 0.10,
+                'sideways_timeout_minutes': 10
+            },
+            'LOW_VOL_TRENDING': {
+                'breakeven_mult': 1.0, 'trailing_mult': 1.15, 'stop_mult': 3.4,
+                'partial_1_r': 2.0, 'partial_1_pct': 0.40,
+                'partial_2_r': 3.5, 'partial_2_pct': 0.30,
+                'partial_3_r': 5.5, 'partial_3_pct': 0.30,
+                'sideways_timeout_minutes': 18
+            },
+            'NORMAL': {
+                'breakeven_mult': 1.0, 'trailing_mult': 1.0, 'stop_mult': 3.6,
+                'partial_1_r': 2.0, 'partial_1_pct': 0.50,
+                'partial_2_r': 3.0, 'partial_2_pct': 0.30,
+                'partial_3_r': 5.0, 'partial_3_pct': 0.20,
+                'sideways_timeout_minutes': 12
+            },
+            'NORMAL_TRENDING': {
+                'breakeven_mult': 1.0, 'trailing_mult': 1.1, 'stop_mult': 3.6,
+                'partial_1_r': 2.2, 'partial_1_pct': 0.45,
+                'partial_2_r': 3.5, 'partial_2_pct': 0.30,
+                'partial_3_r': 5.5, 'partial_3_pct': 0.25,
+                'sideways_timeout_minutes': 15
+            },
+            'NORMAL_CHOPPY': {
+                'breakeven_mult': 0.95, 'trailing_mult': 0.95, 'stop_mult': 3.4,
+                'partial_1_r': 1.8, 'partial_1_pct': 0.55,
+                'partial_2_r': 2.8, 'partial_2_pct': 0.30,
+                'partial_3_r': 4.5, 'partial_3_pct': 0.15,
+                'sideways_timeout_minutes': 10
+            }
         }
         
         # Load experiences and learned params from file (may override above defaults)
         self.load_experiences()
         
-        logger.info(f"[ADAPTIVE] Exit Manager initialized with RL learning ({len(self.exit_experiences)} past exits)")
+        logger.info(f"[ADAPTIVE] Exit Manager initialized with {'CLOUD' if self.use_cloud else 'LOCAL'} RL learning ({len(self.exit_experiences)} past exits)")
     
     def update_market_state(self, current_atr: float, bars: list):
         """
@@ -131,9 +186,41 @@ class AdaptiveExitManager:
         
         self.exit_experiences.append(experience)
         
-        # Save every 3 exits
+        # Save to cloud API immediately if configured
+        if self.use_cloud:
+            try:
+                # Convert boolean values to int for JSON serialization
+                cloud_experience = {
+                    **experience,
+                    'outcome': {
+                        **experience['outcome'],
+                        'win': int(experience['outcome']['win'])  # bool → int
+                    }
+                }
+                
+                response = requests.post(
+                    f"{self.cloud_api_url}/api/ml/save_exit_experience",
+                    json=cloud_experience,
+                    timeout=5
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('saved'):
+                        logger.info(f"✅ [CLOUD] Saved exit experience to cloud pool ({data.get('total_exit_experiences', 0):,} total)")
+                    else:
+                        logger.warning(f"[CLOUD] Failed to save: {data.get('error', 'Unknown error')}")
+                else:
+                    logger.warning(f"[CLOUD] Save failed with status {response.status_code}")
+                    
+            except Exception as e:
+                logger.error(f"[CLOUD] Error saving to cloud: {e}")
+                logger.warning("[CLOUD] Experience saved locally but not in cloud pool")
+        
+        # Save every 3 exits (local file OR trigger cloud re-learning)
         if len(self.exit_experiences) % 3 == 0:
-            self.save_experiences()
+            if not self.use_cloud:
+                self.save_experiences()  # Only save to file if not using cloud
             # Re-learn optimal parameters
             self.update_learned_parameters()
         
@@ -220,11 +307,152 @@ class AdaptiveExitManager:
             self.learned_params[regime]['breakeven_mult'] = max(0.6, min(1.3, self.learned_params[regime]['breakeven_mult']))
             self.learned_params[regime]['trailing_mult'] = max(0.6, min(1.3, self.learned_params[regime]['trailing_mult']))
             
+            # NEW: Learn optimal partial exit parameters
+            self._learn_partial_exit_params(regime, outcomes)
+            
+            # NEW: Learn sideways timeout
+            self._learn_sideways_timeout(regime, outcomes)
+            
             # NEW: Learn from market context patterns
             self._learn_from_market_patterns(regime, outcomes)
             
             # NEW: Learn optimal scaling strategies from outcomes
             self._learn_scaling_strategies(regime, outcomes)
+    
+    def _learn_partial_exit_params(self, regime: str, outcomes: list):
+        """
+        Learn optimal R-multiples and percentages for partial exits.
+        
+        Analyzes which partial exit strategies produced best total P&L:
+        - Should we take 50% @ 2R or 40% @ 2.5R?
+        - Should runners be 20% or 30%?
+        - What R-multiple captures the most profit without giving back?
+        """
+        if len(outcomes) < 15:
+            return  # Need minimum data
+        
+        # Analyze outcomes by their partial exit settings
+        # Group by first partial R-multiple
+        early_partials = [o for o in outcomes if o.get('exit_params', {}).get('partial_1_r', 2.0) < 2.2]  # ~2R
+        mid_partials = [o for o in outcomes if 2.2 <= o.get('exit_params', {}).get('partial_1_r', 2.0) < 2.8]  # ~2.5R
+        late_partials = [o for o in outcomes if o.get('exit_params', {}).get('partial_1_r', 2.0) >= 2.8]  # ~3R+
+        
+        if len(early_partials) >= 5:
+            avg_pnl = sum(o['outcome']['pnl'] for o in early_partials) / len(early_partials)
+            avg_r = sum(o['outcome'].get('r_multiple', 0) for o in early_partials) / len(early_partials)
+            logger.debug(f"[PARTIAL RL] {regime} Early partials (~2R): ${avg_pnl:.2f} avg, {avg_r:.2f}R")
+        
+        if len(mid_partials) >= 5:
+            avg_pnl = sum(o['outcome']['pnl'] for o in mid_partials) / len(mid_partials)
+            avg_r = sum(o['outcome'].get('r_multiple', 0) for o in mid_partials) / len(mid_partials)
+            logger.debug(f"[PARTIAL RL] {regime} Mid partials (~2.5R): ${avg_pnl:.2f} avg, {avg_r:.2f}R")
+        
+        if len(late_partials) >= 5:
+            avg_pnl = sum(o['outcome']['pnl'] for o in late_partials) / len(late_partials)
+            avg_r = sum(o['outcome'].get('r_multiple', 0) for o in late_partials) / len(late_partials)
+            logger.debug(f"[PARTIAL RL] {regime} Late partials (~3R): ${avg_pnl:.2f} avg, {avg_r:.2f}R")
+        
+        # Learn: Which timing worked best?
+        best_strategy = None
+        best_pnl = -999999
+        
+        if len(early_partials) >= 5:
+            pnl = sum(o['outcome']['pnl'] for o in early_partials) / len(early_partials)
+            if pnl > best_pnl:
+                best_pnl, best_strategy = pnl, ('early', 2.0)
+        
+        if len(mid_partials) >= 5:
+            pnl = sum(o['outcome']['pnl'] for o in mid_partials) / len(mid_partials)
+            if pnl > best_pnl:
+                best_pnl, best_strategy = pnl, ('mid', 2.5)
+        
+        if len(late_partials) >= 5:
+            pnl = sum(o['outcome']['pnl'] for o in late_partials) / len(late_partials)
+            if pnl > best_pnl:
+                best_pnl, best_strategy = pnl, ('late', 3.0)
+        
+        # Adjust learned params toward best strategy
+        if best_strategy:
+            timing, target_r = best_strategy
+            current_r = self.learned_params[regime].get('partial_1_r', 2.0)
+            
+            # Move 10% toward optimal
+            new_r = current_r * 0.9 + target_r * 0.1
+            self.learned_params[regime]['partial_1_r'] = max(1.5, min(3.5, new_r))
+            
+            logger.info(f"[PARTIAL RL] {regime}: {timing.upper()} partials work best (${best_pnl:.2f}), adjusting to {new_r:.2f}R")
+        
+        # Learn percentage splits
+        # Analyze: Did aggressive scaling (60%+ first partial) or patient (40%) work better?
+        aggressive_pct = [o for o in outcomes if o.get('exit_params', {}).get('partial_1_pct', 0.5) >= 0.55]
+        patient_pct = [o for o in outcomes if o.get('exit_params', {}).get('partial_1_pct', 0.5) <= 0.45]
+        
+        if len(aggressive_pct) >= 5 and len(patient_pct) >= 5:
+            agg_pnl = sum(o['outcome']['pnl'] for o in aggressive_pct) / len(aggressive_pct)
+            pat_pnl = sum(o['outcome']['pnl'] for o in patient_pct) / len(patient_pct)
+            
+            current_pct = self.learned_params[regime].get('partial_1_pct', 0.50)
+            
+            if agg_pnl > pat_pnl + 25:  # Aggressive significantly better
+                new_pct = min(0.70, current_pct * 1.05)
+                self.learned_params[regime]['partial_1_pct'] = new_pct
+                logger.info(f"[PARTIAL RL] {regime}: AGGRESSIVE scaling better (${agg_pnl:.2f} vs ${pat_pnl:.2f}), increasing to {new_pct:.0%}")
+            elif pat_pnl > agg_pnl + 25:  # Patient significantly better
+                new_pct = max(0.30, current_pct * 0.95)
+                self.learned_params[regime]['partial_1_pct'] = new_pct
+                logger.info(f"[PARTIAL RL] {regime}: PATIENT scaling better (${pat_pnl:.2f} vs ${agg_pnl:.2f}), decreasing to {new_pct:.0%}")
+    
+    def _learn_sideways_timeout(self, regime: str, outcomes: list):
+        """
+        Learn optimal timeout for sideways/stalling runners.
+        
+        Analyzes trades that stalled vs continued:
+        - If runner stalled 10+ min then reversed, learn to exit earlier
+        - If runner stalled but then ran to 8R, learn to hold longer
+        """
+        if len(outcomes) < 20:
+            return
+        
+        # Find trades that achieved 3R+ (had a runner)
+        runner_trades = [o for o in outcomes if o['outcome'].get('r_multiple', 0) >= 3.0]
+        
+        if len(runner_trades) < 10:
+            return
+        
+        # Analyze by duration and outcome
+        quick_winners = [o for o in runner_trades if o.get('duration_minutes', 999) <= 15 and o['outcome']['pnl'] > 0]
+        slow_winners = [o for o in runner_trades if o.get('duration_minutes', 999) > 20 and o['outcome']['pnl'] > 0]
+        stalled_losers = [o for o in runner_trades if o.get('duration_minutes', 999) > 20 and o['outcome']['pnl'] < 0]
+        
+        if quick_winners and slow_winners:
+            quick_avg = sum(o['outcome']['pnl'] for o in quick_winners) / len(quick_winners)
+            slow_avg = sum(o['outcome']['pnl'] for o in slow_winners) / len(slow_winners)
+            
+            logger.debug(f"[TIMEOUT RL] {regime}: Quick (<15min): ${quick_avg:.2f} ({len(quick_winners)} trades), "
+                        f"Slow (>20min): ${slow_avg:.2f} ({len(slow_winners)} trades)")
+        
+        # If many stalled losers, tighten timeout
+        if len(stalled_losers) >= 5:
+            stalled_avg_loss = sum(o['outcome']['pnl'] for o in stalled_losers) / len(stalled_losers)
+            current_timeout = self.learned_params[regime].get('sideways_timeout_minutes', 15)
+            
+            # If losing trades stalled too long, reduce timeout
+            if stalled_avg_loss < -50 and current_timeout > 8:
+                new_timeout = max(8, current_timeout - 2)
+                self.learned_params[regime]['sideways_timeout_minutes'] = new_timeout
+                logger.info(f"[TIMEOUT RL] {regime}: {len(stalled_losers)} stalled losers (avg ${stalled_avg_loss:.2f}), "
+                           f"reducing timeout to {new_timeout} minutes")
+        
+        # If slow winners exist and profitable, loosen timeout
+        elif len(slow_winners) >= 5:
+            slow_avg = sum(o['outcome']['pnl'] for o in slow_winners) / len(slow_winners)
+            current_timeout = self.learned_params[regime].get('sideways_timeout_minutes', 15)
+            
+            if slow_avg > 100 and current_timeout < 25:
+                new_timeout = min(25, current_timeout + 2)
+                self.learned_params[regime]['sideways_timeout_minutes'] = new_timeout
+                logger.info(f"[TIMEOUT RL] {regime}: {len(slow_winners)} slow winners (avg ${slow_avg:.2f}), "
+                           f"increasing timeout to {new_timeout} minutes")
     
     def _learn_scaling_strategies(self, regime: str, outcomes: list):
         """
@@ -386,27 +614,53 @@ class AdaptiveExitManager:
 
     
     def load_experiences(self):
-        """Load past exit experiences from file."""
-        logger.info(f"[DEBUG] Attempting to load exit experiences from: {self.experience_file}")
-        logger.info(f"[DEBUG] File exists check: {os.path.exists(self.experience_file)}")
+        """Load past exit experiences from cloud API or local file (fallback)."""
+        
+        # Try cloud first if configured
+        if self.use_cloud:
+            logger.info(f"[CLOUD] Fetching exit experiences from: {self.cloud_api_url}/api/ml/get_exit_experiences")
+            try:
+                response = requests.get(
+                    f"{self.cloud_api_url}/api/ml/get_exit_experiences",
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get('success'):
+                        self.exit_experiences = data.get('exit_experiences', [])
+                        logger.info(f"✅ [CLOUD] Loaded {len(self.exit_experiences):,} exit experiences from cloud pool")
+                        
+                        # Extract learned params if cloud stored them
+                        if self.exit_experiences and len(self.exit_experiences) > 10:
+                            self.update_learned_parameters()  # Re-learn from cloud data
+                        return
+                    else:
+                        logger.warning(f"[CLOUD] API returned error: {data.get('error', 'Unknown error')}")
+                else:
+                    logger.warning(f"[CLOUD] API returned status {response.status_code}")
+                    
+            except Exception as e:
+                logger.error(f"[CLOUD] Failed to fetch from cloud: {e}")
+                logger.warning("[CLOUD] Falling back to local file...")
+        
+        # Fallback to local file
+        logger.info(f"[LOCAL] Loading exit experiences from: {self.experience_file}")
         
         if os.path.exists(self.experience_file):
             try:
-                logger.info(f"[DEBUG] Opening exit file...")
                 with open(self.experience_file, 'r') as f:
-                    logger.info(f"[DEBUG] Loading exit JSON...")
                     data = json.load(f)
-                    logger.info(f"[DEBUG] Exit JSON loaded successfully. Keys: {list(data.keys())}")
                     self.exit_experiences = data.get('exit_experiences', [])
                     self.learned_params = data.get('learned_params', self.learned_params)
                     
-                    logger.info(f"Loaded {len(self.exit_experiences)} past exit experiences")
+                    logger.info(f"[LOCAL] Loaded {len(self.exit_experiences)} past exit experiences from local file")
             except Exception as e:
-                logger.error(f"Failed to load exit experiences: {e}")
+                logger.error(f"[LOCAL] Failed to load exit experiences: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
         else:
-            logger.warning(f"[DEBUG] Exit experience file not found: {self.experience_file}")
+            logger.warning(f"[LOCAL] Exit experience file not found: {self.experience_file}")
     
     
     def get_stop_multiplier(self, regime: str) -> float:
@@ -471,9 +725,122 @@ class AdaptiveExitManager:
         
         return (False, "")
     
+    def should_exit_early(self, position: dict, current_market: dict, current_price: float) -> tuple:
+        """
+        Determine if we should exit entire position early based on learned deterioration patterns.
+        
+        Args:
+            position: Current position dict with entry_price, side, time_in_trade_minutes, etc.
+            current_market: Current market state (rsi, volume_ratio, regime, etc.)
+            current_price: Current market price
+            
+        Returns: (should_exit: bool, reason: str)
+        """
+        if len(self.exit_experiences) < 50:
+            return (False, "")  # Need enough data
+        
+        # Get position details
+        side = position.get('side', 'long')
+        entry_price = position.get('entry_price', current_price)
+        time_in_trade = position.get('time_in_trade_minutes', 0)
+        regime = current_market.get('regime', 'NORMAL')
+        rsi = current_market.get('rsi', 50)
+        
+        # Calculate current P&L in ticks
+        tick_size = position.get('tick_size', 0.25)
+        if side == 'long':
+            unrealized_ticks = (current_price - entry_price) / tick_size
+        else:
+            unrealized_ticks = (entry_price - current_price) / tick_size
+        
+        # Find similar situations that became losses
+        similar_bad_exits = []
+        for exp in self.exit_experiences:
+            exp_outcome = exp.get('outcome', {})
+            exp_market = exp.get('market_state', {})
+            
+            # Only look at losses
+            if exp_outcome.get('pnl', 0) >= 0:
+                continue
+            
+            # Match regime
+            if exp.get('regime', '') != regime:
+                continue
+            
+            # Similar RSI
+            rsi_diff = abs(exp_market.get('rsi', 50) - rsi)
+            if rsi_diff > 15:
+                continue
+            
+            # Similar time in trade
+            exp_duration = exp_outcome.get('duration', 0)
+            if abs(exp_duration - time_in_trade) > 30:
+                continue
+            
+            similar_bad_exits.append(exp_outcome)
+        
+        # If 10+ similar situations lost, exit early
+        if len(similar_bad_exits) >= 10:
+            avg_loss = sum(e.get('pnl', 0) for e in similar_bad_exits) / len(similar_bad_exits)
+            
+            if unrealized_ticks < 15:  # Not deeply profitable
+                reason = f"Early exit - {len(similar_bad_exits)} similar → ${avg_loss:.0f} avg loss"
+                logger.warning(f"[EXIT RL] {reason}")
+                return (True, reason)
+        
+        return (False, "")
+    
+    def should_hold_runner(self, position: dict, current_market: dict, r_multiple: float) -> bool:
+        """
+        Determine if runner should be held longer based on learned patterns.
+        
+        Args:
+            position: Position dict
+            current_market: Current market state
+            r_multiple: Current R-multiple
+            
+        Returns: True to hold runner, False to exit
+        """
+        if len(self.exit_experiences) < 30:
+            return False
+        
+        regime = current_market.get('regime', 'NORMAL')
+        
+        # Find big winners in this regime
+        big_winners = []
+        for exp in self.exit_experiences:
+            if exp.get('regime', '') != regime:
+                continue
+            
+            outcome = exp.get('outcome', {})
+            achieved_r = outcome.get('r_multiple', 0)
+            
+            if achieved_r > 5.0:
+                big_winners.append(achieved_r)
+        
+        # If 15+ examples of 5R+ winners
+        if len(big_winners) >= 15:
+            avg_big_r = sum(big_winners) / len(big_winners)
+            
+            # Hold if below 80% of average big winner
+            if r_multiple < avg_big_r * 0.8:
+                logger.info(f"[EXIT RL] Hold runner - {len(big_winners)} similar averaged {avg_big_r:.1f}R")
+                return True
+        
+        return False
+    
     
     def save_experiences(self):
-        """Save exit experiences to file with JSON-safe serialization."""
+        """Save exit experiences to cloud API or local file (fallback)."""
+        
+        # Try cloud first if configured
+        if self.use_cloud:
+            # Note: Individual experiences already saved via record_exit_outcome()
+            # This method is for batch saves or fallback
+            logger.info(f"[CLOUD] Using cloud API - experiences saved individually on record")
+            return
+        
+        # Fallback to local file
         try:
             import json
             
@@ -496,8 +863,10 @@ class AdaptiveExitManager:
                     'learned_params': self.learned_params,
                     'total_exits': len(self.exit_experiences)
                 }, f, indent=2, cls=NumpyEncoder)
+                
+            logger.info(f"[LOCAL] Saved {len(self.exit_experiences)} exit experiences to local file")
         except Exception as e:
-            logger.error(f"Failed to save exit experiences: {e}")
+            logger.error(f"[LOCAL] Failed to save exit experiences: {e}")
 
 
 def detect_market_regime(bars: list, current_atr: float) -> str:
@@ -980,7 +1349,21 @@ def get_adaptive_exit_params(bars: list, position: Dict, current_price: float,
         learned = adaptive_manager.learned_params.get(market_regime, {})
         breakeven_threshold_multiplier = learned.get('breakeven_mult', 1.0)
         trailing_distance_multiplier = learned.get('trailing_mult', 1.0)
-        logger.debug(f"[RL LEARNED] {market_regime}: BE={breakeven_threshold_multiplier:.2f}x, Trail={trailing_distance_multiplier:.2f}x")
+        
+        # EXPLORATION: 30% of the time, use randomized multipliers to discover better settings
+        exploration_rate = config.get('exploration_rate', 0.0)  # Default 0 for live trading
+        if exploration_rate > 0 and random.random() < exploration_rate:
+            # Randomize multipliers within safe ranges (±20% variation)
+            breakeven_threshold_multiplier *= random.uniform(0.8, 1.2)
+            trailing_distance_multiplier *= random.uniform(0.8, 1.2)
+            
+            # Clamp to safe bounds (same as learning algorithm)
+            breakeven_threshold_multiplier = max(0.6, min(1.3, breakeven_threshold_multiplier))
+            trailing_distance_multiplier = max(0.6, min(1.3, trailing_distance_multiplier))
+            
+            logger.info(f"[EXIT EXPLORATION] Randomized params for {market_regime}: BE={breakeven_threshold_multiplier:.2f}x, Trail={trailing_distance_multiplier:.2f}x")
+        else:
+            logger.debug(f"[RL LEARNED] {market_regime}: BE={breakeven_threshold_multiplier:.2f}x, Trail={trailing_distance_multiplier:.2f}x")
     else:
         # Fallback: Use regime-specific defaults only when NO learning available
         logger.debug(f"[NO LEARNING] Using fallback defaults for {market_regime}")
@@ -1048,8 +1431,8 @@ def get_adaptive_exit_params(bars: list, position: Dict, current_price: float,
     logger.info(f"[BREAKEVEN] {adaptive_breakeven_threshold}t ({be_change:+.0f}% vs base {base_breakeven_threshold}t)")
     logger.info(f"[TRAILING] {adaptive_trailing_distance}t @ {adaptive_trailing_min_profit}t ({trail_change:+.0f}% vs base {base_trailing_distance}t)")
     
-    if adaptive_manager and base_breakeven_mult != 1.0:
-        logger.info(f"[LEARNED] BE mult={base_breakeven_mult:.2f}x, Trail mult={base_trailing_mult:.2f}x")
+    if adaptive_manager and breakeven_threshold_multiplier != 1.0:
+        logger.info(f"[LEARNED] BE mult={breakeven_threshold_multiplier:.2f}x, Trail mult={trailing_distance_multiplier:.2f}x")
     
     logger.info(f"{'='*70}\n")
     
@@ -1064,5 +1447,5 @@ def get_adaptive_exit_params(bars: list, position: Dict, current_price: float,
         "situation_factors": situation_factors,
         "decision_reasons": aggression_reasons if aggression_reasons else ["balanced"],
         "duration_minutes": duration_minutes,
-        "learned_multiplier": base_breakeven_mult  # Include learned multiplier for tracking
+        "learned_multiplier": breakeven_threshold_multiplier  # Include learned multiplier for tracking
     }

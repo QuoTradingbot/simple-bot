@@ -322,8 +322,8 @@ class BotConfiguration:
     # Reinforcement Learning Parameters
     # RL ENABLED - Learning which signals to trust from experience
     rl_enabled: bool = True  # ENABLED - RL layer learns signal quality
-    rl_exploration_rate: float = 0.30  # 30% exploration (random decisions)
-    rl_min_exploration_rate: float = 0.05  # Minimum exploration after decay
+    rl_exploration_rate: float = 0.0  # NO exploration in live trading (use learned params only)
+    rl_min_exploration_rate: float = 0.0  # No minimum exploration in production
     rl_exploration_decay: float = 0.995  # Decay rate per signal
     rl_confidence_threshold: float = 0.5  # Minimum confidence to take signal (USER CONFIGURABLE via GUI)
     rl_min_contracts: int = 1  # Minimum contracts (low confidence)

@@ -42,9 +42,23 @@ app = FastAPI(
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# JSON encoder for numpy types
+class NumpyEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles numpy types."""
+    def default(self, obj):
+        if hasattr(obj, 'item'):  # numpy scalar
+            return obj.item()
+        elif hasattr(obj, 'tolist'):  # numpy array
+            return obj.tolist()
+        return super().default(obj)
+
 # Global instances (initialized on startup)
 db_manager: Optional[DatabaseManager] = None
 redis_manager: Optional[RedisManager] = None
+
+# Global RL experience pools (shared across all users)
+signal_experiences = []  # Signal RL learning pool
+exit_experiences = []    # Exit RL learning pool (deprecated, now in PostgreSQL)
 
 # ============================================================================
 # RATE LIMITING (Redis-backed with in-memory fallback)
@@ -642,49 +656,83 @@ async def get_dashboard_stats(
 # ============================================================================
 
 # ============================================================================
-# RL EXPERIENCE STORAGE - HIVE MIND
+# RL EXPERIENCE INITIALIZATION - POSTGRESQL HIVE MIND
 # ============================================================================
 
-# Single shared RL experience pool (everyone runs same strategy)
-# Starts with Kevin's 178K signal + 121K exit experiences
-# Grows as all users contribute (collective learning - hive mind!)
-signal_experiences = []  # Shared across all users
-exit_experiences = []    # Shared across all users
-
 def load_initial_experiences():
-    """Load Kevin's proven experiences to seed the hive mind"""
-    global signal_experiences, exit_experiences
+    """
+    Initialize PostgreSQL database and migrate exit experiences from JSON.
+    ALL USERS share signal + exit experiences from PostgreSQL!
+    """
     import json
     import os
     
     try:
-        # Debug: Check current directory
-        logger.info(f"📂 Current working directory: {os.getcwd()}")
-        logger.info(f"📂 Files in directory: {os.listdir('.')}")
+        # Create database tables (including new ExitExperience table)
+        from database import Base, DatabaseManager
         
-        # Load signal experiences (6,880 trades)
-        if os.path.exists("signal_experience.json"):
-            with open("signal_experience.json", "r") as f:
-                data = json.load(f)
-                signal_experiences = data.get("experiences", [])
-            logger.info(f"✅ Loaded {len(signal_experiences):,} signal experiences from Kevin's backtests")
-        else:
-            logger.warning("⚠️  signal_experience.json not found!")
+        # Initialize database and create tables if they don't exist
+        db_manager = DatabaseManager()
+        engine = db_manager.get_engine()
+        Base.metadata.create_all(engine)
+        logger.info("✅ Database tables initialized (including ExitExperience table)")
         
-        # Load exit experiences (2,961 exits)
+        # Import exit experiences from JSON to PostgreSQL (one-time migration)
         if os.path.exists("exit_experience.json"):
-            with open("exit_experience.json", "r") as f:
-                data = json.load(f)
-                exit_experiences = data.get("exit_experiences", [])
-            logger.info(f"✅ Loaded {len(exit_experiences):,} exit experiences from Kevin's backtests")
+            from database import ExitExperience
+            session = db_manager.get_session()
+            
+            try:
+                # Check if table is empty
+                count = session.query(ExitExperience).count()
+                
+                if count == 0:
+                    logger.info("🔄 Migrating exit experiences from JSON to PostgreSQL...")
+                    
+                    # Load JSON data
+                    with open("exit_experience.json", "r") as f:
+                        data = json.load(f)
+                        json_experiences = data.get("exit_experiences", [])
+                    
+                    # Import each experience
+                    for exp in json_experiences:
+                        exit_exp = ExitExperience(
+                            regime=exp.get('regime', 'UNKNOWN'),
+                            exit_params_json=json.dumps(exp.get('exit_params', {})),
+                            outcome_json=json.dumps(exp.get('outcome', {})),
+                            situation_json=json.dumps(exp.get('situation', {})),
+                            market_state_json=json.dumps(exp.get('market_state', {})),
+                            partial_exits_json=json.dumps(exp.get('partial_exits', [])),
+                            quality_score=exp.get('quality_score')
+                        )
+                        session.add(exit_exp)
+                    
+                    session.commit()
+                    logger.info(f"✅ Migrated {len(json_experiences):,} exit experiences to PostgreSQL")
+                else:
+                    logger.info(f"✅ PostgreSQL already has {count:,} exit experiences - skipping migration")
+                
+            except Exception as e:
+                session.rollback()
+                logger.error(f"❌ Migration error: {e}")
+            finally:
+                session.close()
         else:
-            logger.warning("⚠️  exit_experience.json not found!")
+            logger.warning("⚠️  exit_experience.json not found - starting fresh")
         
-        logger.info(f"🧠 HIVE MIND INITIALIZED: {len(signal_experiences):,} signals + {len(exit_experiences):,} exits")
-        logger.info(f"   All users will learn from and contribute to this shared wisdom pool!")
+        # Count experiences in database
+        session = db_manager.get_session()
+        try:
+            from database import RLExperience, ExitExperience
+            signal_count = session.query(RLExperience).filter_by(experience_type='SIGNAL').count()
+            exit_count = session.query(ExitExperience).count()
+            logger.info(f"🧠 HIVE MIND INITIALIZED: {signal_count:,} signals + {exit_count:,} exits IN POSTGRESQL")
+            logger.info(f"   🌍 ALL USERS share and contribute to this collective learning pool!")
+        finally:
+            session.close()
         
     except Exception as e:
-        logger.error(f"❌ Could not load initial experiences: {e}")
+        logger.error(f"❌ Could not initialize database: {e}")
         logger.info("Starting with empty experience pool")
 
 
@@ -714,11 +762,12 @@ def load_database_experiences(db: Session):
                 'pnl': exp.pnl,
                 'confidence': exp.confidence_score,
                 'quality_score': exp.quality_score,
-                'rsi': exp.rsi,
-                'vwap_distance': exp.vwap_distance,
-                'vix': exp.vix,
-                'day_of_week': exp.day_of_week,
-                'hour_of_day': exp.hour_of_day,
+                # Handle new columns gracefully (may not exist in old schema)
+                'rsi': getattr(exp, 'rsi', None),
+                'vwap_distance': getattr(exp, 'vwap_distance', None),
+                'vix': getattr(exp, 'vix', None),
+                'day_of_week': getattr(exp, 'day_of_week', None),
+                'hour_of_day': getattr(exp, 'hour_of_day', None),
                 'timestamp': exp.timestamp.isoformat(),
                 'experience_id': f"db_{exp.id}"
             }
@@ -729,6 +778,7 @@ def load_database_experiences(db: Session):
         
     except Exception as e:
         logger.error(f"❌ Could not load database experiences: {e}")
+        logger.info("📊 Continuing with baseline signal experiences only")
 
 # Load experiences at startup
 load_initial_experiences()
@@ -951,7 +1001,7 @@ def calculate_similarity_score(exp: Dict, current_rsi: float, current_vwap_dist:
     state = exp.get('state', exp)
     
     # RSI similarity (±5 range = very similar) - 25% weight
-    exp_rsi = state.get('rsi', 50)
+    exp_rsi = state.get('rsi') or 50.0  # Default to neutral RSI if None
     rsi_diff = abs(exp_rsi - current_rsi)
     if rsi_diff <= 5:
         rsi_similarity = 1.0 - (rsi_diff / 5)
@@ -963,7 +1013,7 @@ def calculate_similarity_score(exp: Dict, current_rsi: float, current_vwap_dist:
         weights.append(0.25)
     
     # VWAP distance similarity (±0.002 range) - 20% weight
-    exp_vwap_dist = state.get('vwap_distance', 0)
+    exp_vwap_dist = state.get('vwap_distance', 0.0) or 0.0  # Handle None values
     vwap_diff = abs(exp_vwap_dist - current_vwap_dist)
     if vwap_diff <= 0.002:
         vwap_similarity = 1.0 - (vwap_diff / 0.002)
@@ -1522,6 +1572,141 @@ async def save_rejected_signal(signal: Dict):
         
     except Exception as e:
         logger.error(f"Error saving rejected signal: {e}")
+        return {"saved": False, "error": str(e)}
+
+
+@app.get("/api/ml/get_exit_experiences")
+async def get_exit_experiences():
+    """
+    Get all exit experiences for Exit RL learning from PostgreSQL.
+    ALL USERS share the same collective exit learning pool!
+    """
+    try:
+        from database import DatabaseManager, ExitExperience
+        
+        db_manager = DatabaseManager()
+        session = db_manager.get_session()
+        
+        try:
+            # Query all exit experiences from PostgreSQL
+            experiences = session.query(ExitExperience).order_by(ExitExperience.timestamp.desc()).all()
+            
+            # Convert to dict format matching JSON file structure
+            exit_experiences_list = [exp.to_dict() for exp in experiences]
+            
+            logger.info(f"📤 Serving {len(exit_experiences_list):,} exit experiences from PostgreSQL")
+            
+            return {
+                "success": True,
+                "exit_experiences": exit_experiences_list,
+                "total_count": len(exit_experiences_list),
+                "message": f"🌍 Loaded {len(exit_experiences_list):,} shared exit experiences from PostgreSQL"
+            }
+            
+        finally:
+            session.close()
+            
+    except Exception as e:
+        logger.error(f"❌ Error getting exit experiences from PostgreSQL: {e}")
+        return {
+            "success": False,
+            "exit_experiences": [],
+            "total_count": 0,
+            "error": str(e)
+        }
+
+
+@app.post("/api/ml/save_exit_experience")
+async def save_exit_experience(experience: dict):
+    """
+    Save new exit experience to PostgreSQL - ALL USERS contribute!
+    Every trade exit adds to the collective learning pool.
+    
+    NEW: Saves to rl_experiences table with 9-feature context for pattern matching
+    """
+    try:
+        from database import DatabaseManager, RLExperience
+        from datetime import datetime
+        
+        db_manager = DatabaseManager()
+        session = db_manager.get_session()
+        
+        try:
+            # Extract 9-feature market context (RSI, volume_ratio, hour, day_of_week, streak, recent_pnl, VIX, VWAP distance, ATR)
+            market_state = experience.get('market_state', {})
+            outcome = experience.get('outcome', {})
+            
+            # Get or create a default user for backtest data
+            from database import User
+            default_user = session.query(User).filter_by(account_id='backtest').first()
+            if not default_user:
+                # Create backtest user if doesn't exist
+                default_user = User(
+                    account_id='backtest',
+                    email='backtest@quotrading.com',
+                    license_key='BACKTEST-KEY',
+                    license_type='SYSTEM',
+                    license_status='ACTIVE'
+                )
+                session.add(default_user)
+                session.flush()
+            
+            # Create RLExperience record for exit (experience_type='EXIT')
+            exit_exp = RLExperience(
+                experience_type='EXIT',
+                user_id=default_user.id,  # Use backtest user ID
+                account_id='backtest',
+                symbol='ES',  # Default to ES
+                signal_type=outcome.get('side', 'long').upper(),  # LONG or SHORT
+                outcome='WIN' if outcome.get('win', False) else 'LOSS',
+                pnl=float(outcome.get('pnl', 0.0)),
+                confidence_score=None,
+                quality_score=None,
+                
+                # 9-feature market context for exit pattern matching
+                rsi=float(market_state.get('rsi', 50.0)),
+                volume_ratio=float(market_state.get('volume_ratio', 1.0)),
+                hour_of_day=int(market_state.get('hour', 12)),
+                day_of_week=int(market_state.get('day_of_week', 0)),
+                streak=int(market_state.get('streak', 0)),
+                recent_pnl=float(market_state.get('recent_pnl', 0.0)),
+                vix=float(market_state.get('vix', 15.0)),
+                vwap_distance=float(market_state.get('vwap_distance', 0.0)),
+                atr=float(market_state.get('atr', 0.0)),
+                
+                # Additional fields (not used for pattern matching but stored for reference)
+                entry_price=None,
+                vwap=None,
+                price=None,
+                side=outcome.get('side', 'long'),
+                
+                timestamp=datetime.fromisoformat(experience.get('timestamp', datetime.utcnow().isoformat()))
+            )
+            
+            session.add(exit_exp)
+            session.commit()
+            
+            # Get updated count
+            total_count = session.query(RLExperience).filter(
+                RLExperience.experience_type == 'EXIT'
+            ).count()
+            
+            logger.info(f"✅ Saved EXIT experience to rl_experiences table (now {total_count:,} total exits)")
+            
+            return {
+                "saved": True,
+                "total_exit_experiences": total_count,
+                "message": f"🌍 Exit experience saved to rl_experiences table ({total_count:,} exits with 9 features)"
+            }
+            
+        except Exception as e:
+            session.rollback()
+            raise e
+        finally:
+            session.close()
+        
+    except Exception as e:
+        logger.error(f"❌ Error saving exit experience to PostgreSQL: {e}")
         return {"saved": False, "error": str(e)}
 
 

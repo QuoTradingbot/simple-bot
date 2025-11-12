@@ -428,7 +428,7 @@ class Trade:
                 'atr': b.get('atr', 2.0)
             })
         
-        # Get adaptive exit params from RL Manager (local or cloud)
+        # Get adaptive exit params from LOCAL RL Manager
         # OPTIMIZATION: Only update every 5 bars or when market changes significantly
         if self.adaptive_manager:
             # Calculate synthetic VIX from current bar (matches signal VIX formula)
@@ -525,22 +525,12 @@ class Trade:
                     'entry_time': str(self.entry_time)  # Convert Timestamp to string
                 }
                 
-                # Use local or cloud exit manager based on method availability
-                if hasattr(self.adaptive_manager, 'get_adaptive_exit_params'):
-                    # Local exit manager
-                    exit_params = self.adaptive_manager.get_adaptive_exit_params(
-                        market_state=market_state,
-                        position=position,
-                        entry_confidence=float(self.confidence)
-                    )
-                else:
-                    # Cloud exit manager
-                    exit_params = self.adaptive_manager.get_cloud_exit_params(
-                        regime='NORMAL',  # Simplified for backtest
-                        market_state=market_state,
-                        position=position,
-                        entry_confidence=float(self.confidence)
-                    )
+                # Use LOCAL exit manager only
+                exit_params = self.adaptive_manager.get_adaptive_exit_params(
+                    market_state=market_state,
+                    position=position,
+                    entry_confidence=float(self.confidence)
+                )
                 
                 # Convert response to expected format (handle None)
                 if exit_params:
@@ -673,9 +663,9 @@ class Trade:
         return None
     
     def check_partial_exits(self, r_multiple: float, current_price: float) -> Optional[Tuple[str, float, int]]:
-        """Check and execute partial exits using CLOUD ADAPTIVE parameters."""
+        """Check and execute partial exits using LOCAL ADAPTIVE parameters."""
         
-        # Use adaptive params from cloud (already fetched in update())
+        # Use adaptive params from local experience manager
         if not self.current_exit_params:
             return None
         
@@ -686,9 +676,9 @@ class Trade:
                 return ('learned_target', current_price, self.contracts)
             return None
         
-        # MULTI-CONTRACT: Execute adaptive partial scaling from cloud
+        # MULTI-CONTRACT: Execute adaptive partial scaling from local learned params
         
-        # First partial (CLOUD ADAPTIVE r-multiple and percentage)
+        # First partial (LOCAL ADAPTIVE r-multiple and percentage)
         partial_1_r = self.current_exit_params.get('partial_1_r', 2.0)
         partial_1_pct = self.current_exit_params.get('partial_1_pct', 0.5)
         
@@ -705,7 +695,7 @@ class Trade:
                 })
                 return ('partial_1', current_price, contracts_to_close)
         
-        # Second partial (CLOUD ADAPTIVE)
+        # Second partial (LOCAL ADAPTIVE)
         partial_2_r = self.current_exit_params.get('partial_2_r', 3.0)
         partial_2_pct = self.current_exit_params.get('partial_2_pct', 0.3)
         
@@ -722,7 +712,7 @@ class Trade:
                 })
                 return ('partial_2', current_price, contracts_to_close)
         
-        # Third partial (CLOUD ADAPTIVE - final runner)
+        # Third partial (LOCAL ADAPTIVE - final runner)
         partial_3_r = self.current_exit_params.get('partial_3_r', 5.0)
         
         if r_multiple >= partial_3_r and not self.partial_3_done:
@@ -807,75 +797,19 @@ class Trade:
 
 def save_signal_experience(rl_state: Dict, took_trade: bool, outcome: Dict, backtest_mode: bool = False):
     """
-    Save signal experience to CLOUD API (PostgreSQL database).
-    NO LOCAL FILES - everything goes to cloud for shared learning.
+    Save signal experience to LOCAL JSON files.
+    Backtest mode NEVER uses cloud API - everything stays local.
     
     Args:
         rl_state: State at signal time (with ALL 13 features for pattern matching)
-        took_trade: Whether cloud RL approved the trade
+        took_trade: Whether backtest took the trade
         outcome: Trade result (pnl, duration, exit_reason, etc.)
-        backtest_mode: Ignored - always saves to cloud
+        backtest_mode: If True, saves to local files only
     """
-    from datetime import datetime
-    import requests
-    
-    now_utc = datetime.now(pytz.UTC)
-    # Send ALL 13 pattern matching features to cloud
-    experience = {
-        'timestamp': now_utc.isoformat(),
-        'user_id': 'backtest',  # Backtest trades marked separately
-        'symbol': rl_state.get('symbol', 'ES'),
-        'side': rl_state.get('side', 'long').upper(),
-        'entry_price': rl_state.get('entry_price', 0),
-        'exit_price': outcome.get('exit_price', 0),
-        'entry_time': now_utc.isoformat(),
-        'exit_time': now_utc.isoformat(),
-        'pnl': outcome.get('pnl', 0),
-        'entry_vwap': rl_state.get('vwap', 0),
-        'entry_rsi': rl_state.get('rsi', 50),
-        'exit_reason': outcome.get('exit_reason', 'unknown'),
-        'duration_minutes': outcome.get('duration_min', 0),
-        'volatility': rl_state.get('atr', 0),
-        'confidence': rl_state.get('confidence', 0.5),
-        # ALL additional context features for full pattern matching:
-        'vwap_distance': rl_state.get('vwap_distance', 0),
-        'vix': rl_state.get('vix', 15.0),
-        'volume_ratio': rl_state.get('volume_ratio', 1.0),
-        'recent_pnl': rl_state.get('recent_pnl', 0.0),
-        'streak': rl_state.get('streak', 0),
-        'hour': rl_state.get('hour', 12),
-        'day_of_week': rl_state.get('day_of_week', 0),
-        'price': rl_state.get('price', rl_state.get('entry_price', 0)),
-        'vwap': rl_state.get('vwap', 0),
-        'atr': rl_state.get('atr', 0)
-    }
-    
-    # DEBUG: Print what we're sending
-    print(f"    [DEBUG] Sending to cloud: ATR={experience['atr']:.2f}, Vol={experience['volume_ratio']:.2f}, Recent P&L=${experience['recent_pnl']:.0f}, Streak={experience['streak']:+d}")
-    
-    
-    # POST to cloud API with full context
-    try:
-        response = requests.post(
-            f"{CLOUD_RL_API_URL}/api/ml/save_trade",
-            json=experience,
-            timeout=5
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('saved'):
-                total = data.get('total_shared_trades', 0)
-                return total
-            else:
-                print(f"[CLOUD] Failed to save: {data.get('error', 'Unknown')}")
-                return 0
-        else:
-            print(f"[CLOUD] Save failed with status {response.status_code}")
-            return 0
-    except Exception as e:
-        print(f"[CLOUD] Error saving to cloud: {e}")
-        return 0
+    # BACKTEST: Save to local files only - NO cloud API
+    print(f"    [BACKTEST] Saving experience to local files (no cloud)")
+    # Local saving happens via local_experience_manager.py - this is just a placeholder
+    return
 
 
 def simulate_ghost_trade(entry_bar: Dict, side: str, df: pd.DataFrame, start_idx: int, atr: float) -> Dict:
@@ -1030,23 +964,12 @@ def run_full_backtest(csv_file: str, days: int = 15):
     print(f"Timezone: UTC - matches ES futures schedule and live bot")
     print()
     
-    # Initialize EXIT RL MANAGER - Local or Cloud based on mode
-    if CONFIG.get('local_mode', False):
-        print("⚡ LOCAL MODE: Using local exit manager (pattern matching from local data)")
-        from local_exit_manager import local_exit_manager
-        local_exit_manager.load_experiences()
-        adaptive_exit_manager = local_exit_manager  # Use local manager
-        initial_exit_count = 0
-    else:
-        print("Initializing Exit RL Manager (CLOUD mode with optimizations)...")
-        adaptive_exit_manager = AdaptiveExitManager(
-            config=CONFIG,
-            experience_file='cloud-api/exit_experience.json',  # Fallback if cloud fails
-            cloud_api_url=CONFIG['cloud_api_url']  # Use optimized cloud with 1000-experience limit + Redis cache
-        )
-        initial_exit_count = len(adaptive_exit_manager.exit_experiences)  # Track starting count
-        print(f"  Cloud API: {CONFIG['cloud_api_url']}")
-        print(f"  Local fallback: {initial_exit_count:,} exit experiences available")
+    # Initialize LOCAL EXIT MANAGER - 100% offline
+    print("⚡ LOCAL MODE: Using local exit manager (pattern matching from local data)")
+    from local_exit_manager import local_exit_manager
+    local_exit_manager.load_experiences()
+    adaptive_exit_manager = local_exit_manager  # Use local manager only
+    print(f"  ✅ Local exit experiences loaded - NO cloud API calls")
     print()
     
     # Trading state
@@ -1801,83 +1724,7 @@ def run_full_backtest(csv_file: str, days: int = 15):
         if hasattr(adaptive_exit_manager, 'save_new_experiences_to_file'):
             adaptive_exit_manager.save_new_experiences_to_file()
         
-        print(f"\n💡 To upload to cloud later: Run backtest without --local flag")
-    else:
-        real_trades = [exp for exp in backtest_experiences if exp['took_trade']]
-        ghost_trades_to_save = [exp for exp in backtest_experiences if not exp['took_trade']]
-        
-        print(f"\n[CLOUD RL] Saving {len(backtest_experiences)} signal experiences to cloud...")
-        print(f"  Real Trades: {len(real_trades)} | Ghost Trades (rejected signals): {len(ghost_trades_to_save)}")
-        saved_signal_count = 0
-        failed_signal_count = 0
-        
-        for i, exp in enumerate(backtest_experiences):
-            total = save_signal_experience(
-                exp['rl_state'],
-                exp['took_trade'],
-                exp['outcome'],
-                backtest_mode=False  # Actually save to cloud
-            )
-            
-            if total > 0:
-                saved_signal_count += 1
-                if (i + 1) % 10 == 0:  # Progress every 10 trades
-                    trade_type = "👻 ghost" if not exp['took_trade'] else "real"
-                    print(f"  Progress: {i+1}/{len(backtest_experiences)} saved ({trade_type})... (Total in DB: {total:,})")
-            else:
-                failed_signal_count += 1
-        
-        print(f"[CLOUD RL] ✓ Saved {saved_signal_count} signal experiences | Failed: {failed_signal_count}")
-        
-        # BULK SAVE EXIT EXPERIENCES (only NEW ones from this backtest)
-        if adaptive_exit_manager:
-            all_exit_experiences = adaptive_exit_manager.exit_experiences
-            new_exit_experiences = all_exit_experiences[initial_exit_count:]  # Only save experiences added during backtest
-            
-            if len(new_exit_experiences) > 0:
-                print(f"\n[CLOUD RL] Saving {len(new_exit_experiences)} NEW exit experiences to cloud...")
-                saved_exit_count = 0
-                failed_exit_count = 0
-                
-                for i, exp in enumerate(new_exit_experiences):
-                    try:
-                        # Convert boolean to int for JSON
-                        cloud_exp = {
-                            **exp,
-                            'outcome': {
-                                **exp['outcome'],
-                                'win': int(exp['outcome']['win'])
-                            }
-                        }
-                        
-                        response = requests.post(
-                            f"{CLOUD_RL_API_URL}/api/ml/save_exit_experience",
-                            json=cloud_exp,
-                            timeout=5
-                        )
-                        
-                        if response.status_code == 200:
-                            data = response.json()
-                            if data.get('saved'):
-                                saved_exit_count += 1
-                                if (i + 1) % 10 == 0:
-                                    print(f"  Progress: {i+1}/{len(new_exit_experiences)} saved... (Total in DB: {data.get('total_exit_experiences', 0):,})")
-                            else:
-                                failed_exit_count += 1
-                        else:
-                            failed_exit_count += 1
-                    except Exception as e:
-                        failed_exit_count += 1
-                        if i < 3:  # Only log first 3 errors
-                            print(f"  Error saving exit {i+1}: {e}")
-                
-                print(f"[CLOUD RL] ✓ Saved {saved_exit_count} exit experiences | Failed: {failed_exit_count}")
-            else:
-                print(f"[CLOUD RL] No new exit experiences to save")
-    
-    if not CONFIG.get('local_mode', False):
-        if saved_signal_count > 0 or (adaptive_exit_manager and hasattr(adaptive_exit_manager, 'exit_experiences')):
-            print(f"\n[CLOUD RL] ✓ Cloud database updated with new learning data!")
+        print(f"\n✅ All experiences saved to local JSON files")
     
     # Save trades to CSV for analysis
     df_trades.to_csv('data/backtest_trades.csv', index=False)

@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-COMPLETE TRADING SYSTEM BACKTEST
-=================================
+COMPLETE TRADING SYSTEM BACKTEST - 100% LOCAL ONLY
+===================================================
 Full simulation of QuoTrading bot with ALL features:
-- Cloud ML confidence filtering (70% threshold)
-- Adaptive exits with RL learning
+- LOCAL pattern matching (no cloud API calls)
+- Adaptive exits with local RL learning
 - Partial exits (runners at 2R, 3R, 5R)
 - Breakeven protection
 - Trailing stops
@@ -12,6 +12,7 @@ Full simulation of QuoTrading bot with ALL features:
 - Position sizing based on confidence
 - ATR-based stops
 - VWAP bounce strategy
+- 100% OFFLINE - uses local_experience_manager.py only
 """
 
 import pandas as pd

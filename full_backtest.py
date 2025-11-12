@@ -21,11 +21,8 @@ import json
 import pytz
 import os
 import random
-import requests
 from typing import Dict, List, Tuple, Optional
 import statistics
-import aiohttp
-import asyncio
 import sys
 import io
 
@@ -47,7 +44,6 @@ CONFIG = {
     "max_contracts": 3,
     "rl_confidence_threshold": 0.50,  # 50% threshold (moderate selectivity)
     "exploration_rate": 0.30,  # 30% chance to take rejected trades (build experience)
-    "cloud_api_url": "https://quotrading-signals.icymeadow-86b2969e.eastus.azurecontainerapps.io",  # Optimized cloud RL
     
     # OPTIMIZED - Adaptive exit parameters (MATCHES LIVE BOT ITERATION 3)
     "breakeven_threshold_ticks": 9,  # Move to BE at +9 ticks (Iteration 3 - matches breakeven_profit_threshold_ticks)
@@ -80,123 +76,18 @@ CONFIG = {
 
 
 # ========================================
-# CLOUD RL CONFIDENCE API (Reinforcement Learning from 6,880+ trade experiences)
+# LOCAL RL CONFIDENCE (Pattern Matching from Local JSON Files)
 # ========================================
 
-# Cloud API endpoint (from production bot)
-CLOUD_RL_API_URL = "https://quotrading-signals.icymeadow-86b2969e.eastus.azurecontainerapps.io"
-
-# Generate same user ID as production bot
-import hashlib
-import json as json_module
-with open('config.json') as f:
-    config_data = json_module.load(f)
-    broker_username = config_data.get("broker_username", "default_user")
-    BACKTEST_USER_ID = hashlib.md5(broker_username.encode()).hexdigest()[:12]
-    print(f"Using User ID: {BACKTEST_USER_ID} (from {broker_username})")
-
-async def get_rl_confidence_async(rl_state: Dict, side: str, user_id: str = None, symbol: str = "MES") -> Tuple[bool, float, str]:
-    """
-    Get RL confidence from REAL cloud API (pattern matching across all past trades).
-    Returns: (take_signal, confidence, reason)
-    """
-    if user_id is None:
-        user_id = BACKTEST_USER_ID
-    
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            # Prepare payload for cloud API (correct format for /api/ml/should_take_signal)
-            payload = {
-                "user_id": user_id,
-                "symbol": symbol,
-                "signal": side.upper(),  # 'LONG' or 'SHORT'
-                "entry_price": rl_state.get("entry_price", 0),
-                "vwap": rl_state.get("vwap", 0),
-                "rsi": rl_state.get("rsi", 50),
-                "vix": rl_state.get("vix", 15.0),
-                "volume_ratio": rl_state.get("volume_ratio", 1.0),
-                "hour": rl_state.get("hour", 12),
-                "day_of_week": rl_state.get("day_of_week", 0),
-                "recent_pnl": rl_state.get("recent_pnl", 0.0),
-                "streak": rl_state.get("streak", 0)
-            }
-            
-            # Increase timeout on retries (signal RL has 7,233+ experiences)
-            timeout_seconds = 15.0 + (attempt * 5.0)  # 15s, 20s, 25s
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{CLOUD_RL_API_URL}/api/ml/should_take_signal",
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=timeout_seconds)
-                ) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        confidence = data.get("confidence", 0.5)
-                        take_signal = data.get("take_trade", False)
-                        reason = data.get("reason", "Cloud RL evaluation")
-                        
-                        # Debug: Show what cloud RL returned
-                        print(f"    Cloud RL: {side.upper()} conf={confidence:.1%} take={take_signal} reason={reason[:50]}")
-                        
-                        if attempt > 0:
-                            print(f"[CLOUD RL] [OK] Success on retry {attempt + 1}")
-                        
-                        return take_signal, confidence, reason
-                    else:
-                        print(f"⚠️ Cloud RL API returned status {response.status} (attempt {attempt + 1}/{max_retries})")
-                        if attempt < max_retries - 1:
-                            await asyncio.sleep(0.5 * (attempt + 1))
-                            continue
-                        print("[X] Cloud RL API failed after all retries - REJECTING TRADE for safety")
-                        return False, 0.0, "Cloud RL API error - rejecting trade for safety"
-                        
-        except asyncio.TimeoutError:
-            print(f"⚠️ Cloud RL API timeout (attempt {attempt + 1}/{max_retries})")
-            if attempt < max_retries - 1:
-                await asyncio.sleep(0.5 * (attempt + 1))
-                continue
-            print("[X] Cloud RL API timeout after all retries - REJECTING TRADE for safety")
-            return False, 0.0, "RL API timeout - rejecting trade for safety"
-        except Exception as e:
-            print(f"⚠️ Cloud RL API error: {e} (attempt {attempt + 1}/{max_retries})")
-            if attempt < max_retries - 1:
-                await asyncio.sleep(0.5 * (attempt + 1))
-                continue
-            print(f"[X] Cloud RL API error after all retries - REJECTING TRADE for safety: {e}")
-            return False, 0.0, f"RL API error - rejecting trade for safety"
-    
-    # Should never reach here
-    print("[X] Unknown error in RL API call - REJECTING TRADE for safety")
-    return False, 0.0, "Unknown error - rejecting trade for safety"
-
+from local_experience_manager import local_manager
 
 def get_rl_confidence(rl_state: Dict, side: str) -> Tuple[bool, float, str]:
     """
-    Get ML confidence - uses local or cloud mode based on CONFIG.
-    Local mode: Fast offline pattern matching from downloaded experiences
-    Cloud mode: Live API calls (for production/subscriber backtests)
+    Get ML confidence from LOCAL pattern matching only.
+    Uses local_experience_manager.py to match against saved experiences.
+    NO cloud API calls - 100% offline backtesting.
     """
-    # Check if local mode is enabled
-    if CONFIG.get('local_mode', False):
-        from local_experience_manager import local_manager
-        return local_manager.get_signal_confidence(rl_state, side.upper())
-    
-    # Cloud mode - use API
-    try:
-        # Small delay to avoid rate limiting (429 errors)
-        import time
-        time.sleep(0.1)  # 100ms between calls
-        
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        result = loop.run_until_complete(get_rl_confidence_async(rl_state, side))
-        loop.close()
-        return result
-    except Exception as e:
-        print(f"[X] Error in RL confidence sync wrapper: {e}")
-        return False, 0.0, f"Wrapper error: {e}"
+    return local_manager.get_signal_confidence(rl_state, side.upper())
 
 
 # ========================================

@@ -824,7 +824,7 @@ class AdaptiveExitManager:
             response = requests.post(
                 f"{self.cloud_api_url}/api/ml/get_adaptive_exit_params",
                 json=request_data,
-                timeout=3  # Fast timeout - can't block trade management
+                timeout=15  # Longer timeout for large experience database
             )
             
             if response.status_code == 200:
@@ -863,7 +863,7 @@ class AdaptiveExitManager:
                 return None
                 
         except requests.Timeout:
-            logger.warning("[CLOUD EXIT RL] Timeout (>3s) - using local params")
+            logger.warning("[CLOUD EXIT RL] Timeout (>15s) - using local params")
             return None
         except Exception as e:
             logger.error(f"[CLOUD EXIT RL] Error querying cloud: {e}")

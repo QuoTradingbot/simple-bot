@@ -173,12 +173,78 @@ class LocalExperienceManager:
             if exp.get('signal') != signal:
                 continue
             
-            # Calculate similarity score (LEARNED WEIGHTS)
-            rsi_sim = 1.0 - abs(exp.get('rsi', 50) - rl_state.get('rsi', 50)) / 100.0
-            vix_sim = 1.0 - abs(exp.get('vix', 15) - rl_state.get('vix', 15)) / 35.0
+            # Calculate similarity score using ALL 22 available features!
+            # Core technical indicators
+            rsi_sim = 1.0 - min(abs(exp.get('rsi', 50) - rl_state.get('rsi', 50)) / 100.0, 1.0)
+            vix_sim = 1.0 - min(abs(exp.get('vix', 15) - rl_state.get('vix', 15)) / 35.0, 1.0)
             hour_sim = 1.0 if exp.get('hour') == rl_state.get('hour') else 0.5
             
-            total_sim = rsi_sim * rsi_weight + vix_sim * vix_weight + hour_sim * hour_weight
+            # Technical indicators
+            atr_sim = 1.0 - min(abs(exp.get('atr', 2.0) - rl_state.get('atr', 2.0)) / 5.0, 1.0)
+            volume_sim = 1.0 - min(abs(exp.get('volume_ratio', 1.0) - rl_state.get('volume_ratio', 1.0)) / 2.0, 1.0)
+            vwap_dist_sim = 1.0 - min(abs(exp.get('vwap_distance', 0.0) - rl_state.get('vwap_distance', 0.0)) / 0.1, 1.0)
+            
+            # Psychological state
+            streak_sim = 1.0 - min(abs(exp.get('streak', 0) - rl_state.get('streak', 0)) / 10.0, 1.0)
+            cons_wins_sim = 1.0 - min(abs(exp.get('consecutive_wins', 0) - rl_state.get('consecutive_wins', 0)) / 5.0, 1.0)
+            cons_losses_sim = 1.0 - min(abs(exp.get('consecutive_losses', 0) - rl_state.get('consecutive_losses', 0)) / 5.0, 1.0)
+            
+            # P&L context similarity
+            pnl_diff = abs(exp.get('cumulative_pnl_at_entry', 0) - rl_state.get('cumulative_pnl_at_entry', 0))
+            pnl_sim = 1.0 - min(pnl_diff / 1000.0, 1.0)
+            
+            # Session matching
+            session_sim = 1.0 if exp.get('session', 'NY') == rl_state.get('session', 'NY') else 0.6
+            
+            # NEW: Market structure fields
+            trend_diff = abs(exp.get('trend_strength', 0.0) - rl_state.get('trend_strength', 0.0))
+            trend_sim = 1.0 - min(trend_diff / 2.0, 1.0)
+            
+            sr_prox_diff = abs(exp.get('sr_proximity_ticks', 0.0) - rl_state.get('sr_proximity_ticks', 0.0))
+            sr_prox_sim = 1.0 - min(sr_prox_diff / 20.0, 1.0)
+            
+            trade_type_sim = 1.0 if exp.get('trade_type', 'continuation') == rl_state.get('trade_type', 'continuation') else 0.3
+            
+            # NEW: Timing and execution quality
+            time_since_diff = abs(exp.get('time_since_last_trade_mins', 0.0) - rl_state.get('time_since_last_trade_mins', 0.0))
+            time_since_sim = 1.0 - min(time_since_diff / 60.0, 1.0)
+            
+            spread_diff = abs(exp.get('bid_ask_spread_ticks', 0.5) - rl_state.get('bid_ask_spread_ticks', 0.5))
+            spread_sim = 1.0 - min(spread_diff / 2.0, 1.0)
+            
+            drawdown_diff = abs(exp.get('drawdown_pct_at_entry', 0.0) - rl_state.get('drawdown_pct_at_entry', 0.0))
+            drawdown_sim = 1.0 - min(drawdown_diff / 20.0, 1.0)
+            
+            # NEW: Day of week patterns (some strategies work better on certain days)
+            day_sim = 1.0 if exp.get('day_of_week', 0) == rl_state.get('day_of_week', 0) else 0.7
+            
+            # NEW: Recent P&L momentum (rolling recent performance)
+            recent_pnl_diff = abs(exp.get('recent_pnl', 0.0) - rl_state.get('recent_pnl', 0.0))
+            recent_pnl_sim = 1.0 - min(recent_pnl_diff / 500.0, 1.0)
+            
+            # Weighted similarity using ALL 22 fields
+            # Core (45%) + Contextual (20%) + Psychological (15%) + Market Structure (12%) + Execution (8%)
+            total_sim = (
+                rsi_sim * rsi_weight +          # Core: RSI (learned weight)
+                vix_sim * vix_weight +          # Core: VIX (learned weight)  
+                hour_sim * hour_weight +        # Core: Hour (learned weight)
+                atr_sim * 0.07 +                # Volatility context
+                volume_sim * 0.06 +             # Market activity
+                vwap_dist_sim * 0.06 +          # Price vs VWAP
+                streak_sim * 0.04 +             # Win/loss streak
+                cons_wins_sim * 0.03 +          # Consecutive wins
+                cons_losses_sim * 0.03 +        # Consecutive losses
+                pnl_sim * 0.05 +                # Account state
+                session_sim * 0.04 +            # Trading session
+                trend_sim * 0.04 +              # Trend strength
+                sr_prox_sim * 0.03 +            # S/R proximity
+                trade_type_sim * 0.04 +         # Trade type
+                time_since_sim * 0.03 +         # Time since last trade
+                spread_sim * 0.02 +             # Bid/ask spread
+                drawdown_sim * 0.03 +           # Drawdown state
+                day_sim * 0.02 +                # Day of week patterns
+                recent_pnl_sim * 0.02           # Recent P&L momentum
+            )
             
             # LEARNED THRESHOLD
             if len(winners) > 10:
@@ -261,22 +327,223 @@ class LocalExperienceManager:
                 elif hour_win_rate < win_rate * 0.95:  # 5% worse
                     hour_adjustment = 0.95
         
-        # Apply LEARNED adjustments (PnL quality + time-of-day)
-        # Use ADDITIVE adjustments to prevent over-stacking
-        # Example: 60% win_rate + 15% PnL boost + 10% hour boost = 76% (controlled)
-        # vs: 60% × 1.15 × 1.10 = 76% (same result but clearer logic)
+        # NEW: CONSECUTIVE LOSS ADJUSTMENT - Be more conservative after losses
+        consecutive_losses = rl_state.get('consecutive_losses', 0)
+        loss_adjustment = 1.0
+        
+        if total > 30:
+            # Analyze how trades after 2+ losses performed
+            after_loss_trades = [exp for exp in top_experiences if exp.get('consecutive_losses', 0) >= 2]
+            fresh_trades = [exp for exp in top_experiences if exp.get('consecutive_losses', 0) == 0]
+            
+            if len(after_loss_trades) > 5 and len(fresh_trades) > 5:
+                after_loss_wins = sum(1 for exp in after_loss_trades if exp.get('pnl', 0) > 0)
+                after_loss_wr = after_loss_wins / len(after_loss_trades)
+                
+                fresh_wins = sum(1 for exp in fresh_trades if exp.get('pnl', 0) > 0)
+                fresh_wr = fresh_wins / len(fresh_trades)
+                
+                # If after-loss trades underperform, reduce confidence
+                if after_loss_wr < fresh_wr * 0.85:  # 15% worse
+                    loss_adjustment = 0.85 if consecutive_losses >= 3 else 0.92
+                elif after_loss_wr < fresh_wr * 0.95:  # 5% worse
+                    loss_adjustment = 0.97
+        
+        # NEW: DRAWDOWN ADJUSTMENT - Be conservative in deep drawdown
+        drawdown_pct = rl_state.get('drawdown_pct_at_entry', 0.0)
+        drawdown_adjustment = 1.0
+        
+        if drawdown_pct < -10.0:  # In 10%+ drawdown
+            # Check if trades taken in drawdown perform worse
+            if total > 30:
+                dd_trades = [exp for exp in top_experiences if exp.get('drawdown_pct_at_entry', 0) < -5.0]
+                normal_trades = [exp for exp in top_experiences if exp.get('drawdown_pct_at_entry', 0) >= -5.0]
+                
+                if len(dd_trades) > 5 and len(normal_trades) > 5:
+                    dd_wins = sum(1 for exp in dd_trades if exp.get('pnl', 0) > 0)
+                    dd_wr = dd_wins / len(dd_trades)
+                    
+                    normal_wins = sum(1 for exp in normal_trades if exp.get('pnl', 0) > 0)
+                    normal_wr = normal_wins / len(normal_trades)
+                    
+                    # If drawdown trades underperform, be more selective
+                    if dd_wr < normal_wr * 0.85:
+                        drawdown_adjustment = 0.90  # 10% penalty in drawdown
+                    elif dd_wr < normal_wr * 0.95:
+                        drawdown_adjustment = 0.97  # 3% penalty
+        
+        # NEW: TREND STRENGTH ADJUSTMENT - Boost confidence in strong trends
+        trend_strength = rl_state.get('trend_strength', 0.0)
+        trend_adjustment = 1.0
+        
+        if total > 30:
+            # Analyze performance in strong vs weak trends
+            strong_trend_trades = [exp for exp in top_experiences if abs(exp.get('trend_strength', 0)) > 0.7]
+            weak_trend_trades = [exp for exp in top_experiences if abs(exp.get('trend_strength', 0)) < 0.3]
+            
+            if len(strong_trend_trades) > 5 and len(weak_trend_trades) > 5:
+                strong_wins = sum(1 for exp in strong_trend_trades if exp.get('pnl', 0) > 0)
+                strong_wr = strong_wins / len(strong_trend_trades)
+                
+                weak_wins = sum(1 for exp in weak_trend_trades if exp.get('pnl', 0) > 0)
+                weak_wr = weak_wins / len(weak_trend_trades)
+                
+                # If strong trends outperform, boost confidence when trend is strong
+                if abs(trend_strength) > 0.7:
+                    if strong_wr > weak_wr * 1.15:  # 15% better
+                        trend_adjustment = 1.10
+                    elif strong_wr > weak_wr * 1.05:  # 5% better
+                        trend_adjustment = 1.05
+                # If weak trends underperform, penalize weak trend setups
+                elif abs(trend_strength) < 0.3:
+                    if weak_wr < strong_wr * 0.85:  # 15% worse
+                        trend_adjustment = 0.88
+                    elif weak_wr < strong_wr * 0.95:  # 5% worse
+                        trend_adjustment = 0.95
+        
+        # NEW: SUPPORT/RESISTANCE PROXIMITY ADJUSTMENT - Caution near key levels
+        sr_proximity = rl_state.get('sr_proximity_ticks', 0.0)
+        sr_adjustment = 1.0
+        
+        if total > 30:
+            # Analyze performance when close to S/R vs far from S/R
+            near_sr_trades = [exp for exp in top_experiences if exp.get('sr_proximity_ticks', 0) < 5]
+            far_sr_trades = [exp for exp in top_experiences if exp.get('sr_proximity_ticks', 0) > 15]
+            
+            if len(near_sr_trades) > 5 and len(far_sr_trades) > 5:
+                near_wins = sum(1 for exp in near_sr_trades if exp.get('pnl', 0) > 0)
+                near_wr = near_wins / len(near_sr_trades)
+                
+                far_wins = sum(1 for exp in far_sr_trades if exp.get('pnl', 0) > 0)
+                far_wr = far_wins / len(far_sr_trades)
+                
+                # If near S/R performs better (bounces work), boost when close
+                if sr_proximity < 5:
+                    if near_wr > far_wr * 1.10:
+                        sr_adjustment = 1.08  # S/R bounce is proven
+                    elif near_wr < far_wr * 0.90:
+                        sr_adjustment = 0.92  # S/R breakout failures
+        
+        # NEW: TRADE TYPE ADJUSTMENT - Learn continuation vs reversal quality
+        trade_type = rl_state.get('trade_type', 'continuation')
+        trade_type_adjustment = 1.0
+        
+        if total > 30:
+            cont_trades = [exp for exp in top_experiences if exp.get('trade_type') == 'continuation']
+            rev_trades = [exp for exp in top_experiences if exp.get('trade_type') == 'reversal']
+            
+            if len(cont_trades) > 5 and len(rev_trades) > 5:
+                cont_wins = sum(1 for exp in cont_trades if exp.get('pnl', 0) > 0)
+                cont_wr = cont_wins / len(cont_trades)
+                
+                rev_wins = sum(1 for exp in rev_trades if exp.get('pnl', 0) > 0)
+                rev_wr = rev_wins / len(rev_trades)
+                
+                # Boost whichever type performs better
+                if trade_type == 'continuation' and cont_wr > rev_wr * 1.10:
+                    trade_type_adjustment = 1.07
+                elif trade_type == 'continuation' and cont_wr < rev_wr * 0.90:
+                    trade_type_adjustment = 0.93
+                elif trade_type == 'reversal' and rev_wr > cont_wr * 1.10:
+                    trade_type_adjustment = 1.07
+                elif trade_type == 'reversal' and rev_wr < cont_wr * 0.90:
+                    trade_type_adjustment = 0.93
+        
+        # NEW: SPREAD QUALITY ADJUSTMENT - Penalize wide spreads
+        spread = rl_state.get('bid_ask_spread_ticks', 0.5)
+        spread_adjustment = 1.0
+        
+        if total > 20:
+            tight_spread_trades = [exp for exp in top_experiences if exp.get('bid_ask_spread_ticks', 0.5) <= 1.0]
+            wide_spread_trades = [exp for exp in top_experiences if exp.get('bid_ask_spread_ticks', 0.5) > 1.5]
+            
+            if len(tight_spread_trades) > 5 and len(wide_spread_trades) > 5:
+                tight_wins = sum(1 for exp in tight_spread_trades if exp.get('pnl', 0) > 0)
+                tight_wr = tight_wins / len(tight_spread_trades)
+                
+                wide_wins = sum(1 for exp in wide_spread_trades if exp.get('pnl', 0) > 0)
+                wide_wr = wide_wins / len(wide_spread_trades)
+                
+                # Penalize wide spreads if they hurt performance
+                if spread > 1.5 and wide_wr < tight_wr * 0.90:
+                    spread_adjustment = 0.94  # Wide spread penalty
+        
+        # NEW: PRICE LEVEL ADJUSTMENT - Do certain price levels/ranges perform better?
+        current_price = rl_state.get('price', 5000)
+        price_adjustment = 1.0
+        
+        if total > 40:
+            # Group by price ranges (e.g., round numbers, quarters)
+            # ES example: 5000, 5025, 5050, 5075, 5100 (25-point levels)
+            price_bucket = round(current_price / 25) * 25  # Round to nearest 25
+            
+            # Get trades near this price level vs others
+            near_price_trades = [exp for exp in top_experiences if abs(exp.get('price', 5000) - price_bucket) < 15]
+            other_trades = [exp for exp in top_experiences if abs(exp.get('price', 5000) - price_bucket) >= 30]
+            
+            if len(near_price_trades) > 5 and len(other_trades) > 5:
+                near_wins = sum(1 for exp in near_price_trades if exp.get('pnl', 0) > 0)
+                near_wr = near_wins / len(near_price_trades)
+                
+                other_wins = sum(1 for exp in other_trades if exp.get('pnl', 0) > 0)
+                other_wr = other_wins / len(other_trades)
+                
+                # If this price level has better/worse history
+                if near_wr > other_wr * 1.12:
+                    price_adjustment = 1.06  # This price level is favorable
+                elif near_wr < other_wr * 0.88:
+                    price_adjustment = 0.94  # This price level is unfavorable
+
+        # ADJUSTMENT #10: DIRECTIONAL BIAS - analyze LONG vs SHORT performance patterns
+        # Use aggregate historical patterns to favor better-performing direction
+        direction_adjustment = 1.0
+        
+        current_signal = rl_state.get('signal', 'LONG')
+        if len(top_experiences) >= 20:
+            # Separate experiences by direction
+            long_trades = [exp for exp in top_experiences if exp.get('signal') == 'LONG']
+            short_trades = [exp for exp in top_experiences if exp.get('signal') == 'SHORT']
+            
+            if len(long_trades) >= 10 and len(short_trades) >= 10:
+                # Calculate win rates by direction
+                long_wins = sum(1 for exp in long_trades if exp.get('pnl', 0) > 0)
+                long_wr = long_wins / len(long_trades)
+                long_avg_pnl = sum(exp.get('pnl', 0) for exp in long_trades) / len(long_trades)
+                
+                short_wins = sum(1 for exp in short_trades if exp.get('pnl', 0) > 0)
+                short_wr = short_wins / len(short_trades)
+                short_avg_pnl = sum(exp.get('pnl', 0) for exp in short_trades) / len(short_trades)
+                
+                # Create composite score (WR + profitability)
+                long_score = long_wr * (1 + min(long_avg_pnl / 100, 0.5))
+                short_score = short_wr * (1 + min(short_avg_pnl / 100, 0.5))
+                
+                # If current signal matches better-performing direction
+                if current_signal == 'LONG' and long_score > short_score * 1.15:
+                    direction_adjustment = 1.08  # Favor LONG based on history
+                elif current_signal == 'SHORT' and short_score > long_score * 1.15:
+                    direction_adjustment = 1.08  # Favor SHORT based on history
+                # If current signal is weaker direction
+                elif current_signal == 'LONG' and short_score > long_score * 1.15:
+                    direction_adjustment = 0.92  # LONG underperforms historically
+                elif current_signal == 'SHORT' and long_score > short_score * 1.15:
+                    direction_adjustment = 0.92  # SHORT underperforms historically
+        
+        # Apply ALL LEARNED adjustments (10 total factors!)
+        # Use multiplicative for independent adjustments
         confidence = win_rate
         
-        # Calculate total adjustment
-        pnl_boost = (boost_factor - 1.0)  # e.g., 1.15 → 0.15 (15% boost)
-        hour_boost = (hour_adjustment - 1.0)  # e.g., 1.10 → 0.10 (10% boost)
+        # Calculate combined adjustment (all 10 factors are multiplicative since they're independent)
+        total_adjustment = (boost_factor * hour_adjustment * loss_adjustment * drawdown_adjustment * 
+                          trend_adjustment * sr_adjustment * trade_type_adjustment * spread_adjustment * 
+                          price_adjustment * direction_adjustment)
         
-        # Apply combined boost (additive to prevent over-stacking)
+        # Apply adjustment
         if avg_pnl > 0:
-            confidence = win_rate * (1.0 + pnl_boost + hour_boost)
+            confidence = win_rate * total_adjustment
             confidence = min(0.95, confidence)  # Cap at 95%
-        elif avg_pnl < 0:
-            confidence = win_rate * (1.0 + pnl_boost + hour_boost)
+        else:
+            confidence = win_rate * total_adjustment
             confidence = max(0.05, confidence)  # Floor at 5%
         
         # LEARN OPTIMAL CONFIDENCE THRESHOLD from historical data

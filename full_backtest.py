@@ -46,6 +46,10 @@ CONFIG = {
     "rl_confidence_threshold": 0.50,  # 50% threshold (moderate selectivity)
     "exploration_rate": 0.30,  # 30% chance to take rejected trades (build experience)
     
+    # REALISTIC TRADING COSTS
+    "slippage_ticks": 1.0,  # 1 tick slippage per side (entry + exit = 2 ticks total)
+    "commission_per_contract": 2.50,  # $2.50 per contract per side ($5 round trip)
+    
     # OPTIMIZED - Adaptive exit parameters (MATCHES LIVE BOT ITERATION 3)
     "breakeven_threshold_ticks": 9,  # Move to BE at +9 ticks (Iteration 3 - matches breakeven_profit_threshold_ticks)
     "trailing_distance_ticks": 12,   # Trail 12 ticks (simplified - live bot uses adaptive exits)
@@ -294,6 +298,23 @@ class Trade:
         self.regime_changes = []  # Track if market regime shifts mid-trade
         self.stop_adjustments = []  # [{bar, old_stop, new_stop, reason}]
         
+        # ADVANCED RL: Intra-trade decision sequences and P&L tracking
+        self.decision_history = []  # Track every bar's state-action-reward
+        self.unrealized_pnl_history = []  # Track unrealized P&L at each bar
+        self.peak_unrealized_pnl = 0.0  # Highest unrealized profit achieved
+        self.peak_r_multiple = 0.0  # Highest R-multiple achieved
+        
+        # NEW: DRAWDOWN FROM PEAK TRACKING
+        self.profit_drawdown_from_peak = 0.0  # $ given back from peak
+        self.max_drawdown_percent = 0.0  # Largest % drop from peak
+        self.drawdown_bars = 0  # Bars in drawdown when exited
+        self.currently_in_drawdown = False  # Track if currently giving back profit
+        
+        # NEW: VOLATILITY DURING TRADE TRACKING
+        self.atr_samples = []  # Collect ATR at each bar
+        self.entry_atr = atr  # Store entry ATR
+        self.high_volatility_bars = 0  # Count bars with ATR spike > 20%
+        
         # EXECUTION QUALITY TRACKING
         self.entry_slippage_ticks = 0.0  # Difference from intended entry
         self.exit_slippage_ticks = 0.0  # Difference from intended exit
@@ -411,6 +432,42 @@ class Trade:
         self.max_r_achieved = max(self.max_r_achieved, r_multiple)
         self.min_r_achieved = min(self.min_r_achieved, r_multiple)
         
+        # ADVANCED RL: Track unrealized P&L and decision at this bar
+        unrealized_pnl = profit_ticks * tick_value * self.contracts
+        self.unrealized_pnl_history.append({
+            'bar': self.bars_in_trade,
+            'unrealized_pnl': float(unrealized_pnl),
+            'r_multiple': float(r_multiple),
+            'price': float(current_price),
+            'contracts': int(self.contracts)
+        })
+        
+        # Track peak unrealized profit
+        self.peak_unrealized_pnl = max(self.peak_unrealized_pnl, unrealized_pnl)
+        self.peak_r_multiple = max(self.peak_r_multiple, r_multiple)
+        
+        # NEW: Track drawdown from peak
+        if self.peak_unrealized_pnl > 0:
+            drawdown_amount = self.peak_unrealized_pnl - unrealized_pnl
+            if drawdown_amount > 0:
+                self.currently_in_drawdown = True
+                self.drawdown_bars += 1
+                self.profit_drawdown_from_peak = max(self.profit_drawdown_from_peak, drawdown_amount)
+                
+                # Calculate drawdown percentage
+                drawdown_pct = (drawdown_amount / self.peak_unrealized_pnl) * 100
+                self.max_drawdown_percent = max(self.max_drawdown_percent, drawdown_pct)
+            else:
+                self.currently_in_drawdown = False
+        
+        # NEW: Track volatility during trade
+        current_atr = bar.get('atr', 2.0)
+        self.atr_samples.append(current_atr)
+        
+        # Check for volatility spike (>20% increase from entry)
+        if current_atr > self.entry_atr * 1.20:
+            self.high_volatility_bars += 1
+        
         # ========================================
         # GET ADAPTIVE EXIT PARAMETERS (RECALCULATE EACH BAR)
         # ========================================
@@ -510,14 +567,18 @@ class Trade:
                     should_update = True
             
             if should_update:
-                # Build market state for exit manager
+                # Build market state for exit manager (include ALL tracked features)
                 market_state = {
                     'vix': synthetic_vix,  # Synthetic VIX from ATR + volume
                     'atr': atr,
                     'hour': int(bar['timestamp'].hour),
                     'volume_ratio': volume_ratio,
                     'rsi': float(self.entry_market_state.get('rsi', 50)),
-                    'vwap_distance': float(self.entry_market_state.get('vwap_distance', 0))
+                    'vwap_distance': float(self.entry_market_state.get('vwap_distance', 0)),
+                    # NEW: Add consecutive trade context for intelligent decisions
+                    'wins_in_last_5_trades': int(getattr(self, 'wins_in_last_5_trades', 0)),
+                    'losses_in_last_5_trades': int(getattr(self, 'losses_in_last_5_trades', 0)),
+                    'cumulative_pnl_before_trade': float(getattr(self, 'cumulative_pnl_before_trade', 0.0)),
                 }
                 
                 position = {
@@ -729,6 +790,28 @@ class Trade:
                 })
                 return ('partial_3', current_price, contracts_to_close)
         
+        # ADVANCED RL: Record decision to HOLD (no exit taken)
+        # Calculate current unrealized P&L for this decision
+        tick_value = CONFIG['tick_value']
+        # Use current unrealized P&L from profit_ticks
+        if self.side == 'long':
+            profit_ticks_calc = (current_price - self.entry_price) / CONFIG['tick_size']
+        else:
+            profit_ticks_calc = (self.entry_price - current_price) / CONFIG['tick_size']
+        
+        hold_unrealized_pnl = profit_ticks_calc * tick_value * self.contracts
+        self.decision_history.append({
+            'bar': self.bars_in_trade,
+            'action': 'hold',
+            'r_multiple': float(r_multiple),
+            'unrealized_pnl': float(hold_unrealized_pnl),
+            'price': float(current_price),
+            'stop_price': float(self.stop_price),
+            'contracts': int(self.contracts),
+            'breakeven_active': bool(self.breakeven_active),
+            'trailing_active': bool(self.trailing_active)
+        })
+        
         return None
     
     def update_trailing_stop_adaptive(self, current_price: float, trailing_distance_ticks: int):
@@ -904,6 +987,289 @@ def simulate_ghost_trade(entry_bar: Dict, side: str, df: pd.DataFrame, start_idx
     }
 
 
+def print_learned_insights_summary(trades, experiences, signal_manager, exit_manager):
+    """Print overall learned insights from the backtest"""
+    print("\n" + "=" * 80)
+    print("📚 LEARNED INSIGHTS SUMMARY")
+    print("=" * 80)
+    
+    if len(trades) < 5:
+        print("  Insufficient trades for learning analysis")
+        return
+    
+    # Separate winners and losers
+    winners = [t for t in trades if t['pnl'] > 0]
+    losers = [t for t in trades if t['pnl'] <= 0]
+    
+    print(f"\n🎯 SIGNAL QUALITY INSIGHTS:")
+    
+    # Confidence analysis
+    if len(winners) > 0 and len(losers) > 0:
+        avg_win_conf = sum(t['confidence'] for t in winners) / len(winners)
+        avg_loss_conf = sum(t['confidence'] for t in losers) / len(losers)
+        print(f"  • Winners averaged {avg_win_conf:.1%} confidence vs {avg_loss_conf:.1%} for losers")
+        if avg_win_conf > avg_loss_conf * 1.1:
+            print(f"    → High confidence signals are {((avg_win_conf/avg_loss_conf - 1) * 100):.0f}% more reliable")
+        
+    # Time of day patterns
+    from collections import Counter
+    win_hours = Counter([t['entry_time'].hour for t in winners])
+    loss_hours = Counter([t['entry_time'].hour for t in losers])
+    
+    if len(win_hours) > 0:
+        best_hour = win_hours.most_common(1)[0][0]
+        worst_hour = loss_hours.most_common(1)[0][0] if len(loss_hours) > 0 else 0
+        print(f"  • Best trading hour: {best_hour:02d}:00 UTC ({win_hours[best_hour]} wins)")
+        print(f"  • Worst trading hour: {worst_hour:02d}:00 UTC ({loss_hours.get(worst_hour, 0)} losses)")
+    
+    # Day of week patterns
+    win_days = Counter([t['entry_time'].strftime('%a') for t in winners])
+    loss_days = Counter([t['entry_time'].strftime('%a') for t in losers])
+    
+    if len(win_days) > 0:
+        best_day = win_days.most_common(1)[0][0]
+        print(f"  • Best trading day: {best_day} ({win_days[best_day]} wins)")
+    
+    print(f"\n🚪 EXIT MANAGEMENT INSIGHTS:")
+    
+    # Duration analysis
+    win_durations = [t['duration_min'] for t in winners]
+    loss_durations = [t['duration_min'] for t in losers]
+    
+    if len(win_durations) > 0:
+        avg_win_dur = sum(win_durations) / len(win_durations)
+        avg_loss_dur = sum(loss_durations) / len(loss_durations) if len(loss_durations) > 0 else 0
+        print(f"  • Winners held for {avg_win_dur:.0f} min avg vs {avg_loss_dur:.0f} min for losers")
+        if avg_win_dur > avg_loss_dur * 1.5:
+            print(f"    → Winners need more time to develop (hold longer on strong setups)")
+        elif avg_loss_dur > avg_win_dur * 1.5:
+            print(f"    → Cut losers faster (they linger {avg_loss_dur/avg_win_dur:.1f}x longer)")
+    
+    # R-multiple analysis
+    r_multiples = [t['r_multiple'] for t in trades]
+    avg_r = sum(r_multiples) / len(r_multiples)
+    winners_r = [t['r_multiple'] for t in winners]
+    avg_win_r = sum(winners_r) / len(winners_r) if len(winners_r) > 0 else 0
+    
+    print(f"  • Average R-multiple: {avg_r:.2f}R (Winners: {avg_win_r:.2f}R)")
+    if avg_win_r < 2.0:
+        print(f"    → Taking profits too early (avg winner only {avg_win_r:.2f}R, target 2-3R)")
+    
+    # Exit reason analysis
+    exit_reasons = Counter([t['exit_reason'] for t in trades])
+    print(f"  • Most common exit: {exit_reasons.most_common(1)[0][0]} ({exit_reasons.most_common(1)[0][1]} times)")
+    
+    stop_loss_trades = [t for t in trades if t['exit_reason'] == 'stop_loss']
+    if len(stop_loss_trades) > len(trades) * 0.7:
+        stop_wins = [t for t in stop_loss_trades if t['pnl'] > 0]
+        print(f"    → {len(stop_loss_trades)}/{len(trades)} stopped out ({len(stop_wins)} were winners via trailing)")
+    
+    # Partial exits analysis
+    partial_trades = [t for t in trades if t['partial_exits'] > 0]
+    if len(partial_trades) > 0:
+        partial_pnls = [t['pnl'] for t in partial_trades]
+        no_partial_pnls = [t['pnl'] for t in trades if t['partial_exits'] == 0]
+        avg_partial = sum(partial_pnls) / len(partial_pnls)
+        avg_no_partial = sum(no_partial_pnls) / len(no_partial_pnls) if len(no_partial_pnls) > 0 else 0
+        print(f"  • Trades with partials: {len(partial_trades)} (avg P&L: ${avg_partial:.0f})")
+        print(f"  • Trades without partials: {len(trades) - len(partial_trades)} (avg P&L: ${avg_no_partial:.0f})")
+    
+    print(f"\n👻 GHOST TRADE INSIGHTS:")
+    
+    # Ghost trade analysis
+    ghosts = [e for e in experiences if not e['took_trade']]
+    if len(ghosts) > 0:
+        ghost_winners = [g for g in ghosts if g['outcome']['pnl'] > 0]
+        ghost_losers = [g for g in ghosts if g['outcome']['pnl'] <= 0]
+        
+        print(f"  • Rejected {len(ghosts)} signals: {len(ghost_winners)} would have won, {len(ghost_losers)} would have lost")
+        
+        if len(ghost_winners) > len(ghost_losers):
+            print(f"    ⚠️  Being too conservative - missing {len(ghost_winners) - len(ghost_losers)} net winners")
+            print(f"    → Lower confidence threshold or reduce rejection rate")
+        else:
+            print(f"    ✅ Good signal filtering - avoided {len(ghost_losers) - len(ghost_winners)} net losers")
+    
+    # EXIT RL INSIGHTS - Analyze what exit manager learned
+    print(f"\n🎯 EXIT RL DEEP LEARNING (38 Adaptive Adjustments):")
+    
+    if hasattr(exit_manager, 'exit_experiences') and len(exit_manager.exit_experiences) > 50:
+        exps = exit_manager.exit_experiences
+        
+        # 1. Trailing stop analysis
+        trailing_exps = [e for e in exps if e.get('trailing_stop_activated', False)]
+        if len(trailing_exps) > 10:
+            trailing_wins = [e for e in trailing_exps if e.get('pnl', 0) > 0]
+            trailing_wr = len(trailing_wins) / len(trailing_exps) * 100
+            avg_trailing_dist = sum(e.get('exit_params', {}).get('trailing_distance_ticks', 10) for e in trailing_exps[-20:]) / min(20, len(trailing_exps))
+            print(f"  • Trailing stops: {len(trailing_exps)} trades, {trailing_wr:.0f}% WR → Learned distance: {avg_trailing_dist:.1f} ticks")
+        
+        # 2. Breakeven analysis
+        breakeven_exps = [e for e in exps if e.get('breakeven_activated', False)]
+        if len(breakeven_exps) > 10:
+            be_wins = [e for e in breakeven_exps if e.get('pnl', 0) > 0]
+            be_wr = len(be_wins) / len(breakeven_exps) * 100
+            avg_be_threshold = sum(e.get('exit_params', {}).get('breakeven_threshold_ticks', 10) for e in breakeven_exps[-20:]) / min(20, len(breakeven_exps))
+            print(f"  • Breakeven moves: {len(breakeven_exps)} trades, {be_wr:.0f}% WR → Learned threshold: {avg_be_threshold:.1f} ticks")
+        
+        # 3. Partial exit analysis
+        partial_exps = [e for e in exps if e.get('partial_exits_taken', 0) > 0]
+        if len(partial_exps) > 5:
+            partial_pnls = [e.get('pnl', 0) for e in partial_exps]
+            full_pnls = [e.get('pnl', 0) for e in exps if e.get('partial_exits_taken', 0) == 0]
+            avg_partial_pnl = sum(partial_pnls) / len(partial_pnls)
+            avg_full_pnl = sum(full_pnls) / len(full_pnls) if len(full_pnls) > 0 else 0
+            print(f"  • Partial exits: {len(partial_exps)} trades avg ${avg_partial_pnl:.0f} vs ${avg_full_pnl:.0f} for full position")
+            if avg_partial_pnl > avg_full_pnl * 1.2:
+                print(f"    → Partials working well ({((avg_partial_pnl/avg_full_pnl - 1) * 100):.0f}% better)")
+        
+        # 4. Volatility-based adjustments
+        high_vix_trades = [e for e in exps if e.get('market_state', {}).get('vix', 15) > 20]
+        low_vix_trades = [e for e in exps if e.get('market_state', {}).get('vix', 15) < 15]
+        
+        if len(high_vix_trades) > 5 and len(low_vix_trades) > 5:
+            high_vix_pnl = sum(e.get('pnl', 0) for e in high_vix_trades) / len(high_vix_trades)
+            low_vix_pnl = sum(e.get('pnl', 0) for e in low_vix_trades) / len(low_vix_trades)
+            print(f"  • High volatility (VIX>20): ${high_vix_pnl:.0f} avg vs ${low_vix_pnl:.0f} in calm markets")
+            if high_vix_pnl < low_vix_pnl * 0.7:
+                print(f"    → Tighter stops in volatile conditions recommended")
+        
+        # 5. Time-based patterns
+        quick_trades = [e for e in exps if e.get('bars_held', 0) < 10]
+        long_trades = [e for e in exps if e.get('bars_held', 0) > 30]
+        
+        if len(quick_trades) > 5 and len(long_trades) > 5:
+            quick_wr = sum(1 for e in quick_trades if e.get('pnl', 0) > 0) / len(quick_trades) * 100
+            long_wr = sum(1 for e in long_trades if e.get('pnl', 0) > 0) / len(long_trades) * 100
+            print(f"  • Quick exits (<10 bars): {quick_wr:.0f}% WR vs Long holds (>30 bars): {long_wr:.0f}% WR")
+            if quick_wr > long_wr * 1.3:
+                print(f"    → Scalping working better than swing holds")
+        
+        # 6. Drawdown tolerance
+        drawdown_exps = [e for e in exps if e.get('max_adverse_excursion', 0) > 0]
+        if len(drawdown_exps) > 10:
+            recovered = [e for e in drawdown_exps if e.get('pnl', 0) > 0]
+            recovery_rate = len(recovered) / len(drawdown_exps) * 100
+            avg_mae = sum(e.get('max_adverse_excursion', 0) for e in drawdown_exps) / len(drawdown_exps)
+            print(f"  • Drawdown recovery: {recovery_rate:.0f}% of trades with avg {avg_mae:.1f} tick MAE recovered")
+            if recovery_rate < 40:
+                print(f"    → Stop losses too wide (only {recovery_rate:.0f}% recover from drawdown)")
+        
+        # 7. Session-based performance
+        from collections import defaultdict
+        session_pnls = defaultdict(list)
+        for e in exps:
+            session = e.get('market_state', {}).get('session', 'Unknown')
+            session_pnls[session].append(e.get('pnl', 0))
+        
+        if len(session_pnls) > 1:
+            print(f"  • Session performance:")
+            for session, pnls in sorted(session_pnls.items(), key=lambda x: sum(x[1])/len(x[1]) if x[1] else 0, reverse=True):
+                if len(pnls) > 3:
+                    avg_pnl = sum(pnls) / len(pnls)
+                    wr = sum(1 for p in pnls if p > 0) / len(pnls) * 100
+                    print(f"    - {session}: ${avg_pnl:.0f} avg, {wr:.0f}% WR ({len(pnls)} trades)")
+        
+        # 8. Confidence correlation
+        if len(exps) > 20:
+            high_conf_exits = [e for e in exps if e.get('entry_confidence', 0.5) > 0.65]
+            low_conf_exits = [e for e in exps if e.get('entry_confidence', 0.5) < 0.45]
+            
+            if len(high_conf_exits) > 5 and len(low_conf_exits) > 5:
+                high_conf_pnl = sum(e.get('pnl', 0) for e in high_conf_exits) / len(high_conf_exits)
+                low_conf_pnl = sum(e.get('pnl', 0) for e in low_conf_exits) / len(low_conf_exits)
+                print(f"  • High confidence entries (>65%): ${high_conf_pnl:.0f} avg")
+                print(f"  • Low confidence entries (<45%): ${low_conf_pnl:.0f} avg")
+                if high_conf_pnl > low_conf_pnl * 2:
+                    print(f"    → Skip low confidence setups ({((high_conf_pnl/low_conf_pnl - 1) * 100):.0f}% better on high conf)")
+        
+        # 9. Stop adjustment effectiveness
+        stop_adj_trades = [e for e in exps if e.get('stop_adjustment_count', 0) > 0]
+        if len(stop_adj_trades) > 10:
+            adj_wins = sum(1 for e in stop_adj_trades if e.get('pnl', 0) > 0)
+            adj_wr = adj_wins / len(stop_adj_trades) * 100
+            avg_adjustments = sum(e.get('stop_adjustment_count', 0) for e in stop_adj_trades) / len(stop_adj_trades)
+            print(f"  • Stop adjustments: {len(stop_adj_trades)} trades with avg {avg_adjustments:.1f} adjustments, {adj_wr:.0f}% WR")
+            if adj_wr > 60:
+                print(f"    → Active stop management working ({adj_wr:.0f}% WR on adjusted trades)")
+        
+        # 10. Regime change impact
+        regime_change_trades = [e for e in exps if e.get('volatility_regime_change', False)]
+        if len(regime_change_trades) > 5:
+            regime_wins = sum(1 for e in regime_change_trades if e.get('pnl', 0) > 0)
+            regime_wr = regime_wins / len(regime_change_trades) * 100
+            print(f"  • Regime changes during trade: {len(regime_change_trades)} trades, {regime_wr:.0f}% WR")
+            if regime_wr < 40:
+                print(f"    → Exit when volatility regime shifts (poor WR in transitions)")
+        
+        # 11. R-multiple distribution
+        r_multiples = [e.get('max_r_achieved', 0) for e in exps]
+        if len(r_multiples) > 20:
+            big_winners = [r for r in r_multiples if r >= 2.0]
+            small_winners = [r for r in r_multiples if 0 < r < 1.0]
+            print(f"  • R-multiple distribution: {len(big_winners)} trades hit 2R+ ({len(big_winners)/len(r_multiples)*100:.0f}%)")
+            print(f"  • Small winners (<1R): {len(small_winners)} trades ({len(small_winners)/len(r_multiples)*100:.0f}%)")
+            if len(small_winners) > len(big_winners) * 2:
+                print(f"    → Too many small wins - let winners run longer")
+        
+        # 12. Exit parameter learning summary
+        recent_exps = exps[-50:] if len(exps) > 50 else exps
+        if len(recent_exps) > 10:
+            avg_stop_mult = sum(e.get('exit_params', {}).get('stop_mult', 3.6) for e in recent_exps) / len(recent_exps)
+            avg_trailing = sum(e.get('exit_params', {}).get('trailing_distance_ticks', 12) for e in recent_exps) / len(recent_exps)
+            avg_breakeven = sum(e.get('exit_params', {}).get('breakeven_threshold_ticks', 10) for e in recent_exps) / len(recent_exps)
+            
+            print(f"  • Learned exit parameters (last 50 trades):")
+            print(f"    - Stop multiplier: {avg_stop_mult:.2f}x ATR")
+            print(f"    - Trailing distance: {avg_trailing:.1f} ticks")
+            print(f"    - Breakeven threshold: {avg_breakeven:.1f} ticks")
+        
+        # 13. Slippage & commission impact
+        slippage_total = sum(e.get('slippage_ticks', 0) for e in exps)
+        commission_total = sum(e.get('commission_cost', 0) for e in exps)
+        if slippage_total > 0 or commission_total > 0:
+            gross_pnl = sum(e.get('pnl', 0) for e in exps)
+            net_pnl = gross_pnl  # Already includes costs
+            print(f"  • Trading costs: ${slippage_total * 12.5:.0f} slippage + ${commission_total:.0f} commissions")
+            if slippage_total + commission_total > abs(gross_pnl) * 0.5:
+                print(f"    → Costs eating {(slippage_total * 12.5 + commission_total) / abs(gross_pnl) * 100:.0f}% of gross P&L - reduce trade frequency")
+        
+        # 14. Day of week patterns
+        day_pnls = defaultdict(list)
+        day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        for e in exps:
+            day = e.get('market_state', {}).get('day_of_week', 0)
+            day_pnls[day].append(e.get('pnl', 0))
+        
+        if len(day_pnls) > 1:
+            print(f"  • Day of week patterns:")
+            for day in sorted(day_pnls.keys()):
+                if len(day_pnls[day]) > 3:
+                    avg_pnl = sum(day_pnls[day]) / len(day_pnls[day])
+                    wr = sum(1 for p in day_pnls[day] if p > 0) / len(day_pnls[day]) * 100
+                    print(f"    - {day_names[day]}: ${avg_pnl:.0f} avg, {wr:.0f}% WR ({len(day_pnls[day])} trades)")
+        
+        # 15. Overall learning progress
+        print(f"\n  📈 LEARNING PROGRESS:")
+        print(f"  • Total exit experiences analyzed: {len(exps):,}")
+        print(f"  • Experiences used for pattern matching: {len([e for e in exps if e.get('pnl', 0) != 0]):,}")
+        recent_50 = exps[-50:] if len(exps) > 50 else exps
+        early_50 = exps[:50] if len(exps) > 100 else exps[:len(exps)//2]
+        if len(recent_50) > 10 and len(early_50) > 10:
+            recent_wr = sum(1 for e in recent_50 if e.get('pnl', 0) > 0) / len(recent_50) * 100
+            early_wr = sum(1 for e in early_50 if e.get('pnl', 0) > 0) / len(early_50) * 100
+            recent_avg = sum(e.get('pnl', 0) for e in recent_50) / len(recent_50)
+            early_avg = sum(e.get('pnl', 0) for e in early_50) / len(early_50)
+            print(f"  • Recent performance (last 50): {recent_wr:.0f}% WR, ${recent_avg:.0f} avg")
+            print(f"  • Early performance (first 50): {early_wr:.0f}% WR, ${early_avg:.0f} avg")
+            if recent_wr > early_wr * 1.1:
+                print(f"    ✅ IMPROVING - Bot learning working! (+{recent_wr - early_wr:.0f}% WR improvement)")
+            elif recent_wr < early_wr * 0.9:
+                print(f"    ⚠️  DEGRADING - Recent performance worse (-{early_wr - recent_wr:.0f}% WR drop)")
+    
+    print("\n" + "=" * 80)
+
+
 # ========================================
 # BACKTEST ENGINE
 # ========================================
@@ -987,7 +1353,8 @@ def run_full_backtest(csv_file: str, days: int = 15):
     # PSYCHOLOGICAL TRACKING for signal RL
     consecutive_wins = 0
     consecutive_losses = 0
-    cumulative_pnl = 0.0
+    starting_balance = 50000.0  # Starting account balance
+    cumulative_pnl = 0.0  # Profit/loss from trades (starts at 0)
     peak_balance = 0.0
     last_trade_time = None
     
@@ -1042,7 +1409,7 @@ def run_full_backtest(csv_file: str, days: int = 15):
             if exit_result:
                 exit_reason, exit_price, contracts_closed = exit_result
                 
-                # Calculate P&L
+                # Calculate P&L with realistic costs
                 tick_size = CONFIG['tick_size']
                 tick_value = CONFIG['tick_value']
                 
@@ -1051,11 +1418,24 @@ def run_full_backtest(csv_file: str, days: int = 15):
                 else:
                     profit_ticks = (active_trade.entry_price - exit_price) / tick_size
                 
+                # Deduct slippage (1 tick entry + 1 tick exit = 2 ticks total)
+                slippage_cost_ticks = CONFIG['slippage_ticks'] * 2  # Entry + Exit
+                profit_ticks -= slippage_cost_ticks
+                
+                # Calculate gross P&L
                 pnl = profit_ticks * tick_value * contracts_closed
+                
+                # Deduct commissions ($2.50 per contract per side = $5 round trip)
+                commission_cost = CONFIG['commission_per_contract'] * 2 * contracts_closed  # Entry + Exit
+                pnl -= commission_cost
+                
+                # Track costs on trade object
+                active_trade.exit_slippage_ticks = slippage_cost_ticks
+                active_trade.commission_cost += commission_cost
                 
                 # For partial exits, record partial trade
                 if 'partial' in exit_reason:
-                    print(f"  └─ {exit_reason.upper()}: Closed {contracts_closed} @ ${exit_price:.2f} | P&L: ${pnl:+.2f}")
+                    # Partial tracked (reduced spam)
                     
                     # RECORD PARTIAL EXIT FOR EXIT RL LEARNING
                     if hasattr(active_trade, 'current_exit_params') and active_trade.current_exit_params:
@@ -1243,6 +1623,12 @@ def run_full_backtest(csv_file: str, days: int = 15):
                                 'bars_until_trailing': active_trade.bars_until_trailing if active_trade.bars_until_trailing else 0,
                                 'breakeven_activated': bool(active_trade.breakeven_active),
                                 'trailing_activated': bool(active_trade.trailing_active),
+                                # ADVANCED RL: Intra-trade decision sequences and P&L tracking
+                                'decision_history': active_trade.decision_history,
+                                'unrealized_pnl_history': active_trade.unrealized_pnl_history,
+                                'peak_unrealized_pnl': float(active_trade.peak_unrealized_pnl),
+                                'peak_r_multiple': float(active_trade.peak_r_multiple),
+                                'opportunity_cost': float(active_trade.peak_unrealized_pnl - total_pnl) if active_trade.peak_unrealized_pnl > total_pnl else 0.0,
                                 # Advanced tracking arrays
                                 'exit_param_updates': active_trade.exit_param_updates,  # [{bar, vix, atr, reason, r_at_update}]
                                 'stop_adjustments': active_trade.stop_adjustments,  # [{bar, old_stop, new_stop, reason, r_at_adjustment}]
@@ -1258,6 +1644,24 @@ def run_full_backtest(csv_file: str, days: int = 15):
                                 'time_in_breakeven_bars': int(active_trade.time_in_breakeven_bars),
                                 'rejected_partial_count': int(active_trade.rejected_partial_count),
                                 'stop_hit': bool(active_trade.stop_hit),
+                                # NEW: Drawdown from peak tracking
+                                'profit_drawdown_from_peak': float(active_trade.profit_drawdown_from_peak),
+                                'max_drawdown_percent': float(active_trade.max_drawdown_percent),
+                                'drawdown_bars': int(active_trade.drawdown_bars),
+                                # NEW: Volatility during trade tracking
+                                'avg_atr_during_trade': float(sum(active_trade.atr_samples) / len(active_trade.atr_samples)) if active_trade.atr_samples else float(active_trade.entry_atr),
+                                'atr_change_percent': float(((active_trade.atr_samples[-1] - active_trade.entry_atr) / active_trade.entry_atr) * 100.0) if active_trade.atr_samples and active_trade.entry_atr > 0 else 0.0,
+                                'high_volatility_bars': int(active_trade.high_volatility_bars),
+                                # NEW: Consecutive trade context
+                                'trade_number_in_session': int(active_trade.trade_number_in_session),
+                                'wins_in_last_5_trades': int(active_trade.wins_in_last_5_trades),
+                                'losses_in_last_5_trades': int(active_trade.losses_in_last_5_trades),
+                                'cumulative_pnl_before_trade': float(active_trade.cumulative_pnl_before_trade),
+                                # NEW: Time-of-day exit tracking
+                                'exit_hour': int(bar['timestamp'].hour),
+                                'exit_minute': int(bar['timestamp'].minute),
+                                'held_through_sessions': bool((bar['timestamp'] - active_trade.entry_time).total_seconds() > 14400),  # >4 hours = crossed sessions
+                                'minutes_until_close': float((time(21, 0).hour * 60 + time(21, 0).minute) - (bar['timestamp'].hour * 60 + bar['timestamp'].minute)) if bar['timestamp'].hour < 21 else 0.0,
                             },
                             market_state=market_state,
                             backtest_mode=True,  # Collect for bulk save at end
@@ -1266,12 +1670,14 @@ def run_full_backtest(csv_file: str, days: int = 15):
                     except Exception as e:
                         print(f"  [WARN] Exit learning failed: {e}")
                 
-                # Print trade result
+                # Print trade completion
                 win_or_loss = "WIN" if total_pnl > 0 else "LOSS"
-                print(f"{'[OK]' if total_pnl > 0 else '[X]'} {win_or_loss}: {active_trade.side.upper()} {active_trade.original_contracts}x | "
-                      f"Entry: ${active_trade.entry_price:.2f} | Exit: ${exit_price:.2f} | "
+                day_name = bar['timestamp'].strftime('%a')  # Mon, Tue, etc
+                print(f"\n{'[OK]' if total_pnl > 0 else '[X]'} {win_or_loss}: {active_trade.side.upper()} {active_trade.original_contracts}x | "
+                      f"{day_name} {bar['timestamp'].strftime('%m/%d %H:%M')} | "
+                      f"Entry: ${active_trade.entry_price:.2f} → Exit: ${exit_price:.2f} | "
                       f"P&L: ${total_pnl:+.2f} | {exit_reason} | {duration:.0f}min | "
-                      f"Partials: {len(active_trade.partial_exits)}")
+                      f"Conf: {active_trade.confidence:.0%}")
                 
                 active_trade = None
                 continue
@@ -1436,15 +1842,19 @@ def run_full_backtest(csv_file: str, days: int = 15):
                     signals_ml_approved += 1
                     contracts = calculate_position_size(confidence)
                     
-                    print(f"\nLONG SIGNAL @ {bar['timestamp']} | ${bar['close']:.2f}")
-                    print(f"  RL Confidence: {confidence:.1%} APPROVED")
-                    print(f"  Position Size: {contracts} contracts ({reason})")
+                    # Signal tracked in progress bar (reduced spam)
                     
                     active_trade = Trade(bar, 'long', contracts, confidence, atr, vwap_bands, df, adaptive_exit_manager, rl_state)
                     active_trade.entry_state = rl_state  # Store for RL learning
+                    
+                    # NEW: Add consecutive trade context
+                    active_trade.trade_number_in_session = len(completed_trades) + 1
+                    active_trade.wins_in_last_5_trades = consecutive_wins
+                    active_trade.losses_in_last_5_trades = consecutive_losses
+                    active_trade.cumulative_pnl_before_trade = cumulative_pnl
                 else:
                     signals_ml_rejected += 1
-                    print(f"  X LONG @ {bar['timestamp']:.19s} REJECTED: {confidence:.1%} ({reason})")
+                    # Rejection tracked in progress bar (reduced spam)
                     
                     # GHOST TRADE: Simulate what would have happened
                     ghost_outcome = simulate_ghost_trade(bar, 'long', df, idx, atr)
@@ -1457,9 +1867,7 @@ def run_full_backtest(csv_file: str, days: int = 15):
                         'outcome': ghost_outcome  # What actually happened
                     })
                     
-                    # Show if we missed a winner
-                    if ghost_outcome['pnl'] > 0:
-                        print(f"    👻 GHOST: Would have WON ${ghost_outcome['pnl']:.0f} ({ghost_outcome['exit_reason']}) - BOT LEARNS FROM THIS")
+                    # Ghost outcome tracked (reduced spam)
             
             # SHORT signal check: VWAP bounce + LEARNED RSI overbought
             if (prev_bar['high'] >= vwap_bands['upper_2'] and 
@@ -1562,15 +1970,19 @@ def run_full_backtest(csv_file: str, days: int = 15):
                     signals_ml_approved += 1
                     contracts = calculate_position_size(confidence)
                     
-                    print(f"\nSHORT SIGNAL @ {bar['timestamp']} | ${bar['close']:.2f}")
-                    print(f"  RL Confidence: {confidence:.1%} APPROVED")
-                    print(f"  Position Size: {contracts} contracts ({reason})")
+                    # Signal tracked in progress bar (reduced spam)
                     
                     active_trade = Trade(bar, 'short', contracts, confidence, atr, vwap_bands, df, adaptive_exit_manager, rl_state)
                     active_trade.entry_state = rl_state  # Store RL state for learning
+                    
+                    # NEW: Add consecutive trade context
+                    active_trade.trade_number_in_session = len(completed_trades) + 1
+                    active_trade.wins_in_last_5_trades = consecutive_wins
+                    active_trade.losses_in_last_5_trades = consecutive_losses
+                    active_trade.cumulative_pnl_before_trade = cumulative_pnl
                 else:
                     signals_ml_rejected += 1
-                    print(f"  X SHORT @ {bar['timestamp']:.19s} REJECTED: {confidence:.1%} ({reason})")
+                    # Rejection tracked in progress bar (reduced spam)
                     
                     # GHOST TRADE: Simulate what would have happened
                     ghost_outcome = simulate_ghost_trade(bar, 'short', df, idx, atr)
@@ -1583,9 +1995,7 @@ def run_full_backtest(csv_file: str, days: int = 15):
                         'outcome': ghost_outcome  # What actually happened
                     })
                     
-                    # Show if we missed a winner
-                    if ghost_outcome['pnl'] > 0:
-                        print(f"    👻 GHOST: Would have WON ${ghost_outcome['pnl']:.0f} ({ghost_outcome['exit_reason']}) - BOT LEARNS FROM THIS")
+                    # Ghost outcome tracked (reduced spam)
     
     # ========================================
     # PERFORMANCE METRICS
@@ -1669,8 +2079,22 @@ def run_full_backtest(csv_file: str, days: int = 15):
     print(f"  Win Rate: {win_rate:.1f}%")
     
     print(f"\nPROFIT & LOSS:")
+    print(f"  Starting Balance: ${starting_balance:,.2f}")
+    print(f"  Ending Balance: ${starting_balance + total_pnl:,.2f}")
     print(f"  Total P&L: ${total_pnl:+,.2f}")
-    print(f"  Gross Profit: ${gross_profit:,.2f}")
+    print(f"  Return: {(total_pnl / starting_balance * 100):+.2f}%")
+    
+    # Calculate total costs
+    total_slippage_cost = total_trades * CONFIG['slippage_ticks'] * 2 * CONFIG['tick_value']  # 2 ticks per trade (entry+exit)
+    total_commission_cost = total_trades * CONFIG['commission_per_contract'] * 2 * df_trades['contracts'].sum()  # $5 per contract round trip
+    total_costs = total_slippage_cost + total_commission_cost
+    
+    print(f"\n  💰 TRADING COSTS (Already Deducted from P&L):")
+    print(f"     Slippage: -${total_slippage_cost:,.2f} ({CONFIG['slippage_ticks']*2} ticks/trade)")
+    print(f"     Commission: -${total_commission_cost:,.2f} (${CONFIG['commission_per_contract']*2}/contract)")
+    print(f"     Total Costs: -${total_costs:,.2f}")
+    
+    print(f"\n  Gross Profit: ${gross_profit:,.2f}")
     print(f"  Gross Loss: ${gross_loss:,.2f}")
     print(f"  Profit Factor: {profit_factor:.2f}")
     print(f"  Average Win: ${avg_win:+,.2f}")
@@ -1709,6 +2133,9 @@ def run_full_backtest(csv_file: str, days: int = 15):
               f"Conf: {trade['confidence']:.0%} | Partials: {trade['partial_exits']}")
     
     print("\n" + "=" * 80)
+    
+    # PRINT LEARNED INSIGHTS SUMMARY
+    print_learned_insights_summary(completed_trades, backtest_experiences, signal_manager_for_vwap, adaptive_exit_manager)
     
     # BULK SAVE ALL EXPERIENCES TO CLOUD API (skip in local mode)
     if CONFIG.get('local_mode', False):

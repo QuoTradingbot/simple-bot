@@ -11,11 +11,13 @@ import pytz
 class LocalExitManager:
     """Manages adaptive exits using local exit experiences (no API calls)"""
     
-    def __init__(self):
+    def __init__(self, verbose=False):
         self.exit_experiences = []
         self.local_dir = "data/local_experiences"
         self.loaded = False
         self.new_exit_experiences = []  # NEW: Track new exit experiences from backtest
+        self.verbose = verbose  # Control learning output
+        self.learned_insights = []  # Collect insights
         
     def load_experiences(self) -> bool:
         """Load exit experiences from local JSON file (v2 format with full structure)"""
@@ -508,6 +510,17 @@ class LocalExitManager:
         # Update in-memory list
         self.exit_experiences = all_experiences
         self.new_exit_experiences = []
+
+    
+    def print_learned_summary(self):
+        """Print summary of all learned insights from this backtest run"""
+        if len(self.learned_insights) > 0:
+            print(f"\n{'='*80}")
+            print(f"📚 LEARNED INSIGHTS SUMMARY ({len(self.learned_insights)} adjustments)")
+            print(f"{'='*80}")
+            for insight in self.learned_insights:
+                print(f"  {insight}")
+            print(f"{'='*80}\n")
 
 # Global instance for import
 local_exit_manager = LocalExitManager()

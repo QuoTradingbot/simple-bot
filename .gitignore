@@ -168,6 +168,10 @@ launcher/*.exe
 # Launcher config (contains credentials)
 launcher/config.json
 
+# Dev tools (backtest engine, migration scripts - not for production)
+dev-tools/
+backtest_trades.csv
+
 # Keep example/template files
 !data/.gitkeep
 !launcher/.gitkeep

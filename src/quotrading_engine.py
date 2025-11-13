@@ -3237,9 +3237,9 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
     # Get account equity
     equity = get_account_equity()
     
-    # Calculate risk allowance (1.2% of equity)
-    risk_dollars = equity * CONFIG["risk_per_trade"]
-    logger.info(f"Account equity: ${equity:.2f}, Risk allowance: ${risk_dollars:.2f}")
+    # Use fixed contract sizing based on max_contracts
+    # No risk percentage calculation - just use max contracts
+    logger.info(f"Account equity: ${equity:.2f}, Using fixed contract sizing")
     
     # Determine stop price
     vwap_bands = state[symbol]["vwap_bands"]
@@ -3319,15 +3319,12 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
     stop_distance = abs(entry_price - stop_price)
     ticks_at_risk = stop_distance / tick_size
     
-    # Calculate risk per contract
+    # Calculate risk per contract (for logging purposes only)
     tick_value = CONFIG["tick_value"]
     risk_per_contract = ticks_at_risk * tick_value
     
-    # Calculate number of contracts based on risk (baseline calculation)
-    if risk_per_contract > 0:
-        contracts = int(risk_dollars / risk_per_contract)
-    else:
-        contracts = 0
+    # Use fixed max_contracts from config (no risk-based sizing)
+    contracts = CONFIG["max_contracts"]
     
     # Get user's max contracts limit - THIS IS YOUR HARD CEILING
     user_max_contracts = CONFIG["max_contracts"]
@@ -7869,7 +7866,7 @@ def main(symbol_override: str = None) -> None:
     logger.info(f"[{primary_symbol}] Shutdown: {CONFIG['shutdown_time']} UTC")
     logger.info(f"[{primary_symbol}] Max Contracts: {CONFIG['max_contracts']}")
     logger.info(f"[{primary_symbol}] Max Trades/Day: {CONFIG['max_trades_per_day']}")
-    logger.info(f"[{primary_symbol}] Risk Per Trade: {CONFIG['risk_per_trade'] * 100:.1f}%")
+    logger.info(f"[{primary_symbol}] Position Sizing: Fixed at {CONFIG['max_contracts']} contracts")
     logger.info(f"[{primary_symbol}] Daily Loss Limit: ${CONFIG['daily_loss_limit']}")
     logger.info(SEPARATOR_LINE)
     

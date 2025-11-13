@@ -43,7 +43,6 @@ class BotConfiguration:
     username: str = ""  # Broker username/email
     
     # Trading Parameters
-    risk_per_trade: float = 0.012  # 1.2% of account per trade (increased for more profit)
     max_contracts: int = 3  # USER CONFIGURABLE - maximum contracts allowed (user sets their own limit)
     max_trades_per_day: int = 9999  # USER CONFIGURABLE - customers can adjust (9999 = unlimited)
     risk_reward_ratio: float = 2.0  # Realistic 2:1 for mean reversion with tight stops
@@ -250,7 +249,6 @@ class BotConfiguration:
             "daily_loss_limit": self.daily_loss_limit,
             "max_contracts": self.max_contracts,
             "max_trades_per_day": self.max_trades_per_day,
-            "risk_per_trade": self.risk_per_trade,
             "risk_reward_ratio": self.risk_reward_ratio,
         }
     
@@ -412,9 +410,6 @@ class BotConfiguration:
         warnings = []
         
         # Validate risk parameters
-        if not 0 < self.risk_per_trade <= 1:
-            errors.append(f"risk_per_trade must be between 0 and 1, got {self.risk_per_trade}")
-        
         if self.max_contracts <= 0:
             errors.append(f"max_contracts must be positive, got {self.max_contracts}")
         
@@ -489,7 +484,6 @@ class BotConfiguration:
             "instrument": self.instrument,
             "instruments": self.instruments,  # Multi-symbol support
             "timezone": self.timezone,
-            "risk_per_trade": self.risk_per_trade,
             "max_contracts": self.max_contracts,
             "max_trades_per_day": self.max_trades_per_day,
             "risk_reward_ratio": self.risk_reward_ratio,
@@ -583,9 +577,7 @@ def load_from_env() -> BotConfiguration:
     if os.getenv("BOT_TIMEZONE"):
         config.timezone = os.getenv("BOT_TIMEZONE")
     
-    if os.getenv("BOT_RISK_PER_TRADE"):
-        config.risk_per_trade = float(os.getenv("BOT_RISK_PER_TRADE"))
-    
+    # Environment variable overrides (removed risk_per_trade)
     if os.getenv("BOT_MAX_CONTRACTS"):
         config.max_contracts = int(os.getenv("BOT_MAX_CONTRACTS"))
     

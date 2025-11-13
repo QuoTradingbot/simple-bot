@@ -33,7 +33,7 @@ class AdaptiveExitManager:
     
     def __init__(self, config: Dict, experience_file: str = "data/exit_experience.json", cloud_api_url: Optional[str] = None):
         """
-        Initialize adaptive exit manager with RL learning.
+        Initialize adaptive exit manager with RL learning and neural network support.
         
         Args:
             config: Bot configuration
@@ -44,6 +44,31 @@ class AdaptiveExitManager:
         self.experience_file = experience_file
         self.cloud_api_url = cloud_api_url  # NEW: Cloud API endpoint
         self.use_cloud = cloud_api_url is not None  # Use cloud if URL provided
+        
+        # Neural network support (NEW!)
+        self.neural_exit_model = None
+        self.use_neural_network = True
+        try:
+            from neural_exit_model import ExitParamsNet, denormalize_exit_params
+            import torch
+            
+            # Load trained exit neural network
+            model_path = 'data/exit_model.pth'
+            if os.path.exists(model_path):
+                self.neural_exit_model = ExitParamsNet()
+                checkpoint = torch.load(model_path)
+                self.neural_exit_model.load_state_dict(checkpoint['model_state_dict'])
+                self.neural_exit_model.eval()
+                self.denormalize_exit_params = denormalize_exit_params
+                self.use_neural_network = True
+                logger.info(f"🧠 EXIT NEURAL NETWORK LOADED from {model_path}")
+            else:
+                logger.warning(f"⚠️  Exit neural network not found at {model_path} - using pattern matching fallback")
+                self.use_neural_network = False
+        except Exception as e:
+            logger.warning(f"⚠️  Could not load exit neural network: {e}")
+            logger.warning("   Using pattern matching fallback")
+            self.use_neural_network = False
         
         # CACHE: Store cloud exit params to avoid rate limiting
         self.cloud_exit_params_cache = {}  # {regime: {params, timestamp}}
@@ -722,9 +747,25 @@ class AdaptiveExitManager:
 
     
     def load_experiences(self):
-        """Load past exit experiences from cloud API or local file (fallback)."""
+        """Load past exit experiences from v2 format (shared with backtest), cloud, or local file."""
         
-        # Try cloud first if configured
+        # Try v2 format FIRST (shared with backtest - highest priority for dev)
+        v2_file = "data/local_experiences/exit_experiences_v2.json"
+        if os.path.exists(v2_file):
+            try:
+                with open(v2_file, 'r') as f:
+                    data = json.load(f)
+                    self.exit_experiences = data.get('experiences', [])
+                    logger.info(f"✅ Loaded {len(self.exit_experiences)} exit experiences from v2 format (shared with backtest)")
+                    
+                    # Re-learn from loaded data
+                    if len(self.exit_experiences) > 10:
+                        self.update_learned_parameters()
+                    return
+            except Exception as e:
+                logger.warning(f"Failed to load v2 exit experiences: {e}, trying cloud/local...")
+        
+        # Try cloud if configured
         if self.use_cloud:
             logger.info(f"[CLOUD] Fetching exit experiences from: {self.cloud_api_url}/api/ml/get_exit_experiences")
             try:
@@ -752,7 +793,7 @@ class AdaptiveExitManager:
                 logger.error(f"[CLOUD] Failed to fetch from cloud: {e}")
                 logger.warning("[CLOUD] Falling back to local file...")
         
-        # Fallback to local file
+        # Fallback to local legacy file
         logger.info(f"[LOCAL] Loading exit experiences from: {self.experience_file}")
         
         if os.path.exists(self.experience_file):
@@ -768,7 +809,7 @@ class AdaptiveExitManager:
                 import traceback
                 logger.error(traceback.format_exc())
         else:
-            logger.warning(f"[LOCAL] Exit experience file not found: {self.experience_file}")
+            logger.warning(f"[LOCAL] No exit experience files found - starting fresh")
     
     
     def get_cloud_exit_params(self, regime: str, market_state: Dict, position: Dict, entry_confidence: float = 0.75) -> Optional[Dict]:
@@ -1681,17 +1722,35 @@ class AdaptiveExitManager:
     
     def save_experiences(self):
         """
-        Save exit experiences to cloud API ONLY.
-        NO LOCAL FILES - everything goes to cloud PostgreSQL database.
+        Save exit experiences to v2 format (shared with backtest) AND cloud API.
+        Priority: v2 local file (for dev/training) + cloud (for production users).
         """
         
-        # Individual experiences already saved via record_exit_outcome()
-        # This method is just a placeholder for compatibility
+        # ALWAYS save to v2 format for backtest compatibility (DEV MODE)
+        try:
+            v2_dir = "data/local_experiences"
+            os.makedirs(v2_dir, exist_ok=True)
+            v2_file = os.path.join(v2_dir, "exit_experiences_v2.json")
+            
+            with open(v2_file, 'w') as f:
+                json.dump({
+                    'experiences': self.exit_experiences,
+                    'metadata': {
+                        'total_experiences': len(self.exit_experiences),
+                        'last_updated': datetime.now().isoformat(),
+                        'source': 'live_trading'
+                    }
+                }, f, indent=2)
+            
+            logger.info(f"✅ Saved {len(self.exit_experiences)} exit experiences to v2 format (shared with backtest)")
+        except Exception as e:
+            logger.error(f"Failed to save v2 exit experiences: {e}")
+        
+        # ALSO save to cloud if configured (for production users)
         if self.use_cloud:
             logger.info(f"[CLOUD] ✅ {len(self.exit_experiences)} exit experiences saved to cloud API individually")
         else:
-            logger.warning(f"[WARN] Cloud API not configured! Exit experiences NOT being saved!")
-            logger.warning(f"[WARN] Set cloud_api_url in config to enable cloud learning")
+            logger.debug(f"[INFO] Cloud API not configured - using local v2 format only (dev mode)")
 
 
 def detect_market_regime(bars: list, current_atr: float) -> str:
@@ -2095,6 +2154,69 @@ def get_adaptive_exit_params(bars: list, position: Dict, current_price: float,
     
     # Detect market regime
     market_regime = detect_market_regime(bars, current_atr)
+    
+    # ========================================================================
+    # NEURAL NETWORK EXIT PREDICTION - Try neural network first
+    # ========================================================================
+    if adaptive_manager and hasattr(adaptive_manager, 'use_neural_network') and adaptive_manager.use_neural_network and adaptive_manager.neural_exit_model is not None:
+        try:
+            import torch
+            
+            # Extract features for neural network
+            latest_bar = bars[-1] if len(bars) > 0 else {}
+            duration_minutes = (datetime.now().timestamp() - position.get('entry_time', datetime.now()).timestamp()) / 60 if isinstance(position.get('entry_time'), datetime) else 0
+            
+            # Build feature vector (15 features)
+            regime_encoding = [1, 0, 0] if market_regime == 'HIGH_VOL_CHOPPY' else [0, 1, 0] if market_regime == 'HIGH_VOL_TRENDING' else [0, 0, 1]
+            features = torch.tensor([
+                *regime_encoding,  # 3 features (one-hot encoded)
+                latest_bar.get('rsi', 50.0),
+                latest_bar.get('volume', 1.0) / latest_bar.get('avg_volume', 1.0) if 'avg_volume' in latest_bar else 1.0,
+                current_atr,
+                entry_confidence,
+                latest_bar.get('hour', 12) if 'hour' in latest_bar else 12,
+                latest_bar.get('day_of_week', 2) if 'day_of_week' in latest_bar else 2,
+                latest_bar.get('vix', 15.0) if 'vix' in latest_bar else 15.0,
+                abs(current_price - latest_bar.get('vwap', current_price)) if 'vwap' in latest_bar else 0.0,
+                position.get('streak', 0) if 'streak' in position else 0,
+                position.get('recent_pnl', 0.0) if 'recent_pnl' in position else 0.0,
+                1.0 if position.get('side', 'long').upper() == 'LONG' else 0.0,
+                2.0 if duration_minutes > 60 else 1.0 if duration_minutes > 30 else 0.0  # Session: NY/London/Asia
+            ], dtype=torch.float32).unsqueeze(0)
+            
+            # Get neural network prediction
+            with torch.no_grad():
+                normalized_output = adaptive_manager.neural_exit_model(features)
+                exit_params_dict = adaptive_manager.denormalize_exit_params(normalized_output)
+            
+            logger.info(f"🧠 [EXIT NN] Predicted params: breakeven={exit_params_dict['breakeven_threshold_ticks']:.1f}, "
+                       f"trailing={exit_params_dict['trailing_distance_ticks']:.1f}, "
+                       f"stop_mult={exit_params_dict['stop_mult']:.2f}x, "
+                       f"partials={exit_params_dict['partial_1_r']:.1f}R/{exit_params_dict['partial_2_r']:.1f}R/{exit_params_dict['partial_3_r']:.1f}R")
+            
+            # Convert to final format
+            return {
+                'breakeven_threshold_ticks': int(exit_params_dict['breakeven_threshold_ticks']),
+                'breakeven_offset_ticks': 1,  # Standard offset
+                'trailing_distance_ticks': int(exit_params_dict['trailing_distance_ticks']),
+                'trailing_min_profit_ticks': int(exit_params_dict['breakeven_threshold_ticks'] * 1.5),
+                'market_regime': market_regime,
+                'current_volatility_atr': current_atr,
+                'is_aggressive_mode': entry_confidence < 0.6,
+                'confidence_adjusted': entry_confidence < 0.6,
+                'partial_1_r': exit_params_dict['partial_1_r'],
+                'partial_1_pct': 0.50,
+                'partial_2_r': exit_params_dict['partial_2_r'],
+                'partial_2_pct': 0.30,
+                'partial_3_r': exit_params_dict['partial_3_r'],
+                'partial_3_pct': 0.20,
+                'stop_mult': exit_params_dict['stop_mult'],
+                'prediction_source': 'neural_network'
+            }
+            
+        except Exception as e:
+            logger.warning(f"⚠️  Neural network exit prediction failed: {e}, falling back to pattern matching")
+            # Fall through to cloud/pattern matching below
     
     # ========================================================================
     # CLOUD EXIT RL - Query cloud for REAL-TIME exit recommendations

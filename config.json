@@ -11,7 +11,6 @@
   "account_size": 50000.0,
   "max_contracts": 3,
   "max_trades_per_day": 9999,
-  "risk_per_trade": 0.012,
   "daily_loss_limit": 1000.0,
   "auto_calculate_limits": true,
   "rl_confidence_threshold": 0.7,

@@ -1,7 +1,8 @@
 """
-Signal Confidence - RL Layer for VWAP Signals
-==============================================
-Learns which VWAP bounce signals to trust vs skip.
+Signal Confidence - Neural Network + RL Hybrid Layer for VWAP Signals
+======================================================================
+Uses trained neural network (84.80% accuracy) for confidence prediction.
+Falls back to pattern matching RL if neural network unavailable.
 
 Keeps your hardcoded VWAP/RSI entry logic, but adds intelligence:
 - Should I take this signal? (confidence scoring)
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 class SignalConfidenceRL:
     """
-    Reinforcement learning layer that decides whether to trust VWAP signals.
+    Neural network + RL hybrid layer that decides whether to trust VWAP signals.
     
     State: Market conditions when signal triggers
     Action: Take trade (yes/no) + position size + exit params
@@ -33,7 +34,7 @@ class SignalConfidenceRL:
     
     def __init__(self, experience_file: str = "data/signal_experience.json", backtest_mode: bool = False, confidence_threshold: Optional[float] = None, exploration_rate: Optional[float] = None, min_exploration: Optional[float] = None, exploration_decay: Optional[float] = None):
         """
-        Initialize RL confidence scorer.
+        Initialize RL confidence scorer with neural network support.
         
         Args:
             experience_file: Path to experience file
@@ -49,7 +50,24 @@ class SignalConfidenceRL:
         self.experiences = []  # All past (state, action, reward) tuples
         self.recent_trades = deque(maxlen=20)  # Last 20 outcomes
         self.backtest_mode = backtest_mode
-        self.freeze_learning = False  # LEARNING ENABLED - Brain 2 learns during backtests
+        self.freeze_learning = False  # LEARNING ENABLED - Brain learns during backtests
+        
+        # Neural network support (NEW!)
+        self.neural_predictor = None
+        self.use_neural_network = True
+        try:
+            from neural_confidence_model import ConfidencePredictor
+            self.neural_predictor = ConfidencePredictor(model_path='data/neural_model.pth')
+            if self.neural_predictor.load_model():
+                logger.info("🧠 NEURAL NETWORK LOADED - Using 84.80% accuracy AI model")
+                self.use_neural_network = True
+            else:
+                logger.warning("⚠️  Neural network not found - using pattern matching fallback")
+                self.use_neural_network = False
+        except Exception as e:
+            logger.warning(f"⚠️  Could not load neural network: {e}")
+            logger.warning("   Using pattern matching fallback")
+            self.use_neural_network = False
         
         # Random exploration enabled - no fixed seed for natural learning
         
@@ -405,19 +423,50 @@ class SignalConfidenceRL:
     
     def calculate_confidence(self, current_state: Dict) -> Tuple[float, str]:
         """
-        Calculate confidence using DUAL PATTERN MATCHING.
-        NEW FEATURE 3 UPGRADED: Compare similarity to BOTH winners and losers.
+        Calculate confidence using NEURAL NETWORK (preferred) or DUAL PATTERN MATCHING (fallback).
         
-        Formula: confidence = winner_similarity - loser_penalty
-        
-        This allows the AI to:
-        - Learn from ALL 6,880 experiences (not just winners)
-        - Actively AVOID patterns that lost money
-        - Be much smarter than just "match winners"
+        Priority:
+        1. Neural Network (84.80% accuracy) - trained on 5,293 experiences
+        2. Pattern Matching RL - fallback if NN unavailable
         
         Returns:
             (confidence, reason)
         """
+        # TRY NEURAL NETWORK FIRST
+        if self.use_neural_network and self.neural_predictor is not None:
+            try:
+                # Extract features for neural network
+                features = {
+                    'rsi': current_state.get('rsi', 50.0),
+                    'vwap_distance': current_state.get('vwap_distance', 0.0),
+                    'atr': current_state.get('atr', 0.0),
+                    'volume_ratio': current_state.get('volume_ratio', 1.0),
+                    'hour': current_state.get('hour', 12),
+                    'day_of_week': current_state.get('day_of_week', 2),
+                    'vix': current_state.get('vix', 15.0),
+                    'streak': self.current_win_streak if self.current_win_streak > 0 else -self.current_loss_streak,
+                    'recent_pnl': sum(t.get('reward', 0) for t in list(self.recent_trades)[-3:]) if self.recent_trades else 0.0,
+                    'regime': current_state.get('regime', 'NORMAL'),
+                    'side': current_state.get('side', 'LONG'),
+                    'session': current_state.get('session', 'NY')
+                }
+                
+                # Get neural network prediction
+                confidence = self.neural_predictor.predict_confidence(features)
+                
+                # Get calibrated confidence and temperature
+                stats = self.neural_predictor.get_model_stats()
+                calibrated_conf = stats.get('calibrated_confidence', confidence)
+                temperature = stats.get('temperature', 1.0)
+                
+                reason = f"🧠 Neural Network: {calibrated_conf*100:.1f}% (T={temperature:.1f})"
+                return calibrated_conf, reason
+                
+            except Exception as e:
+                logger.warning(f"Neural network prediction failed: {e}, falling back to pattern matching")
+                # Fall through to pattern matching below
+        
+        # FALLBACK: DUAL PATTERN MATCHING (original RL logic)
         # Need at least 10 experiences before using them for decisions
         if len(self.experiences) < 10:
             return 0.65, f"🆕 Limited experience ({len(self.experiences)} trades) - optimistic"
@@ -868,7 +917,21 @@ class SignalConfidenceRL:
         }
     
     def load_experience(self):
-        """Load past experiences from file."""
+        """Load past experiences from file (tries v2 format first, then legacy)."""
+        # Try v2 format first (shared with backtest)
+        v2_file = "data/local_experiences/signal_experiences_v2.json"
+        
+        if os.path.exists(v2_file):
+            try:
+                with open(v2_file, 'r') as f:
+                    data = json.load(f)
+                    self.experiences = data.get('experiences', [])
+                    logger.info(f"✅ Loaded {len(self.experiences)} experiences from v2 format (shared with backtest)")
+                return
+            except Exception as e:
+                logger.warning(f"Failed to load v2 experiences: {e}, trying legacy format...")
+        
+        # Fallback to legacy format
         logger.info(f"[DEBUG] Attempting to load experiences from: {self.experience_file}")
         logger.info(f"[DEBUG] File exists check: {os.path.exists(self.experience_file)}")
         
@@ -880,21 +943,40 @@ class SignalConfidenceRL:
                     data = json.load(f)
                     logger.info(f"[DEBUG] JSON loaded successfully. Keys: {list(data.keys())}")
                     self.experiences = data.get('experiences', [])
-                    logger.info(f" Loaded {len(self.experiences)} past signal experiences")
+                    logger.info(f"✅ Loaded {len(self.experiences)} past signal experiences (legacy format)")
             except Exception as e:
                 logger.error(f"Failed to load experiences: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
         else:
-            logger.warning(f"[DEBUG] Experience file not found: {self.experience_file}")
+            logger.warning(f"[DEBUG] No experience files found - starting fresh")
     
     def save_experience(self):
-        """Save experiences to file."""
+        """Save experiences to file in v2 format (compatible with backtest training)."""
         try:
+            # Save to main experience file
             with open(self.experience_file, 'w') as f:
                 json.dump({
                     'experiences': self.experiences,
                     'stats': self.get_stats()
                 }, f, indent=2)
+            
+            # ALSO save to v2 format for backtest compatibility
+            v2_dir = "data/local_experiences"
+            os.makedirs(v2_dir, exist_ok=True)
+            v2_file = os.path.join(v2_dir, "signal_experiences_v2.json")
+            
+            with open(v2_file, 'w') as f:
+                json.dump({
+                    'experiences': self.experiences,
+                    'metadata': {
+                        'total_experiences': len(self.experiences),
+                        'last_updated': datetime.now().isoformat(),
+                        'source': 'live_trading'
+                    }
+                }, f, indent=2)
+            
+            logger.debug(f"Saved {len(self.experiences)} experiences to {self.experience_file} and {v2_file}")
+            
         except Exception as e:
             logger.error(f"Failed to save experiences: {e}")

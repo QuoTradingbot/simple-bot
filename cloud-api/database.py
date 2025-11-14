@@ -3,9 +3,10 @@ Database models and connection management for QuoTrading Cloud API
 Supports PostgreSQL for production, SQLite for local development
 """
 
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, Text, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, Text, ForeignKey, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime, timedelta
 import pytz
 import os
@@ -237,6 +238,110 @@ class ExitExperience(Base):
             'market_state': json.loads(self.market_state_json) if self.market_state_json else {},
             'partial_exits': json.loads(self.partial_exits_json) if self.partial_exits_json else [],
             'quality_score': self.quality_score
+        }
+
+
+class MLExperience(Base):
+    """
+    NEW: Complete ML experience storage with JSONB for flexible RL state + outcome.
+    Supports signal experiences, exit experiences, AND ghost trades (shadow tracking).
+    Multi-user learning pool - all experiences aggregated for daily model retraining.
+    """
+    __tablename__ = 'ml_experiences'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String(100), nullable=False, index=True)  # Privacy-preserving hash
+    symbol = Column(String(20), nullable=False, index=True)  # ES, NQ, MES, etc.
+    experience_type = Column(String(20), nullable=False, index=True)  # 'signal', 'exit', 'ghost_trade'
+    
+    # Complete RL state (26-45 features depending on experience type) - JSONB for fast queries
+    rl_state = Column(JSONB, nullable=False)  # {rsi, vwap_distance, vix, atr, volume_ratio, ...}
+    
+    # Complete outcome data - JSONB for flexible schema
+    outcome = Column(JSONB, nullable=False)  # {pnl, exit_reason, mae, mfe, breakeven_activated, ...}
+    
+    # Metadata
+    timestamp = Column(DateTime, default=lambda: datetime.now(pytz.UTC), index=True)
+    quality_score = Column(Float, nullable=True)  # 0-1, calculated quality of this experience
+    
+    # Indexes for fast queries
+    # CREATE INDEX idx_ml_exp_type_time ON ml_experiences(experience_type, timestamp DESC);
+    # CREATE INDEX idx_ml_exp_user_symbol ON ml_experiences(user_id, symbol);
+    # CREATE INDEX idx_ml_exp_rl_state ON ml_experiences USING GIN(rl_state);
+    # CREATE INDEX idx_ml_exp_outcome ON ml_experiences USING GIN(outcome);
+    
+    def __repr__(self):
+        return f"<MLExperience {self.experience_type} {self.symbol} @ {self.timestamp}>"
+    
+    def to_dict(self):
+        """Convert to dictionary for training scripts"""
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'symbol': self.symbol,
+            'experience_type': self.experience_type,
+            'rl_state': self.rl_state,  # Already dict (JSONB)
+            'outcome': self.outcome,  # Already dict (JSONB)
+            'timestamp': self.timestamp.isoformat(),
+            'quality_score': self.quality_score
+        }
+
+
+class ModelVersion(Base):
+    """
+    NEW: Model version tracking with Azure Blob Storage URLs.
+    Tracks signal_model.pth and exit_model.pth versions + performance metrics.
+    """
+    __tablename__ = 'model_versions'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_type = Column(String(20), nullable=False, index=True)  # 'signal' or 'exit'
+    version = Column(String(50), nullable=False, unique=True, index=True)  # e.g., 'v1.2.3' or '2025-11-14_001'
+    
+    # Model file location
+    blob_url = Column(String(500), nullable=False)  # Azure Blob Storage URL with SAS token
+    blob_container = Column(String(100), nullable=False, default='models')  # Container name
+    blob_path = Column(String(255), nullable=False)  # Path within container: signal_model_v1.2.3.pth
+    
+    # Training metadata
+    training_start = Column(DateTime, nullable=False)
+    training_end = Column(DateTime, nullable=False)
+    training_duration_mins = Column(Integer, nullable=True)
+    
+    # Performance metrics (stored as JSONB for flexibility)
+    metrics = Column(JSONB, nullable=False)  # {accuracy, loss, val_loss, win_rate, sharpe, etc.}
+    
+    # Training data info
+    num_experiences = Column(Integer, nullable=False)  # How many experiences used for training
+    num_users = Column(Integer, nullable=True)  # How many users contributed data
+    
+    # Deployment status
+    is_deployed = Column(Boolean, default=False, index=True)  # Currently active version?
+    deployed_at = Column(DateTime, nullable=True)
+    
+    # Metadata
+    created_at = Column(DateTime, default=lambda: datetime.now(pytz.UTC), index=True)
+    created_by = Column(String(100), nullable=True)  # Who/what triggered training
+    notes = Column(Text, nullable=True)  # Training notes, issues, insights
+    
+    def __repr__(self):
+        return f"<ModelVersion {self.model_type} {self.version} {'[DEPLOYED]' if self.is_deployed else ''}>"
+    
+    def to_dict(self):
+        """Convert to dictionary for API responses"""
+        return {
+            'id': self.id,
+            'model_type': self.model_type,
+            'version': self.version,
+            'blob_url': self.blob_url,
+            'blob_path': self.blob_path,
+            'metrics': self.metrics,  # Already dict (JSONB)
+            'num_experiences': self.num_experiences,
+            'num_users': self.num_users,
+            'is_deployed': self.is_deployed,
+            'deployed_at': self.deployed_at.isoformat() if self.deployed_at else None,
+            'created_at': self.created_at.isoformat(),
+            'training_duration_mins': self.training_duration_mins
         }
 
 

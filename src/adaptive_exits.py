@@ -55,7 +55,7 @@ class AdaptiveExitManager:
             # Load trained exit neural network
             model_path = 'data/exit_model.pth'
             if os.path.exists(model_path):
-                self.neural_exit_model = ExitParamsNet()
+                self.neural_exit_model = ExitParamsNet(input_size=45, hidden_size=64)
                 checkpoint = torch.load(model_path)
                 self.neural_exit_model.load_state_dict(checkpoint['model_state_dict'])
                 self.neural_exit_model.eval()

@@ -3247,6 +3247,49 @@ def capture_rl_state(symbol: str, side: str, current_price: float) -> Dict[str, 
             else:
                 break  # Stop at breakeven
     
+    # ========================================================================
+    # REWARD SHAPING FEATURES (matches backtest for RL training)
+    # ========================================================================
+    
+    # 1. Volatility Trend - % change in volatility (recent 10 vs previous 10)
+    bars_1min = state[symbol]["bars_1min"]
+    if len(bars_1min) >= 20:
+        # Calculate recent volatility (last 10 bars)
+        recent_prices = [b["close"] for b in list(bars_1min)[-10:]]
+        recent_vol = statistics.stdev(recent_prices) if len(recent_prices) > 1 else 0.0
+        
+        # Calculate previous volatility (bars 11-20)
+        previous_prices = [b["close"] for b in list(bars_1min)[-20:-10]]
+        previous_vol = statistics.stdev(previous_prices) if len(previous_prices) > 1 else 0.0
+        
+        # % change in volatility
+        volatility_trend = ((recent_vol - previous_vol) / previous_vol * 100) if previous_vol > 0 else 0.0
+    else:
+        volatility_trend = 0.0
+    
+    # 2. Drawdown % at Entry - Current account drawdown from peak
+    starting_balance = CONFIG.get("account_size", 50000)
+    current_balance = starting_balance + state[symbol].get("daily_pnl", 0.0)
+    
+    # Track peak balance (initialize if not exists)
+    if "peak_balance" not in state[symbol]:
+        state[symbol]["peak_balance"] = starting_balance
+    
+    # Update peak balance
+    if current_balance > state[symbol]["peak_balance"]:
+        state[symbol]["peak_balance"] = current_balance
+    
+    # Calculate drawdown %
+    peak_balance = state[symbol]["peak_balance"]
+    drawdown_pct_at_entry = ((current_balance - peak_balance) / peak_balance * 100) if peak_balance > 0 else 0.0
+    
+    # 3. Recent Volatility (20-bar) - Rolling standard deviation
+    if len(bars_1min) >= 20:
+        recent_20_prices = [b["close"] for b in list(bars_1min)[-20:]]
+        recent_volatility_20bar = statistics.stdev(recent_20_prices)
+    else:
+        recent_volatility_20bar = 0.0
+    
     rl_state = {
         "rsi": rsi if rsi is not None else 50,
         "vwap_distance": vwap_distance,
@@ -3259,7 +3302,11 @@ def capture_rl_state(symbol: str, side: str, current_price: float) -> Dict[str, 
         "side": side,
         "price": current_price,
         "vwap": vwap,  # ADDED: need for cloud RL API
-        "vix": 15.0    # ADDED: default VIX (could fetch real VIX later)
+        "vix": 15.0,   # ADDED: default VIX (could fetch real VIX later)
+        # Reward shaping features (for RL training)
+        "volatility_trend": volatility_trend,
+        "drawdown_pct_at_entry": drawdown_pct_at_entry,
+        "recent_volatility_20bar": recent_volatility_20bar
     }
     
     return rl_state
@@ -3437,6 +3484,31 @@ def check_for_signals(symbol: str) -> None:
         take_signal, confidence, size_mult, reason = get_ml_confidence(rl_state, "long", current_spread_ticks)
         
         logger.critical(f"🤖 ML DECISION: {'✅ TAKE' if take_signal else '❌ REJECT'} | Confidence: {confidence:.1%} | Reason: {reason}")
+        
+        # ENFORCE GUI CONFIDENCE THRESHOLD - User's setting is the minimum
+        user_threshold = CONFIG.get("rl_confidence_threshold", 0.5)
+        if take_signal and confidence < user_threshold:
+            logger.info(f"❌ GUI THRESHOLD REJECTED LONG signal: confidence {confidence:.1%} below user threshold {user_threshold:.1%}")
+            logger.info(f"   User configured minimum: {user_threshold:.1%}")
+            state[symbol]["last_rejected_signal"] = {
+                "time": get_current_time(),
+                "state": rl_state,
+                "side": "long",
+                "confidence": confidence,
+                "reason": f"Below user threshold: {confidence:.1%} < {user_threshold:.1%}"
+            }
+            
+            # Update dashboard
+            if dashboard:
+                sig_time = get_current_time().strftime("%H:%M")
+                conf_str = f"{int(confidence * 100)}%"
+                dashboard.update_symbol_data(symbol, {
+                    "last_rejected_signal": f"{sig_time} LONG @ ${current_bar['close']:.2f} (User Min: {int(user_threshold * 100)}% > {conf_str})",
+                    "status": "Below user confidence threshold"
+                })
+                dashboard.display()
+            
+            return
         
         # Check if in recovery mode and need higher confidence
         if take_signal and bot_status.get("recovery_confidence_threshold"):
@@ -3621,6 +3693,31 @@ def check_for_signals(symbol: str) -> None:
         
         logger.critical(f"🤖 ML DECISION: {'✅ TAKE' if take_signal else '❌ REJECT'} | Confidence: {confidence:.1%} | Reason: {reason}")
         
+        # ENFORCE GUI CONFIDENCE THRESHOLD - User's setting is the minimum
+        user_threshold = CONFIG.get("rl_confidence_threshold", 0.5)
+        if take_signal and confidence < user_threshold:
+            logger.info(f"❌ GUI THRESHOLD REJECTED SHORT signal: confidence {confidence:.1%} below user threshold {user_threshold:.1%}")
+            logger.info(f"   User configured minimum: {user_threshold:.1%}")
+            state[symbol]["last_rejected_signal"] = {
+                "time": get_current_time(),
+                "state": rl_state,
+                "side": "short",
+                "confidence": confidence,
+                "reason": f"Below user threshold: {confidence:.1%} < {user_threshold:.1%}"
+            }
+            
+            # Update dashboard
+            if dashboard:
+                sig_time = get_current_time().strftime("%H:%M")
+                conf_str = f"{int(confidence * 100)}%"
+                dashboard.update_symbol_data(symbol, {
+                    "last_rejected_signal": f"{sig_time} SHORT @ ${current_bar['close']:.2f} (User Min: {int(user_threshold * 100)}% > {conf_str})",
+                    "status": "Below user confidence threshold"
+                })
+                dashboard.display()
+            
+            return
+        
         # Check if in recovery mode and need higher confidence
         if take_signal and bot_status.get("recovery_confidence_threshold"):
             recovery_threshold = bot_status["recovery_confidence_threshold"]
@@ -3728,6 +3825,13 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
     # No risk percentage calculation - just use max contracts
     logger.info(f"Account equity: ${equity:.2f}, Using fixed contract sizing")
     
+    # CRITICAL: If confidence is below threshold, return 0 contracts (reject trade)
+    if rl_confidence is not None:
+        user_threshold = CONFIG.get("rl_confidence_threshold", 0.5)
+        if rl_confidence < user_threshold:
+            logger.info(f"[POSITION SIZING] Confidence {rl_confidence:.1%} below threshold {user_threshold:.1%} - returning 0 contracts")
+            return 0, 0.0, None  # 0 contracts = no trade
+    
     # Determine stop price
     vwap_bands = state[symbol]["vwap_bands"]
     vwap = state[symbol]["vwap"]
@@ -3748,7 +3852,8 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
                     # Detect current regime
                     from adaptive_exits import detect_market_regime
                     bars = state[symbol]["bars_1min"]
-                    regime = detect_market_regime(bars, entry_price, CONFIG)
+                    atr_value = calculate_atr(symbol, CONFIG.get("atr_period", 14))
+                    regime = detect_market_regime(bars, atr_value if atr_value else 2.0)
                     
                     # Get learned stop multiplier for this regime
                     stop_multiplier = adaptive_manager.get_stop_multiplier(regime)
@@ -5616,7 +5721,8 @@ def check_partial_exits(symbol: str, current_price: float) -> None:
     }
     
     # Detect regime
-    regime = detect_market_regime(bars, current_price, CONFIG)
+    atr_value = calculate_atr(symbol, CONFIG.get("atr_period", 14))
+    regime = detect_market_regime(bars, atr_value if atr_value else 2.0)
     
     # Get adaptive scaling strategy
     adaptive_manager = position.get('adaptive_exit_manager')
@@ -5673,7 +5779,7 @@ def check_partial_exits(symbol: str, current_price: float) -> None:
                 bars = state[symbol]["bars_1min"]
                 current_bar = bars[-1] if len(bars) > 0 else {}
                 market_state = {
-                    "regime": detect_market_regime(bars, entry_price, CONFIG),
+                    "regime": detect_market_regime(bars, calculate_atr(symbol, CONFIG.get("atr_period", 14)) or 2.0),
                     "rsi": calculate_rsi([bar["close"] for bar in bars[-50:]]) if len(bars) >= 50 else 50.0,
                     "volume_ratio": bars[-1]["volume"] / sum(b["volume"] for b in bars[-20:]) * 20 if len(bars) >= 20 else 1.0,
                     "hour": get_current_hour(),
@@ -5761,7 +5867,12 @@ def execute_partial_exit(symbol: str, contracts: int, exit_price: float, r_multi
                 # Get exit parameters that were used
                 if "exit_params_used" in position:
                     exit_params = position["exit_params_used"]
-                    regime = exit_params.get("market_regime", "UNKNOWN")
+                    
+                    # Calculate market regime at exit (don't rely on stored value)
+                    from adaptive_exits import detect_market_regime
+                    bars = state[symbol]["bars_1min"]
+                    atr_value = calculate_atr(symbol, CONFIG.get("atr_period", 14))
+                    regime = detect_market_regime(bars, atr_value if atr_value else 2.0)
                     
                     # Capture current market state for context-aware learning
                     try:
@@ -6255,7 +6366,7 @@ def check_exit_conditions(symbol: str) -> None:
             # Get current market state for similarity matching
             bars = state[symbol]["bars_1min"]
             market_state = {
-                "regime": detect_market_regime(bars, position["entry_price"], CONFIG),
+                "regime": detect_market_regime(bars, calculate_atr(symbol, CONFIG.get("atr_period", 14)) or 2.0),
                 "rsi": calculate_rsi([bar["close"] for bar in bars[-50:]]) if len(bars) >= 50 else 50.0,
                 "volume_ratio": bars[-1]["volume"] / sum(b["volume"] for b in bars[-20:]) * 20 if len(bars) >= 20 else 1.0,
                 "hour": bar_time.hour,
@@ -6903,7 +7014,12 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
             # Get exit parameters that were used
             if "exit_params_used" in position:
                 exit_params = position["exit_params_used"]
-                regime = exit_params.get("market_regime", "UNKNOWN")
+                
+                # Calculate market regime at exit (don't rely on stored value)
+                from adaptive_exits import detect_market_regime
+                bars = state[symbol]["bars_1min"]
+                atr_value = calculate_atr(symbol, CONFIG.get("atr_period", 14))
+                regime = detect_market_regime(bars, atr_value if atr_value else 2.0)
                 
                 # Calculate trade duration
                 entry_time = position.get("entry_time")
@@ -7008,6 +7124,14 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
                         # Market conditions (for backtest compatibility)
                         'vix': market_state.get('vix', 15.0) if market_state else 15.0,
                         'cumulative_pnl_before_trade': state[symbol].get("daily_pnl", 0.0) - pnl,  # P&L before this trade
+                        
+                        # NEW: Temporal features for pattern learning
+                        'entry_hour': entry_time.hour if entry_time else 12,
+                        'entry_minute': entry_time.minute if entry_time else 0,
+                        'exit_hour': exit_time.hour,
+                        'exit_minute': exit_time.minute,
+                        'day_of_week': exit_time.weekday(),  # 0=Monday, 6=Sunday
+                        'bars_held': position.get("duration_bars", 0),  # Already tracked
                         
                         # Time-of-day exit tracking
                         'exit_hour': exit_time.hour,

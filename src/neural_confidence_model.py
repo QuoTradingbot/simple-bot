@@ -12,19 +12,19 @@ class SignalConfidenceNet(nn.Module):
     Neural network that learns to predict trade success probability.
     
     Architecture:
-    - Input: 26 features (RSI, VIX, hour, ATR, volume, market_regime, volatility_clustering, etc.)
+    - Input: 33 features (RSI, VIX, hour, ATR, volume, market_regime, volatility, price levels, temporal)
     - Hidden Layer 1: 64 neurons with ReLU activation
     - Hidden Layer 2: 32 neurons with ReLU activation  
-    - Output: 1 neuron with Sigmoid activation (0-1 confidence)
+    - Output: 1 neuron with SIGMOID activation (0-1 confidence/probability)
     
     Dropout: 0.3 to prevent overfitting
     """
     
-    def __init__(self, input_size=26):
+    def __init__(self, input_size=33):
         super(SignalConfidenceNet, self).__init__()
         
         self.network = nn.Sequential(
-            # Layer 1: 26 → 64
+            # Layer 1: 33 → 64
             nn.Linear(input_size, 64),
             nn.ReLU(),
             nn.Dropout(0.3),
@@ -34,9 +34,9 @@ class SignalConfidenceNet(nn.Module):
             nn.ReLU(),
             nn.Dropout(0.3),
             
-            # Output: 32 → 1
+            # Output: 32 → 1 (sigmoid activation for probability)
             nn.Linear(32, 1),
-            nn.Sigmoid()  # Output 0-1 (confidence)
+            nn.Sigmoid()
         )
         
     def forward(self, x):
@@ -44,13 +44,13 @@ class SignalConfidenceNet(nn.Module):
 
 
 class ConfidencePredictor:
-    """
-    Wrapper for the neural network with easy predict() interface.
-    Handles model loading, feature normalization, and prediction.
-    """
+    """Wrapper for loading the neural model and producing predictions."""
     
-    def __init__(self, model_path='../data/neural_model.pth'):
-        self.model_path = model_path
+    def __init__(self, model_path=None):
+        default_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), '..', 'data', 'neural_model.pth')
+        )
+        self.model_path = model_path or default_path
         self.model = None
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
@@ -84,8 +84,8 @@ class ConfidencePredictor:
             self.temperature = checkpoint.get('temperature', 1.5)
             
             print(f"✅ Neural network loaded from {self.model_path}")
-            print(f"   Training accuracy: {checkpoint.get('train_acc', 0):.1f}%")
-            print(f"   Validation accuracy: {checkpoint.get('val_acc', 0):.1f}%")
+            print(f"   Training MAE: {checkpoint.get('train_mae', 0):.2f}")
+            print(f"   Validation MAE: {checkpoint.get('val_mae', 0):.2f}")
             print(f"   Temperature: {self.temperature:.2f}")
             
             return True
@@ -116,8 +116,7 @@ class ConfidencePredictor:
             confidence: Float 0-1.0 (probability of winning trade)
         """
         if self.model is None:
-            # Fallback to 50% if model not loaded
-            return 0.50
+            return 0.50  # Fallback to 50% if model not loaded
         
         # Market regime encoding
         regime_map = {
@@ -131,6 +130,24 @@ class ConfidencePredictor:
         }
         market_regime_str = rl_state.get('market_regime', 'NORMAL')
         market_regime_encoded = regime_map.get(market_regime_str, 0)
+        
+        # Extract timestamp-based features
+        from datetime import datetime
+        timestamp_str = rl_state.get('timestamp', '')
+        minute = 0
+        time_to_close = 240  # default 4 hours
+        if timestamp_str:
+            try:
+                dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                minute = dt.minute
+                hour_decimal = dt.hour + dt.minute / 60.0
+                time_to_close = max(0, 16.0 - hour_decimal) * 60
+            except:
+                pass
+        
+        # Price level features
+        price = rl_state.get('price', rl_state.get('entry_price', 6500.0))
+        price_mod_50 = (price % 50) / 50.0
         
         # Extract features in correct order (must match training!)
         features = np.array([
@@ -156,11 +173,19 @@ class ConfidencePredictor:
             rl_state.get('entry_slippage_ticks', 0.0),
             rl_state.get('commission_cost', 0.0),
             rl_state.get('signal', 0),  # LONG=0, SHORT=1
-            # NEW ADVANCED ML FEATURES
+            # ADVANCED ML FEATURES
             market_regime_encoded,  # Market regime (0-4)
             rl_state.get('recent_volatility_20bar', 2.0),  # Rolling 20-bar price std
             rl_state.get('volatility_trend', 0.0),  # Is volatility increasing
             rl_state.get('vwap_std_dev', 2.0),  # VWAP standard deviation
+            # NEW TEMPORAL/PRICE FEATURES (7 features)
+            rl_state.get('confidence', 0.5),  # Model's own prediction (meta-learning)
+            price / 10000.0,  # Normalized price level
+            rl_state.get('entry_price', price) / 10000.0,  # Normalized entry price
+            rl_state.get('vwap', 6500.0) / 10000.0,  # Raw VWAP normalized
+            minute / 60.0,  # Minute of hour (0-1)
+            time_to_close / 240.0,  # Time to close normalized (0-1, 4hrs max)
+            price_mod_50,  # Distance to round 50-level (round number effects)
         ], dtype=np.float32)
         
         # Normalize features
@@ -169,16 +194,11 @@ class ConfidencePredictor:
         # Convert to tensor
         x = torch.FloatTensor(features).unsqueeze(0).to(self.device)
         
-        # Predict with temperature scaling for calibration
+        # Predict win probability (0.0 to 1.0 via sigmoid)
         with torch.no_grad():
-            # Get logits before sigmoid
-            logits = self.model.network[:-1](x)  # All layers except final sigmoid
-            
-            # Apply temperature scaling
-            scaled_logits = logits / self.temperature
-            
-            # Apply sigmoid to get calibrated probability
-            confidence = torch.sigmoid(scaled_logits).item()
+            win_prob = self.model(x).item()  # Sigmoid already applied in model
+            # Clip to safe range to avoid extreme values
+            confidence = float(np.clip(win_prob, 0.01, 0.99))
         
         return confidence
     
@@ -212,6 +232,24 @@ class ConfidencePredictor:
             market_regime_str = rl_state.get('market_regime', 'NORMAL')
             market_regime_encoded = regime_map.get(market_regime_str, 0)
             
+            # Extract timestamp-based features
+            from datetime import datetime
+            timestamp_str = rl_state.get('timestamp', '')
+            minute = 0
+            time_to_close = 240
+            if timestamp_str:
+                try:
+                    dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                    minute = dt.minute
+                    hour_decimal = dt.hour + dt.minute / 60.0
+                    time_to_close = max(0, 16.0 - hour_decimal) * 60
+                except:
+                    pass
+            
+            # Price level features
+            price = rl_state.get('price', rl_state.get('entry_price', 6500.0))
+            price_mod_50 = (price % 50) / 50.0
+            
             features = np.array([
                 rl_state.get('rsi', 50.0),
                 rl_state.get('vix', 15.0),
@@ -235,11 +273,19 @@ class ConfidencePredictor:
                 rl_state.get('entry_slippage_ticks', 0.0),
                 rl_state.get('commission_cost', 0.0),
                 rl_state.get('signal', 0),
-                # NEW ADVANCED ML FEATURES
+                # ADVANCED ML FEATURES
                 market_regime_encoded,
                 rl_state.get('recent_volatility_20bar', 2.0),
                 rl_state.get('volatility_trend', 0.0),
                 rl_state.get('vwap_std_dev', 2.0),
+                # NEW TEMPORAL/PRICE FEATURES (7 features)
+                rl_state.get('confidence', 0.5),
+                price / 10000.0,
+                rl_state.get('entry_price', price) / 10000.0,
+                rl_state.get('vwap', 6500.0) / 10000.0,
+                minute / 60.0,
+                time_to_close / 240.0,
+                price_mod_50,
             ], dtype=np.float32)
             features_list.append(features)
         
@@ -247,21 +293,15 @@ class ConfidencePredictor:
         features_batch = np.stack(features_list)
         features_batch = self._normalize_features(features_batch)
         
+        
         # Convert to tensor
         x = torch.FloatTensor(features_batch).to(self.device)
         
-        # Predict with temperature scaling
+        # Predict win probabilities for batch (0.0 to 1.0 directly)
         with torch.no_grad():
-            # Get logits before sigmoid
-            logits = self.model.network[:-1](x)  # All layers except final sigmoid
-            
-            # Apply temperature scaling
-            scaled_logits = logits / self.temperature
-            
-            # Apply sigmoid to get calibrated probabilities
-            confidences = torch.sigmoid(scaled_logits).squeeze().cpu().numpy()
-        
-        # Handle single prediction case
+            win_probs = self.model(x).squeeze().cpu().numpy()
+        # Model outputs win probability - just clip
+        confidences = np.clip(win_probs, 0.01, 0.99)        # Handle single prediction case
         if len(rl_states) == 1:
             return [float(confidences)]
         

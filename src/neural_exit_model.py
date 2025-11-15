@@ -118,19 +118,19 @@ class ExitParamsNet(nn.Module):
     def __init__(self, input_size=64, hidden_size=128):
         super(ExitParamsNet, self).__init__()
         
-        # Architecture: 64 inputs → 128 → 96 → 79 outputs
+        # Architecture: 64 inputs → 128 → 128 → 130 outputs
         # 64 inputs: market/trade context (10 market + 54 other features)
-        # 79 outputs: all backtest-learnable exit parameters
+        # 130 outputs: comprehensive exit parameters (95 base + 35 advanced learning)
         self.network = nn.Sequential(
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
             nn.Dropout(0.3),
             
-            nn.Linear(hidden_size, 96),
+            nn.Linear(hidden_size, 128),
             nn.ReLU(),
             nn.Dropout(0.3),
             
-            nn.Linear(96, 79),  # 79 backtest-learnable params
+            nn.Linear(128, 130),  # 95 base + 35 advanced (immediate actions, dead trades, sideways, etc)
             nn.Sigmoid()  # Output 0-1, will denormalize later
         )
     

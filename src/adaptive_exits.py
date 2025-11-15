@@ -2387,13 +2387,12 @@ def get_adaptive_exit_params(bars: list, position: Dict, current_price: float,
             min_r = np.clip(position.get('min_r_achieved', 0) / 5.0, -1, 1)
             r_multiple = np.clip((current_pnl / risk if risk > 0 else 0) / 10.0, -1, 1)
             
-            # Exit Strategy State (7 features) - tracking state
+            # Exit Strategy State (6 features) - tracking state
             breakeven_activated = 1.0 if position.get('breakeven_activated', False) else 0.0
             trailing_activated = 1.0 if position.get('trailing_activated', False) else 0.0
             stop_hit = 0.0  # Not hit yet
             exit_param_updates = np.clip(position.get('exit_param_update_count', 0) / 50.0, 0, 1)
             stop_adjustments = np.clip(position.get('stop_adjustment_count', 0) / 20.0, 0, 1)
-            rejected_partials = np.clip(position.get('rejected_partial_count', 0) / 10.0, 0, 1)
             bars_until_trailing = np.clip(position.get('bars_until_trailing', 999) / 100.0, 0, 1)
             
             # Results (5 features) - use CURRENT values (not final)
@@ -2442,7 +2441,6 @@ def get_adaptive_exit_params(bars: list, position: Dict, current_price: float,
                 "trailing_activated": position.get('trailing_activated', False),
                 "exit_param_update_count": position.get('exit_param_update_count', 0),
                 "stop_adjustment_count": position.get('stop_adjustment_count', 0),
-                "rejected_partial_count": position.get('rejected_partial_count', 0),
                 "bars_until_trailing": position.get('bars_until_trailing', 999),
                 "current_pnl": current_pnl,
                 "entry_atr": entry_atr,
@@ -2467,11 +2465,14 @@ def get_adaptive_exit_params(bars: list, position: Dict, current_price: float,
                     logger.info(f"🧠 ☁️  [CLOUD EXIT NN] Predicted params: breakeven={exit_params_dict['breakeven_threshold_ticks']:.1f}, "
                                f"trailing={exit_params_dict['trailing_distance_ticks']:.1f}, "
                                f"stop_mult={exit_params_dict['stop_mult']:.2f}x, "
-                               f"partials={exit_params_dict['partial_1_r']:.1f}R/{exit_params_dict['partial_2_r']:.1f}R/{exit_params_dict['partial_3_r']:.1f}R "
+                               f"partials={exit_params_dict['partial_1_r']:.1f}R/{exit_params_dict['partial_2_r']:.1f}R/{exit_params_dict['partial_3_r']:.1f}R, "
+                               f"RL_BE={exit_params_dict.get('should_activate_breakeven', 0.8):.2f}, "
+                               f"RL_TRAIL={exit_params_dict.get('should_activate_trailing', 0.8):.2f}, "
+                               f"EXIT_NOW={exit_params_dict.get('should_exit_now', 0.0):.2f} "
                                f"({api_response.get('prediction_time_ms', 0):.1f}ms)")
                     
-                    # Convert to final format
-                    return {
+                    # Convert to final format - ALL 130 parameters from neural network
+                    result = {
                         'breakeven_threshold_ticks': int(exit_params_dict['breakeven_threshold_ticks']),
                         'breakeven_offset_ticks': 1,  # Standard offset
                         'trailing_distance_ticks': int(exit_params_dict['trailing_distance_ticks']),
@@ -2487,8 +2488,84 @@ def get_adaptive_exit_params(bars: list, position: Dict, current_price: float,
                         'partial_3_r': exit_params_dict['partial_3_r'],
                         'partial_3_pct': 0.20,
                         'stop_mult': exit_params_dict['stop_mult'],
-                        'prediction_source': 'cloud_neural_network'
+                        'prediction_source': 'cloud_neural_network',
+                        
+                        # RL STRATEGY CONTROL (16 params)
+                        'should_activate_breakeven': exit_params_dict.get('should_activate_breakeven', 0.8),
+                        'breakeven_activation_profit_threshold': exit_params_dict.get('breakeven_activation_profit_threshold', 10),
+                        'breakeven_activation_min_bars': exit_params_dict.get('breakeven_activation_min_bars', 3),
+                        'breakeven_activation_r_threshold': exit_params_dict.get('breakeven_activation_r_threshold', 1.0),
+                        'should_activate_trailing': exit_params_dict.get('should_activate_trailing', 0.8),
+                        'trailing_activation_profit_threshold': exit_params_dict.get('trailing_activation_profit_threshold', 15),
+                        'trailing_activation_r_threshold': exit_params_dict.get('trailing_activation_r_threshold', 1.5),
+                        'trailing_wait_after_breakeven_bars': exit_params_dict.get('trailing_wait_after_breakeven_bars', 5),
+                        'should_adjust_stop': exit_params_dict.get('should_adjust_stop', 0.7),
+                        'stop_adjustment_frequency_bars': exit_params_dict.get('stop_adjustment_frequency_bars', 3),
+                        'max_stop_adjustments_per_trade': exit_params_dict.get('max_stop_adjustments_per_trade', 10),
+                        'should_update_exit_params': exit_params_dict.get('should_update_exit_params', 0.6),
+                        'exit_param_update_frequency_bars': exit_params_dict.get('exit_param_update_frequency_bars', 10),
+                        'max_exit_param_updates_per_trade': exit_params_dict.get('max_exit_param_updates_per_trade', 5),
+                        'exit_strategy_aggressiveness': exit_params_dict.get('exit_strategy_aggressiveness', 0.5),
+                        'dynamic_strategy_adaptation_rate': exit_params_dict.get('dynamic_strategy_adaptation_rate', 0.3),
+                        
+                        # IMMEDIATE ACTIONS (4 params)
+                        'should_exit_now': exit_params_dict.get('should_exit_now', 0.0),
+                        'should_take_partial_1': exit_params_dict.get('should_take_partial_1', 0.0),
+                        'should_take_partial_2': exit_params_dict.get('should_take_partial_2', 0.0),
+                        'should_take_partial_3': exit_params_dict.get('should_take_partial_3', 0.0),
+                        
+                        # RUNNER MANAGEMENT (2 params)
+                        'runner_percentage': exit_params_dict.get('runner_percentage', 0.25),
+                        'runner_target_r': exit_params_dict.get('runner_target_r', 5.0),
+                        
+                        # TIME-BASED (2 params)
+                        'time_stop_max_bars': exit_params_dict.get('time_stop_max_bars', 60.0),
+                        'time_decay_rate': exit_params_dict.get('time_decay_rate', 0.5),
+                        
+                        # ADVERSE CONDITIONS (2 params)
+                        'regime_change_immediate_exit': exit_params_dict.get('regime_change_immediate_exit', 0.0),
+                        'failed_breakout_exit_speed': exit_params_dict.get('failed_breakout_exit_speed', 0.5),
+                        
+                        # DEAD TRADE (6 params)
+                        'should_exit_dead_trade': exit_params_dict.get('should_exit_dead_trade', 0.0),
+                        'dead_trade_max_loss_ticks': exit_params_dict.get('dead_trade_max_loss_ticks', 8.0),
+                        'dead_trade_max_loss_r': exit_params_dict.get('dead_trade_max_loss_r', 1.0),
+                        'dead_trade_detection_bars': exit_params_dict.get('dead_trade_detection_bars', 10.0),
+                        'dead_trade_acceptable_loss_pct': exit_params_dict.get('dead_trade_acceptable_loss_pct', 0.5),
+                        'dead_trade_early_cut_enabled': exit_params_dict.get('dead_trade_early_cut_enabled', 1.0),
+                        
+                        # SIDEWAYS MARKETS (8 params)
+                        'sideways_market_exit_enabled': exit_params_dict.get('sideways_market_exit_enabled', 1.0),
+                        'sideways_detection_range_pct': exit_params_dict.get('sideways_detection_range_pct', 0.005),
+                        'sideways_detection_bars': exit_params_dict.get('sideways_detection_bars', 20.0),
+                        'sideways_max_loss_r': exit_params_dict.get('sideways_max_loss_r', 0.5),
+                        'sideways_stop_tightening_mult': exit_params_dict.get('sideways_stop_tightening_mult', 0.6),
+                        'sideways_exit_aggressiveness': exit_params_dict.get('sideways_exit_aggressiveness', 0.7),
+                        'sideways_avoid_new_entry': exit_params_dict.get('sideways_avoid_new_entry', 1.0),
+                        'sideways_breakout_confirmation': exit_params_dict.get('sideways_breakout_confirmation', 3.0),
+                        
+                        # PROFIT PROTECTION (2 params)
+                        'profit_lock_activation_r': exit_params_dict.get('profit_lock_activation_r', 2.0),
+                        'profit_protection_aggressiveness': exit_params_dict.get('profit_protection_aggressiveness', 0.5),
+                        
+                        # VOLATILITY RESPONSE (1 param)
+                        'volatility_spike_adaptive_exit': exit_params_dict.get('volatility_spike_adaptive_exit', 2.5),
+                        
+                        # FALSE BREAKOUT RECOVERY (1 param)
+                        'false_breakout_recovery_enabled': exit_params_dict.get('false_breakout_recovery_enabled', 0.0),
+                        
+                        # ACCOUNT PROTECTION (4 params)
+                        'consecutive_loss_emergency_exit': exit_params_dict.get('consecutive_loss_emergency_exit', 5.0),
+                        'drawdown_tightening_threshold': exit_params_dict.get('drawdown_tightening_threshold', 0.10),
+                        'drawdown_exit_aggressiveness': exit_params_dict.get('drawdown_exit_aggressiveness', 0.5),
+                        'recovery_mode_sensitivity': exit_params_dict.get('recovery_mode_sensitivity', 0.7),
+                        
+                        # LOSS ACCEPTANCE (3 params)
+                        'acceptable_loss_for_bad_entry': exit_params_dict.get('acceptable_loss_for_bad_entry', 0.5),
+                        'acceptable_loss_for_good_entry': exit_params_dict.get('acceptable_loss_for_good_entry', 2.0),
+                        'entry_quality_threshold': exit_params_dict.get('entry_quality_threshold', 0.7),
                     }
+                    return result
                 else:
                     logger.warning(f"⚠️  Cloud exit NN returned error: {api_response.get('error', 'unknown')}")
             else:

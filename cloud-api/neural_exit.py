@@ -8,6 +8,7 @@ import numpy as np
 import os
 from typing import Dict
 import logging
+from exit_params_config import EXIT_PARAMS, get_param_ranges, get_default_exit_params
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ class ExitParamsNet(nn.Module):
     """
     Neural network to predict optimal exit parameters
     
-    Inputs (62 features - COMPLETE feature coverage):
+    Inputs (44 features - see _extract_feature_vector method for actual implementation):
         Market Context (8):
         - market_regime (encoded 0-4)
         - rsi (1)
@@ -99,15 +100,15 @@ class ExitParamsNet(nn.Module):
         All backtest-learnable exit parameters
     """
     
-    def __init__(self, input_size=64, hidden_size=128):
+    def __init__(self, input_size=44, hidden_size=128):
         super(ExitParamsNet, self).__init__()
         
-        # Architecture: 64 inputs → 128 → 96 → 79 outputs
-        # 64 inputs: market/trade context (10 market + 54 other features)
-        # 79 outputs: all backtest-learnable exit parameters
+        # Architecture: 44 inputs → 128 → 128 → 130 outputs
+        # 44 inputs: market/trade context features (see _extract_feature_vector)
+        # 130 outputs: comprehensive exit parameters (95 base + 35 advanced learning)
         self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, 96)
-        self.fc3 = nn.Linear(96, 79)  # 79 exit parameters
+        self.fc2 = nn.Linear(hidden_size, 128)
+        self.fc3 = nn.Linear(128, 130)  # 130 exit parameters
         
         self.dropout = nn.Dropout(0.3)
         self.relu = nn.ReLU()
@@ -127,29 +128,14 @@ def denormalize_exit_params(normalized_params):
     Convert normalized [0-1] outputs back to real exit parameters
     
     Args:
-        normalized_params: Tensor of shape [batch, 6] with values 0-1
+        normalized_params: Tensor of shape [batch, 130] with values 0-1
     
     Returns:
-        dict with actual exit parameter values
+        dict with actual exit parameter values (all 130 parameters)
     """
-    # Denormalization ranges (min, max for each param)
-    ranges = {
-        'breakeven_threshold_ticks': (6, 18),    # 6-18 ticks
-        'trailing_distance_ticks': (8, 24),      # 8-24 ticks
-        'stop_mult': (2.5, 5.0),                 # 2.5-5.0x ATR
-        'partial_1_r': (1.5, 3.0),               # 1.5-3.0R
-        'partial_2_r': (2.5, 4.5),               # 2.5-4.5R
-        'partial_3_r': (4.0, 8.0),               # 4.0-8.0R
-    }
-    
-    param_names = [
-        'breakeven_threshold_ticks',
-        'trailing_distance_ticks', 
-        'stop_mult',
-        'partial_1_r',
-        'partial_2_r',
-        'partial_3_r'
-    ]
+    # Get ranges from central config
+    ranges = get_param_ranges()
+    param_names = list(EXIT_PARAMS.keys())
     
     # Handle both single predictions and batches
     if len(normalized_params.shape) == 1:
@@ -201,7 +187,7 @@ class NeuralExitPredictor:
                 return False
             
             # Create model architecture
-            self.model = ExitParamsNet(input_size=45, hidden_size=64)
+            self.model = ExitParamsNet(input_size=44, hidden_size=64)
             
             # Load trained weights
             state_dict = torch.load(self.model_path, map_location=self.device)
@@ -272,7 +258,7 @@ class NeuralExitPredictor:
     
     def _extract_feature_vector(self, features: Dict) -> list:
         """
-        Extract 45 features in correct order for neural network
+        Extract 44 features in correct order for neural network
         
         Args:
             features: Dict with feature values
@@ -315,13 +301,12 @@ class NeuralExitPredictor:
         min_r = np.clip(features.get('min_r_achieved', 0) / 5.0, -1, 1)
         r_multiple = np.clip(features.get('r_multiple', 0) / 10.0, -1, 1)
         
-        # Exit Strategy State (7 features)
+        # Exit Strategy State (6 features)
         breakeven_activated = 1.0 if features.get('breakeven_activated', False) else 0.0
         trailing_activated = 1.0 if features.get('trailing_activated', False) else 0.0
         stop_hit = 0.0  # Not hit yet (still in trade)
         exit_param_updates = np.clip(features.get('exit_param_update_count', 0) / 50.0, 0, 1)
         stop_adjustments = np.clip(features.get('stop_adjustment_count', 0) / 20.0, 0, 1)
-        rejected_partials = np.clip(features.get('rejected_partial_count', 0) / 10.0, 0, 1)
         bars_until_trailing = np.clip(features.get('bars_until_trailing', 999) / 100.0, 0, 1)
         
         # Results (5 features) - use current values
@@ -344,7 +329,7 @@ class NeuralExitPredictor:
         recent_losses = np.clip(features.get('losses_in_last_5_trades', 0) / 5.0, 0, 1)
         mins_to_close = np.clip(features.get('minutes_to_close', 240) / 480.0, 0, 1)
         
-        # Return all 45 features in order
+        # Return all 44 features in order
         return [
             # Market Context (8)
             market_regime_enc, rsi, volume_ratio, atr_norm, vix, volatility_regime_change, volume_at_exit, market_state_enc,
@@ -354,8 +339,8 @@ class NeuralExitPredictor:
             hour, day_of_week, duration, time_in_breakeven, bars_until_breakeven,
             # Performance Metrics (5)
             mae, mfe, max_r, min_r, r_multiple,
-            # Exit Strategy State (7)
-            breakeven_activated, trailing_activated, stop_hit, exit_param_updates, stop_adjustments, rejected_partials, bars_until_trailing,
+            # Exit Strategy State (6)
+            breakeven_activated, trailing_activated, stop_hit, exit_param_updates, stop_adjustments, bars_until_trailing,
             # Results (5)
             pnl_norm, outcome_current, win_current, exit_reason, max_profit,
             # ADVANCED (8)

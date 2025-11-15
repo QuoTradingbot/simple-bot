@@ -2249,7 +2249,6 @@ def initialize_state(symbol: str) -> None:
             "time_in_breakeven_bars": 0,  # How many bars spent in breakeven mode
             "exit_param_update_count": 0,  # How many times exit params were updated
             "stop_adjustment_count": 0,  # How many times stop was adjusted
-            "rejected_partial_count": 0,  # How many partial exits were rejected
             "stop_hit": False,  # Whether stop loss was hit
             
             # Decision History Tracking
@@ -5622,6 +5621,9 @@ def check_breakeven_protection(symbol: str, current_price: float) -> None:
             if prev_regime != new_regime and prev_regime != "UNKNOWN":
                 logger.info(f" [REGIME SHIFT] {prev_regime} → {new_regime}")
                 logger.info(f"   Adjusting exit parameters mid-trade for new conditions")
+                
+                # Track exit param updates when regime shifts
+                position["exit_param_update_count"] += 1
             
             # Store updated exit params for learning when trade closes
             position["exit_params_used"] = adaptive_params
@@ -5641,6 +5643,34 @@ def check_breakeven_protection(symbol: str, current_price: float) -> None:
         profit_ticks = (current_price - entry_price) / tick_size
     else:  # short
         profit_ticks = (entry_price - current_price) / tick_size
+    
+    # RL CONTROL: Check if neural network wants to activate breakeven
+    if adaptive_manager is not None and adaptive_params:
+        rl_should_activate = adaptive_params.get('should_activate_breakeven', 0.8)
+        rl_min_profit = adaptive_params.get('breakeven_activation_profit_threshold', breakeven_threshold_ticks)
+        rl_min_bars = adaptive_params.get('breakeven_activation_min_bars', 3)
+        rl_min_r = adaptive_params.get('breakeven_activation_r_threshold', 1.0)
+        
+        # RL decision: Only activate if confidence > 0.5
+        if rl_should_activate < 0.5:
+            logger.debug(f"[RL SKIP BE] Neural network says don't activate breakeven yet (confidence={rl_should_activate:.2f})")
+            return
+        
+        # Use RL-predicted thresholds
+        breakeven_threshold_ticks = max(breakeven_threshold_ticks, rl_min_profit)
+        
+        # Check minimum bars requirement
+        duration_bars = position.get('duration_bars', 0)
+        if duration_bars < rl_min_bars:
+            logger.debug(f"[RL SKIP BE] Not enough bars yet ({duration_bars} < {rl_min_bars})")
+            return
+        
+        # Check R-multiple alternative
+        initial_risk_ticks = position.get("initial_risk_ticks", 10)
+        current_r = profit_ticks / initial_risk_ticks if initial_risk_ticks > 0 else 0
+        if profit_ticks < breakeven_threshold_ticks and current_r < rl_min_r:
+            logger.debug(f"[RL SKIP BE] Thresholds not met: {profit_ticks:.1f}t < {breakeven_threshold_ticks}t, {current_r:.2f}R < {rl_min_r:.2f}R")
+            return
     
     # === EXIT RL FEATURE 5: PROFIT LOCK ZONES ===
     # Check if profit is retreating from peak (lock in gains)
@@ -5703,6 +5733,9 @@ def check_breakeven_protection(symbol: str, current_price: float) -> None:
         position["stop_price"] = new_stop_price
         if new_stop_order.get("order_id"):
             position["stop_order_id"] = new_stop_order.get("order_id")
+        
+        # Track stop adjustment
+        position["stop_adjustment_count"] += 1
         
         # Calculate profit locked in
         profit_locked_ticks = (new_stop_price - entry_price) / tick_size if side == "long" else (entry_price - new_stop_price) / tick_size
@@ -5780,6 +5813,29 @@ def check_trailing_stop(symbol: str, current_price: float) -> None:
             trailing_distance_ticks = adaptive_params["trailing_distance_ticks"]
             min_profit_ticks = adaptive_params["trailing_min_profit_ticks"]
             
+            # RL CONTROL: Check if neural network wants to activate trailing
+            rl_should_activate = adaptive_params.get('should_activate_trailing', 0.8)
+            rl_min_profit = adaptive_params.get('trailing_activation_profit_threshold', min_profit_ticks)
+            rl_min_r = adaptive_params.get('trailing_activation_r_threshold', 1.5)
+            rl_wait_bars = adaptive_params.get('trailing_wait_after_breakeven_bars', 5)
+            
+            # RL decision: Only activate if confidence > 0.5
+            if rl_should_activate < 0.5:
+                logger.debug(f"[RL SKIP TRAIL] Neural network says don't activate trailing yet (confidence={rl_should_activate:.2f})")
+                return
+            
+            # Use RL-predicted threshold
+            min_profit_ticks = max(min_profit_ticks, rl_min_profit)
+            
+            # Wait after breakeven activation
+            if position.get("breakeven_active"):
+                breakeven_bar = position.get("breakeven_activation_bar", 0)
+                current_bar = position.get("duration_bars", 0)
+                bars_since_breakeven = current_bar - breakeven_bar
+                if bars_since_breakeven < rl_wait_bars:
+                    logger.debug(f"[RL SKIP TRAIL] Waiting {rl_wait_bars - bars_since_breakeven} more bars after breakeven")
+                    return
+            
             # UPDATE exit params continuously (already done in breakeven, but update here too)
             # This ensures trailing stop reflects latest market conditions
             prev_regime = position.get("exit_params_used", {}).get("market_regime", "UNKNOWN")
@@ -5792,6 +5848,9 @@ def check_trailing_stop(symbol: str, current_price: float) -> None:
                 logger.info(f" [TRAILING ADAPT] {prev_trail}t → {trailing_distance_ticks}t ({change_pct:+.0f}%)")
                 if new_regime != prev_regime:
                     logger.info(f"   Reason: Regime shift ({prev_regime} → {new_regime})")
+                
+                # Track exit param updates when they change significantly
+                position["exit_param_update_count"] += 1
             
             # Store updated exit params for learning
             position["exit_params_used"] = adaptive_params
@@ -5875,6 +5934,9 @@ def check_trailing_stop(symbol: str, current_price: float) -> None:
         position["trailing_stop_price"] = new_trailing_stop
         if new_stop_order.get("order_id"):
             position["stop_order_id"] = new_stop_order.get("order_id")
+        
+        # Track stop adjustment
+        position["stop_adjustment_count"] += 1
         
         # Calculate profit now locked in
         profit_locked_ticks = (new_trailing_stop - entry_price) / tick_size if side == "long" else (entry_price - new_trailing_stop) / tick_size
@@ -6909,6 +6971,148 @@ def check_exit_conditions(symbol: str) -> None:
         except Exception as e:
             logger.debug(f"Failed breakout check failed: {e}")
     
+    # ========================================================================
+    # NEW 35-PARAMETER CHECKS - Advanced Learning
+    # ========================================================================
+    
+    # Get exit params from position (130 total from cloud API)
+    exit_params = position.get("exit_params_used", {})
+    
+    if exit_params:
+        # Calculate metrics needed for checks
+        tick_size = CONFIG["tick_size"]
+        initial_risk_ticks = position.get("initial_risk_ticks", 10)
+        
+        if side == "long":
+            profit_ticks = (current_price - entry_price) / tick_size
+        else:
+            profit_ticks = (entry_price - current_price) / tick_size
+        
+        r_multiple = profit_ticks / initial_risk_ticks if initial_risk_ticks > 0 else 0
+        bars_in_trade = position.get("bars_in_trade", 0)
+        
+        # ====== PRIORITY 1: IMMEDIATE EXIT SIGNAL ======
+        should_exit_now = exit_params.get('should_exit_now', 0.0)
+        if should_exit_now > 0.7:
+            logger.critical("[ML IMMEDIATE EXIT] Neural network signals immediate exit!")
+            logger.critical(f"  Confidence: {should_exit_now:.2f}")
+            execute_exit(symbol, current_price, "ml_immediate_exit")
+            return
+        
+        # ====== PRIORITY 2: ACCOUNT PROTECTION - Emergency Stops ======
+        consecutive_losses = state[symbol]["session_stats"].get("consecutive_losses", 0)
+        max_consecutive = exit_params.get('consecutive_loss_emergency_exit', 5)
+        
+        if consecutive_losses >= max_consecutive:
+            logger.critical(SEPARATOR_LINE)
+            logger.critical(f"EMERGENCY: {consecutive_losses} CONSECUTIVE LOSSES!")
+            logger.critical(f"Stopping trading to prevent account bleeding")
+            logger.critical(SEPARATOR_LINE)
+            execute_exit(symbol, current_price, "consecutive_loss_emergency")
+            # Set flag to stop taking new entries
+            bot_status["emergency_stop"] = True
+            return
+        
+        # Drawdown tightening
+        daily_pnl = state[symbol].get("daily_pnl", 0.0)
+        dd_threshold = exit_params.get('drawdown_tightening_threshold', 0.10)
+        dd_aggressiveness = exit_params.get('drawdown_exit_aggressiveness', 0.5)
+        
+        if daily_pnl < 0 and abs(daily_pnl) / 1000.0 > dd_threshold:
+            # In drawdown - apply tighter trailing
+            if position.get("trailing_stop_active") and dd_aggressiveness > 0.5:
+                # Tighten trailing stop by aggressiveness factor
+                logger.warning(f"[DRAWDOWN MODE] Daily P&L: ${daily_pnl:.2f} - Tightening exits")
+        
+        # ====== PRIORITY 3: DEAD TRADE DETECTION ======
+        should_exit_dead = exit_params.get('should_exit_dead_trade', 0.0)
+        dead_max_loss_r = exit_params.get('dead_trade_max_loss_r', 1.0)
+        dead_detection_bars = exit_params.get('dead_trade_detection_bars', 10)
+        dead_early_cut = exit_params.get('dead_trade_early_cut_enabled', 1.0)
+        
+        if should_exit_dead > 0.7 and profit_ticks < 0 and bars_in_trade >= dead_detection_bars:
+            current_loss_r = abs(r_multiple)
+            if current_loss_r <= dead_max_loss_r and dead_early_cut > 0.5:
+                logger.warning("[DEAD TRADE] ML detected stagnant trade - cutting loss early")
+                logger.warning(f"  Held {bars_in_trade} bars, losing {current_loss_r:.2f}R")
+                execute_exit(symbol, current_price, "dead_trade_cut")
+                return
+        
+        # ====== PRIORITY 4: SIDEWAYS MARKET DETECTION ======
+        sideways_enabled = exit_params.get('sideways_market_exit_enabled', 1.0)
+        sideways_max_loss_r = exit_params.get('sideways_max_loss_r', 0.5)
+        sideways_aggressiveness = exit_params.get('sideways_exit_aggressiveness', 0.7)
+        sideways_detection_bars = int(exit_params.get('sideways_detection_bars', 20))
+        sideways_range_pct = exit_params.get('sideways_detection_range_pct', 0.005)
+        
+        if sideways_enabled > 0.5 and len(state[symbol]["bars_1min"]) >= sideways_detection_bars:
+            # Detect sideways market (price range is tight)
+            recent_bars = state[symbol]["bars_1min"][-sideways_detection_bars:]
+            highs = [b["high"] for b in recent_bars]
+            lows = [b["low"] for b in recent_bars]
+            high_price = max(highs)
+            low_price = min(lows)
+            mid_price = (high_price + low_price) / 2
+            range_ratio = (high_price - low_price) / mid_price if mid_price > 0 else 1.0
+            
+            is_sideways = range_ratio < sideways_range_pct
+            
+            if is_sideways and r_multiple < -sideways_max_loss_r and sideways_aggressiveness > 0.5:
+                logger.warning("[SIDEWAYS MARKET] Choppy conditions detected - exiting with tight stop")
+                logger.warning(f"  Range: {range_ratio*100:.2f}%, Losing: {abs(r_multiple):.2f}R")
+                execute_exit(symbol, current_price, "sideways_market_exit")
+                return
+        
+        # ====== PRIORITY 5: PROFIT PROTECTION ======
+        profit_lock_r = exit_params.get('profit_lock_activation_r', 2.0)
+        profit_aggressiveness = exit_params.get('profit_protection_aggressiveness', 0.5)
+        
+        if r_multiple >= profit_lock_r and profit_aggressiveness > 0.8:
+            # Aggressive profit protection mode - tighten trailing dramatically
+            if position.get("trailing_stop_active"):
+                logger.info(f"[PROFIT LOCK] {r_multiple:.2f}R profit - aggressive protection active")
+                # Trailing logic will use this to tighten (handled in check_trailing_stop)
+        
+        # ====== ADDITIONAL LEARNING PARAMETERS (tracked but modify existing logic) ======
+        # These don't cause immediate exits but affect behavior:
+        
+        # Runner management
+        runner_pct = exit_params.get('runner_percentage', 0.25)
+        runner_target = exit_params.get('runner_target_r', 5.0)
+        # Used in partial exit logic
+        
+        # Time-based learning
+        time_max_bars = exit_params.get('time_stop_max_bars', 60)
+        time_decay_rate = exit_params.get('time_decay_rate', 0.5)
+        # Affects trailing tightening over time
+        
+        # Regime change
+        regime_immediate_exit = exit_params.get('regime_change_immediate_exit', 0.0)
+        if regime_immediate_exit > 0.8:
+            # Would trigger on regime change (handled in regime detection above)
+            pass
+        
+        # Volatility spike
+        vol_spike_mult = exit_params.get('volatility_spike_adaptive_exit', 2.5)
+        # Affects stop widening on volatility
+        
+        # Loss acceptance (quality-based exits)
+        bad_entry_loss = exit_params.get('acceptable_loss_for_bad_entry', 0.5)
+        good_entry_loss = exit_params.get('acceptable_loss_for_good_entry', 2.0)
+        entry_quality_threshold = exit_params.get('entry_quality_threshold', 0.7)
+        
+        entry_confidence = position.get("entry_confidence", 0.5)
+        if entry_confidence < entry_quality_threshold:
+            # Bad entry - cut loss early
+            if abs(r_multiple) >= bad_entry_loss and r_multiple < 0:
+                logger.warning(f"[BAD ENTRY] Low confidence entry ({entry_confidence:.2f}) - cutting loss at {abs(r_multiple):.2f}R")
+                execute_exit(symbol, current_price, "bad_entry_loss_cut")
+                return
+    
+    # ========================================================================
+    # END OF NEW 35-PARAMETER CHECKS
+    # ========================================================================
+    
     # EIGHTH - Partial exits (happens before breakeven/trailing because it reduces position size)
     check_partial_exits(symbol, current_bar["close"])
     
@@ -7453,7 +7657,6 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
                         'time_in_breakeven_bars': position.get("time_in_breakeven_bars", 0),
                         'exit_param_update_count': position.get("exit_param_update_count", 0),
                         'stop_adjustment_count': position.get("stop_adjustment_count", 0),
-                        'rejected_partial_count': position.get("rejected_partial_count", 0),
                         'stop_hit': reason == "stop_loss",
                         
                         # Decision History

@@ -2532,7 +2532,6 @@ async def predict_exit_params(request: dict):
             "trailing_activated": false,
             "exit_param_update_count": 3,
             "stop_adjustment_count": 1,
-            "rejected_partial_count": 0,
             "bars_until_trailing": 8,
             "current_pnl": 50.0,
             "entry_atr": 2.8,

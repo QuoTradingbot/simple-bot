@@ -103,12 +103,12 @@ class ExitParamsNet(nn.Module):
     def __init__(self, input_size=44, hidden_size=128):
         super(ExitParamsNet, self).__init__()
         
-        # Architecture: 44 inputs → 128 → 128 → 130 outputs
+        # Architecture: 44 inputs → 128 → 128 → 131 outputs
         # 44 inputs: market/trade context features (see _extract_feature_vector)
-        # 130 outputs: comprehensive exit parameters (95 base + 35 advanced learning)
+        # 131 outputs: comprehensive exit parameters (all learnable parameters)
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, 128)
-        self.fc3 = nn.Linear(128, 130)  # 130 exit parameters
+        self.fc3 = nn.Linear(128, 131)  # 131 exit parameters
         
         self.dropout = nn.Dropout(0.3)
         self.relu = nn.ReLU()
@@ -128,10 +128,10 @@ def denormalize_exit_params(normalized_params):
     Convert normalized [0-1] outputs back to real exit parameters
     
     Args:
-        normalized_params: Tensor of shape [batch, 130] with values 0-1
+        normalized_params: Tensor of shape [batch, 131] with values 0-1
     
     Returns:
-        dict with actual exit parameter values (all 130 parameters)
+        dict with actual exit parameter values (all 131 parameters)
     """
     # Get ranges from central config
     ranges = get_param_ranges()

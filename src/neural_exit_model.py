@@ -102,7 +102,7 @@ class ExitParamsNet(nn.Module):
         - duration_bars (1: total bars held)
         - held_through_sessions (1: crossed session boundary)
     
-    Outputs (68 exit parameters - COMPREHENSIVE):
+    Outputs (131 exit parameters - COMPREHENSIVE):
         Core Risk (21): stops, breakeven, trailing, partials
         Time-Based (5): timeouts, time decay
         Adverse (9): momentum, profit protection, dead trades
@@ -113,6 +113,7 @@ class ExitParamsNet(nn.Module):
         Recovery (4): daily limits, drawdown
         Session (4): pre-close, low volume, overnight, Friday
         Adaptive (3): ML overrides, regime changes
+        Additional Parameters (65): extended exit conditions and thresholds
     """
     
     def __init__(self, input_size=64, hidden_size=128):

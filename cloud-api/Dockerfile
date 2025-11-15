@@ -15,6 +15,8 @@ COPY signal_engine_v2.py .
 COPY database.py .
 COPY redis_manager.py .
 COPY neural_confidence.py .
+COPY neural_exit.py .
+COPY exit_params_config.py .
 
 # Copy neural network models (your trained brains)
 COPY neural_model.pth .

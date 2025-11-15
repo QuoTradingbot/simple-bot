@@ -1,6 +1,6 @@
 """
 Exit Parameter Extraction Utilities
-Helper functions for extracting and tracking all 69 exit parameters
+Helper functions for extracting and tracking all 131 exit parameters
 """
 
 import sys
@@ -14,14 +14,14 @@ from exit_params_config import EXIT_PARAMS, get_default_exit_params
 
 def extract_all_exit_params(exit_params: dict) -> dict:
     """
-    Extract all 69 exit parameters from exit_params dict.
+    Extract all 131 exit parameters from exit_params dict.
     Uses defaults from exit_params_config if parameter not provided.
     
     Args:
         exit_params: Dict with exit parameters (may be incomplete)
         
     Returns:
-        Complete dict with all 59 backtest-learnable parameters
+        Complete dict with all 131 backtest-learnable parameters
     """
     defaults = get_default_exit_params()
     
@@ -82,7 +82,7 @@ def extract_execution_data(trade_outcome: dict) -> dict:
 
 def validate_exit_params_complete(exit_params_used: dict) -> tuple:
     """
-    Validate that all 69 exit parameters are present and within range.
+    Validate that all 131 exit parameters are present and within range.
     
     Args:
         exit_params_used: Dict with exit parameters

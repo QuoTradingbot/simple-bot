@@ -50,6 +50,7 @@ class Dashboard:
             "uptime": 0,  # Bot uptime in seconds
             "maintenance_countdown": "-- h --m",  # Initialize maintenance countdown
             "topstep_connected": True,  # Initialize TopStep connection status
+            "daily_pnl": 0.0,  # Total daily P&L across all symbols
         }
         
         # Platform detection
@@ -197,12 +198,35 @@ class Dashboard:
         # Maintenance countdown (passed from quotrading_engine)
         maintenance = self.bot_data.get('maintenance_countdown', '-- h --m')
         
+        # Daily P&L and Loss Limit Protection
+        daily_pnl = self.bot_data.get('daily_pnl', 0.0)
+        daily_limit = self.bot_data['daily_loss_limit']
+        limit_remaining = daily_limit + daily_pnl  # How much more we can lose
+        limit_pct = (abs(daily_pnl) / daily_limit * 100) if daily_pnl < 0 else 0
+        
+        pnl_color = ""
+        if daily_pnl < 0:
+            if limit_pct >= 80:
+                pnl_color = "🔴"  # Red - critical
+            elif limit_pct >= 50:
+                pnl_color = "🟡"  # Yellow - warning
+            else:
+                pnl_color = "⚠️"  # Caution
+        else:
+            pnl_color = "✅"  # Green
+        
+        daily_pnl_str = f"+${daily_pnl:.2f}" if daily_pnl > 0 else f"-${abs(daily_pnl):.2f}"
+        
         # Build top status line with bot name
         lines.append(f"QuoTrading AI Bot {self.bot_data['version']}")
         lines.append(f"TopStep: {topstep_status} | "
                     f"Server: {server_icon} {self.bot_data['server_latency']} | "
-                    f"Maintenance: {maintenance} | "
-                    f"Account: ${self.bot_data['account_balance']:,.0f}")
+                    f"Maintenance: {maintenance}")
+        lines.append(f"Account: ${self.bot_data['account_balance']:,.0f} | "
+                    f"{pnl_color} Daily P&L: {daily_pnl_str} | "
+                    f"🛡️  Limit: ${daily_limit:,.0f} (${limit_remaining:.2f} room)")
+        lines.append(f"Max Contracts: {self.bot_data['max_contracts']} | "
+                    f"Confidence: {self.bot_data['confidence_threshold']}%")
         lines.append("=" * 80)
         return lines
     

@@ -172,19 +172,15 @@ class ConfidencePredictor:
             rl_state.get('recent_pnl', 0.0),
             rl_state.get('commission_cost', 0.0),
             rl_state.get('signal', 0),  # LONG=0, SHORT=1
-            # ADVANCED ML FEATURES
-            market_regime_encoded,  # Market regime (0-4)
+            # ADVANCED ML FEATURES (4 features)
+            market_regime_encoded,  # Market regime (0-5)
             rl_state.get('recent_volatility_20bar', 2.0),  # Rolling 20-bar price std
             rl_state.get('volatility_trend', 0.0),  # Is volatility increasing
             rl_state.get('vwap_std_dev', 2.0),  # VWAP standard deviation
-            # NEW TEMPORAL/PRICE FEATURES (7 features)
-            rl_state.get('confidence', 0.5),  # Model's own prediction (meta-learning)
-            price / 10000.0,  # Normalized price level
-            rl_state.get('entry_price', price) / 10000.0,  # Normalized entry price
-            rl_state.get('vwap', 6500.0) / 10000.0,  # Raw VWAP normalized
+            # NEW TEMPORAL/PRICE FEATURES (3 features - brings total to 31)
             minute / 60.0,  # Minute of hour (0-1)
             time_to_close / 240.0,  # Time to close normalized (0-1, 4hrs max)
-            price_mod_50,  # Distance to round 50-level (round number effects)
+            price_mod_50,  # Distance to round 50-level (0-1)
         ], dtype=np.float32)
         
         # Normalize features

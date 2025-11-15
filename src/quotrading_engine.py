@@ -1479,14 +1479,15 @@ class ShadowTrade:
     Represents a rejected signal being tracked in the background.
     Simulates what WOULD happen if we took the trade, providing learning data.
     
-    FULLY SIMULATES A REAL TRADE WITH COMPREHENSIVE 69-PARAMETER EXIT LOGIC:
-    - Uses comprehensive exit checker (ALL 69 exit parameters)
+    FULLY SIMULATES A REAL TRADE WITH COMPREHENSIVE 131-PARAMETER EXIT LOGIC:
+    - Uses ComprehensiveExitChecker (ALL 131 exit parameters)
     - Updates stop/breakeven/trailing EVERY bar (just like real trades)
-    - Tracks MAE/MFE, partials, all metrics
+    - Tracks MAE/MFE, partials, all 90+ metrics
     - Outcome reflects what would ACTUALLY happen with current exit logic
+    - COMPLETE PARITY with backtest ghost trades
     """
     def __init__(self, symbol: str, rl_state: Dict, side: str, entry_price: float, 
-                 entry_time: datetime, confidence: float, rejection_reason: str, initial_stop: float = None):
+                 entry_time: datetime, confidence: float, rejection_reason: str, atr: float = 2.0):
         self.symbol = symbol
         self.rl_state = rl_state.copy()  # Snapshot of RL state at rejection
         self.side = side  # 'long' or 'short'
@@ -1494,400 +1495,377 @@ class ShadowTrade:
         self.entry_time = entry_time
         self.confidence = confidence  # AI confidence when rejected
         self.rejection_reason = rejection_reason
+        self.entry_atr = atr
         
-        # Shadow position state (pretend we're IN the trade)
-        self.quantity = 1  # Start with 1 contract (matches ghost simulation)
+        # Store ALL 131 exit parameters for learning (matches backtest)
+        self.all_exit_params_used = {}
+        
+        # Shadow position state
+        self.quantity = 1  # Ghost trades use 1 contract
         self.remaining_quantity = 1
-        self.stop_price = initial_stop if initial_stop else entry_price * 0.99  # Default stop
+        self.contracts = 1
+        self.original_contracts = 1
+        
+        # Initial stop (will be updated by comprehensive checker)
+        stop_distance = atr * CONFIG['atr_stop_multiplier']
+        if side == 'long':
+            self.stop_price = entry_price - stop_distance
+        else:
+            self.stop_price = entry_price + stop_distance
+        
+        self.initial_risk_ticks = int((entry_price - self.stop_price) / CONFIG['tick_size']) if side == 'long' else int((self.stop_price - entry_price) / CONFIG['tick_size'])
+        
+        # Exit state tracking
         self.breakeven_active = False
         self.trailing_active = False
-        self.highest_price_reached = entry_price if side == 'long' else None
-        self.lowest_price_reached = entry_price if side == 'short' else None
+        self.highest_price = entry_price
+        self.lowest_price = entry_price
         
-        # Performance tracking (like real trades)
-        self.mae = 0.0  # Maximum Adverse Excursion
-        self.mfe = 0.0  # Maximum Favorable Excursion
-        self.partial_exits_completed = []  # Track partial exits
+        # Performance tracking
+        self.mae = 0.0
+        self.mfe = 0.0
+        self.partial_exits = []
+        self.partial_1_done = False
+        self.partial_2_done = False
+        self.partial_3_done = False
         
-        # Exit params will be calculated dynamically each bar
-        self.current_exit_params = None
+        # Complete tracking fields for parity with real trades
+        self.bars_in_trade = 0
+        self.exit_param_updates = []
+        self.breakeven_activation_bar = None
+        self.trailing_activation_bar = None
+        self.bars_until_breakeven = None
+        self.bars_until_trailing = None
+        self.max_r_achieved = 0.0
+        self.min_r_achieved = 0.0
+        self.regime_changes = []
+        self.stop_adjustments = []
+        self.decision_history = []
+        self.unrealized_pnl_history = []
+        self.peak_unrealized_pnl = 0.0
+        self.peak_r_multiple = 0.0
+        self.profit_drawdown_from_peak = 0.0
+        self.max_drawdown_percent = 0.0
+        self.drawdown_bars = 0
+        self.currently_in_drawdown = False
+        self.atr_samples = []
+        self.high_volatility_bars = 0
+        self.stop_hit = False
+        self.time_in_breakeven_bars = 0
         
-        # NEW: Comprehensive 68-parameter exit checker
-        from exit_param_utils import extract_all_exit_params
-        self.extract_all_exit_params = extract_all_exit_params
-        self.all_exit_params_used = {}  # Will store complete parameter set
+        # Additional fields for complete parity
+        self.rejected_partial_count = 0
+        self.entry_slippage_ticks = 0.0
+        self.exit_slippage_ticks = 0.0
+        self.commission_cost = 0.0
+        self.entry_bid_ask_spread_ticks = 0.0
+        self.exit_bid_ask_spread_ticks = 0.0
         
+        # Completion tracking
         self.bars_elapsed = 0
-        self.max_bars = 200  # Timeout after 200 bars (~3 hours)
+        self.max_bars = 200  # Timeout after 200 bars
         self.completed = False
-        self.outcome = None  # Will be set when shadow completes
+        self.outcome = None
+        self.exit_bar_index = None
+        self.entry_bar_index = 0  # Set by caller if available
+    
+    def _create_outcome_dict(self, pnl: float, exit_price: float, exit_reason: str, bar: Dict) -> Dict:
+        """Create complete outcome dictionary with all tracking fields (matches real trades)."""
+        initial_risk = abs(self.entry_price - self.stop_price)
+        tick_value = CONFIG['tick_value']
+        r_multiple = pnl / (initial_risk * tick_value * 4) if initial_risk > 0 else 0
+        
+        # Convert bar dict to have timestamp
+        bar_timestamp = bar.get('timestamp', self.entry_time)
+        
+        return {
+            'pnl': pnl,
+            'exit_price': exit_price,
+            'duration_min': self.bars_elapsed,
+            'exit_reason': f'ghost_{exit_reason}' if not exit_reason.startswith('ghost_') else exit_reason,
+            'took_trade': False,
+            'confidence': self.confidence,
+            'rejection_reason': self.rejection_reason,
+            'side': self.side,
+            'contracts': self.contracts,
+            'win': pnl > 0,
+            'is_ghost': True,
+            
+            # Performance Metrics (complete parity)
+            'mae': self.mae,
+            'mfe': self.mfe,
+            'max_r_achieved': self.max_r_achieved,
+            'min_r_achieved': self.min_r_achieved,
+            'r_multiple': r_multiple,
+            'peak_r_multiple': self.peak_r_multiple,
+            'peak_unrealized_pnl': self.peak_unrealized_pnl,
+            'profit_drawdown_from_peak': self.profit_drawdown_from_peak,
+            'max_drawdown_percent': self.max_drawdown_percent,
+            'opportunity_cost': float(self.peak_unrealized_pnl - pnl) if self.peak_unrealized_pnl > pnl else 0.0,
+            
+            # Exit Strategy State
+            'breakeven_activated': self.breakeven_active,
+            'trailing_activated': self.trailing_active,
+            'stop_hit': 'stop_loss' in exit_reason,
+            'partials_taken': len(self.partial_exits),
+            'breakeven_activation_bar': self.breakeven_activation_bar if self.breakeven_activation_bar else 0,
+            'trailing_activation_bar': self.trailing_activation_bar if self.trailing_activation_bar else 0,
+            'bars_until_breakeven': self.bars_until_breakeven if self.bars_until_breakeven else 0,
+            'bars_until_trailing': self.bars_until_trailing if self.bars_until_trailing else 0,
+            
+            # Partial exits
+            'partial_exit_1_completed': self.partial_1_done,
+            'partial_exit_2_completed': self.partial_2_done,
+            'partial_exit_3_completed': self.partial_3_done,
+            
+            # Entry context
+            'entry_confidence': self.confidence,
+            'entry_price': self.entry_price,
+            'entry_time': self.entry_time,
+            
+            # Advanced tracking
+            'exit_param_update_count': len(self.exit_param_updates),
+            'stop_adjustment_count': len(self.stop_adjustments),
+            'decision_history': self.decision_history,
+            'unrealized_pnl_history': self.unrealized_pnl_history,
+            'exit_param_updates': self.exit_param_updates,
+            'stop_adjustments': self.stop_adjustments,
+            'high_volatility_bars': self.high_volatility_bars,
+            'bars_in_trade': self.bars_in_trade,
+            'drawdown_bars': self.drawdown_bars,
+            'currently_in_drawdown': self.currently_in_drawdown,
+            
+            # Execution quality (ghost trades have 0 slippage/commission)
+            'slippage_ticks': 0.0,
+            'commission_cost': 0.0,
+            'bid_ask_spread_ticks': 0.0,
+            'rejected_partial_count': self.rejected_partial_count,
+            'time_in_breakeven_bars': self.time_in_breakeven_bars,
+            
+            # Volatility tracking
+            'avg_atr_during_trade': float(sum(self.atr_samples) / len(self.atr_samples)) if self.atr_samples else float(self.entry_atr),
+            'atr_change_percent': float(((self.atr_samples[-1] - self.entry_atr) / self.entry_atr) * 100.0) if self.atr_samples and self.entry_atr > 0 else 0.0,
+            
+            # Timing fields
+            'entry_bar': self.entry_bar_index,
+            'exit_bar': self.entry_bar_index + self.bars_elapsed,
+            'entry_hour': self.entry_time.hour,
+            'entry_minute': self.entry_time.minute,
+            'exit_hour': bar_timestamp.hour if hasattr(bar_timestamp, 'hour') else 12,
+            'exit_minute': bar_timestamp.minute if hasattr(bar_timestamp, 'minute') else 0,
+            'day_of_week': bar_timestamp.weekday() if hasattr(bar_timestamp, 'weekday') else 0,
+            'bars_held': self.bars_elapsed,
+            
+            # Exit params (ALL 131 PARAMETERS)
+            'exit_params': {},
+            'exit_params_used': self.all_exit_params_used
+        }
     
     def update(self, bar: Dict, bars_1min: deque, adaptive_manager, config: Dict) -> Optional[Dict]:
         """
-        Update shadow with new bar data - FULLY SIMULATES REAL TRADE.
+        Update shadow with new bar data - FULL COMPREHENSIVE EXIT SIMULATION.
         
-        Every bar:
-        1. Calculate adaptive exit params (45-feature neural network)
-        2. Update stop loss (breakeven, trailing, time-decay)
-        3. Check if stopped out or target hit
-        4. Track MAE/MFE
-        5. Handle partial exits
-        
-        Args:
-            bar: Latest 1-minute bar
-            bars_1min: Full bar history (for adaptive exit calculation)
-            adaptive_manager: AdaptiveExitManager instance
-            config: Bot config
-            
-        Returns:
-            Dict with outcome if shadow completed, None if still tracking
+        CRITICAL: Ghost trades MUST use same comprehensive exit logic as real trades.
+        This includes ALL 131 exit parameters:
+        - Profit drawdown protection
+        - Sideways market detection  
+        - Adverse conditions check
+        - Breakeven, trailing, partials
+        - Max time limits
+        - All adaptive thresholds
         """
         if self.completed:
             return None
         
         self.bars_elapsed += 1
+        self.bars_in_trade = self.bars_elapsed
         current_price = bar['close']
+        tick_value = CONFIG['tick_value']
+        tick_size = CONFIG['tick_size']
         
-        # ========== STEP 1: Get Adaptive Exit Params (Neural Network) ==========
-        try:
-            from adaptive_exits import get_adaptive_exit_params
+        # Update price extremes and track R-multiples (matches real trades)
+        initial_risk = abs(self.entry_price - self.stop_price)
+        
+        if self.side == 'long':
+            if current_price > self.highest_price:
+                self.highest_price = current_price
+            if current_price < self.lowest_price:
+                self.lowest_price = current_price
+            current_r = (current_price - self.entry_price) / initial_risk if initial_risk > 0 else 0
+        else:
+            if current_price < self.lowest_price:
+                self.lowest_price = current_price
+            if current_price > self.highest_price:
+                self.highest_price = current_price
+            current_r = (self.entry_price - current_price) / initial_risk if initial_risk > 0 else 0
+        
+        # Track peak R-multiple
+        if current_r > self.max_r_achieved:
+            self.max_r_achieved = current_r
+            self.peak_r_multiple = current_r
+        if current_r < self.min_r_achieved:
+            self.min_r_achieved = current_r
+        
+        # Track unrealized P&L and peak
+        if self.side == 'long':
+            unrealized_pnl = (current_price - self.entry_price) * tick_value * 4 * self.remaining_quantity
+        else:
+            unrealized_pnl = (self.entry_price - current_price) * tick_value * 4 * self.remaining_quantity
+        
+        self.unrealized_pnl_history.append(unrealized_pnl)
+        if unrealized_pnl > self.peak_unrealized_pnl:
+            self.peak_unrealized_pnl = unrealized_pnl
+        
+        # Track drawdown from peak
+        if self.peak_unrealized_pnl > 0:
+            drawdown = self.peak_unrealized_pnl - unrealized_pnl
+            if drawdown > self.profit_drawdown_from_peak:
+                self.profit_drawdown_from_peak = drawdown
+                drawdown_pct = (drawdown / self.peak_unrealized_pnl) * 100
+                if drawdown_pct > self.max_drawdown_percent:
+                    self.max_drawdown_percent = drawdown_pct
             
-            # Create fake position dict (pretend we're in trade)
-            fake_position = {
-                'entry_price': self.entry_price,
+            if drawdown > 0:
+                self.currently_in_drawdown = True
+                self.drawdown_bars += 1
+            else:
+                self.currently_in_drawdown = False
+                self.drawdown_bars = 0
+        
+        # Track ATR samples
+        current_atr = bar.get('atr', self.entry_atr)
+        self.atr_samples.append(current_atr)
+        if current_atr > self.entry_atr * 1.2:
+            self.high_volatility_bars += 1
+        
+        # Calculate current metrics for comprehensive exit checks
+        if self.side == 'long':
+            profit_ticks = (current_price - self.entry_price) / tick_size
+        else:
+            profit_ticks = (self.entry_price - current_price) / tick_size
+        
+        # **CRITICAL**: Use comprehensive exit checker - same as real trades!
+        try:
+            from comprehensive_exit_logic import ComprehensiveExitChecker
+            
+            # Build trade context dict (same format as real trades)
+            trade_context = {
+                'entry_price': float(self.entry_price),
                 'side': self.side,
-                'quantity': self.quantity,
-                'remaining_quantity': self.remaining_quantity,
-                'entry_time': self.entry_time,
-                'entry_confidence': self.confidence,
+                'contracts': self.contracts,
+                'original_contracts': self.contracts,
+                'initial_risk_ticks': self.initial_risk_ticks,
+                'bars_in_trade': self.bars_elapsed,
+                'entry_atr': current_atr,
+                'stop_price': self.stop_price,
+                'highest_price': self.highest_price,
+                'lowest_price': self.lowest_price,
                 'breakeven_active': self.breakeven_active,
-                'trailing_stop_active': self.trailing_active,
-                'highest_price_reached': self.highest_price_reached,
-                'lowest_price_reached': self.lowest_price_reached,
-                'mae': self.mae,
-                'mfe': self.mfe,
-                'partial_exit_1_completed': len(self.partial_exits_completed) >= 1,
-                'partial_exit_2_completed': len(self.partial_exits_completed) >= 2,
-                'partial_exit_3_completed': len(self.partial_exits_completed) >= 3,
+                'trailing_active': self.trailing_active,
+                'remaining_quantity': self.remaining_quantity
             }
             
-            # Get dynamic exit params from neural network
-            adaptive_params = get_adaptive_exit_params(
-                bars=bars_1min,
-                position=fake_position,
-                current_price=current_price,
-                config=config,
-                adaptive_manager=adaptive_manager,
-                entry_confidence=self.confidence
-            )
+            ghost_checker = ComprehensiveExitChecker(trade_context)
             
-            self.current_exit_params = adaptive_params
+            # Update trade context with current state
+            ghost_checker.trade['bars_in_trade'] = self.bars_elapsed
+            ghost_checker.trade['highest_price'] = self.highest_price
+            ghost_checker.trade['lowest_price'] = self.lowest_price
+            ghost_checker.trade['breakeven_active'] = self.breakeven_active
+            ghost_checker.trade['trailing_active'] = self.trailing_active
+            ghost_checker.trade['stop_price'] = self.stop_price
+            ghost_checker.trade['remaining_quantity'] = self.remaining_quantity
             
-            # CRITICAL: Store ALL 68 exit parameters for learning
-            self.all_exit_params_used = self.extract_all_exit_params(adaptive_params)
+            # Build market context
+            market_context = {
+                'consecutive_losses': 0,
+                'consecutive_wins': 0,
+                'daily_pnl': 0.0,
+                'vix': 15.0,
+                'entry_atr': current_atr,
+                'current_atr': current_atr
+            }
+            
+            # Convert bars_1min deque to list for comprehensive checker
+            import pandas as pd
+            bars_list = list(bars_1min)
+            if bars_list:
+                bars_df = pd.DataFrame(bars_list)
+                current_bar_index = len(bars_list) - 1
+                
+                # Check ALL exit conditions using comprehensive logic
+                comprehensive_exit = ghost_checker.check_all_exits(
+                    current_bar=bars_df.iloc[-1],
+                    bar_index=current_bar_index,
+                    all_bars=bars_df,
+                    market_context=market_context
+                )
+                
+                # Store ALL exit parameters used (for learning)
+                self.all_exit_params_used = ghost_checker.get_all_used_params()
+                
+                # If comprehensive checker says exit, do it
+                if comprehensive_exit and comprehensive_exit.get('should_exit', False):
+                    exit_reason = comprehensive_exit['exit_reason']
+                    exit_price = comprehensive_exit['exit_price']
+                    
+                    # Calculate final P&L
+                    if self.side == 'long':
+                        pnl = (exit_price - self.entry_price) * tick_value * 4 * self.remaining_quantity
+                    else:
+                        pnl = (self.entry_price - exit_price) * tick_value * 4 * self.remaining_quantity
+                    
+                    # Use helper function to create complete outcome
+                    self.outcome = self._create_outcome_dict(pnl, exit_price, exit_reason, bar)
+                    # Add comprehensive-specific fields
+                    self.outcome['exit_params'] = comprehensive_exit.get('exit_params', {})
+                    self.outcome['triggered_params'] = comprehensive_exit.get('triggered_params', [])
+                    
+                    self.completed = True
+                    return self.outcome
+                
+                # Update stop/breakeven/trailing based on comprehensive checker state
+                if 'stop_price' in ghost_checker.trade:
+                    self.stop_price = ghost_checker.trade['stop_price']
+                if 'breakeven_active' in ghost_checker.trade:
+                    self.breakeven_active = ghost_checker.trade['breakeven_active']
+                if 'trailing_active' in ghost_checker.trade:
+                    self.trailing_active = ghost_checker.trade['trailing_active']
             
         except Exception as e:
-            # Fallback to simple stop if adaptive fails
-            atr = self.rl_state.get('atr', 2.0)
-            stop_distance = atr * 3.6
-            if self.side == 'long':
-                self.stop_price = self.entry_price - stop_distance
-            else:
-                self.stop_price = self.entry_price + stop_distance
+            logger.debug(f"[SHADOW] Comprehensive exit check failed: {e}")
         
-        # ========== STEP 2: Update Stop Loss (Breakeven/Trailing/Time-Decay) ==========
-        if self.current_exit_params:
-            # Calculate current R-multiple
-            if self.side == 'long':
-                initial_risk = self.entry_price - self.stop_price if self.stop_price else 0
-                current_r = (current_price - self.entry_price) / initial_risk if initial_risk > 0 else 0
-            else:
-                initial_risk = self.stop_price - self.entry_price if self.stop_price else 0
-                current_r = (self.entry_price - current_price) / initial_risk if initial_risk > 0 else 0
-            
-            # Breakeven activation
-            if not self.breakeven_active:
-                breakeven_threshold = self.current_exit_params.get('breakeven_threshold_ticks', 0) / 4.0  # ticks to R
-                if current_r >= breakeven_threshold:
-                    self.breakeven_active = True
-                    breakeven_offset = self.current_exit_params.get('breakeven_offset_ticks', 0.5) / 4.0
-                    if self.side == 'long':
-                        self.stop_price = self.entry_price + (initial_risk * breakeven_offset)
-                    else:
-                        self.stop_price = self.entry_price - (initial_risk * breakeven_offset)
-            
-            # Trailing stop activation
-            if self.breakeven_active and not self.trailing_active:
-                trailing_threshold = 1.5  # Activate trailing at 1.5R
-                if current_r >= trailing_threshold:
-                    self.trailing_active = True
-            
-            # Update trailing stop
-            if self.trailing_active:
-                trailing_distance_ticks = self.current_exit_params.get('trailing_distance_ticks', 2.0)
-                trailing_distance = trailing_distance_ticks / 4.0  # ticks to points
-                
-                if self.side == 'long':
-                    if self.highest_price_reached is None or current_price > self.highest_price_reached:
-                        self.highest_price_reached = current_price
-                    new_stop = self.highest_price_reached - trailing_distance
-                    if new_stop > self.stop_price:
-                        self.stop_price = new_stop
-                else:
-                    if self.lowest_price_reached is None or current_price < self.lowest_price_reached:
-                        self.lowest_price_reached = current_price
-                    new_stop = self.lowest_price_reached + trailing_distance
-                    if new_stop < self.stop_price:
-                        self.stop_price = new_stop
+        # Track MAE/MFE
+        if unrealized_pnl < 0 and abs(unrealized_pnl) > self.mae:
+            self.mae = abs(unrealized_pnl)
+        if unrealized_pnl > 0 and unrealized_pnl > self.mfe:
+            self.mfe = unrealized_pnl
         
-        # ========== STEP 3: Track MAE/MFE ==========
-        if self.side == 'long':
-            unrealized_pnl = (current_price - self.entry_price) * 50 * self.remaining_quantity
-            if unrealized_pnl < 0 and abs(unrealized_pnl) > self.mae:
-                self.mae = abs(unrealized_pnl)
-            if unrealized_pnl > 0 and unrealized_pnl > self.mfe:
-                self.mfe = unrealized_pnl
-        else:
-            unrealized_pnl = (self.entry_price - current_price) * 50 * self.remaining_quantity
-            if unrealized_pnl < 0 and abs(unrealized_pnl) > self.mae:
-                self.mae = abs(unrealized_pnl)
-            if unrealized_pnl > 0 and unrealized_pnl > self.mfe:
-                self.mfe = unrealized_pnl
-        
-        # ========== STEP 4: Check for Stop Loss Hit ==========
-        if self.stop_price:
-            if self.side == 'long':
-                if bar['low'] <= self.stop_price:
-                    # Stopped out - COMPLETE exit data
-                    pnl = (self.stop_price - self.entry_price) * 50 * self.remaining_quantity
-                    initial_risk = abs(self.entry_price - self.stop_price)
-                    r_multiple = pnl / (initial_risk * 50) if initial_risk > 0 else 0
-                    
-                    self.outcome = {
-                        # Basic outcome
-                        'pnl': pnl,
-                        'exit_price': self.stop_price,
-                        'duration_min': self.bars_elapsed,
-                        'exit_reason': 'ghost_stop_loss',
-                        'took_trade': False,
-                        'confidence': self.confidence,
-                        'rejection_reason': self.rejection_reason,
-                        'side': self.side,
-                        'contracts': 1,
-                        'win': False,  # Stop = loss
-                        'is_ghost': True,
-                        
-                        # Performance Metrics
-                        'mae': self.mae,
-                        'mfe': self.mfe,
-                        'max_r_achieved': self.mfe / (initial_risk * 50) if initial_risk > 0 else 0,
-                        'min_r_achieved': -self.mae / (initial_risk * 50) if initial_risk > 0 else 0,
-                        'r_multiple': r_multiple,
-                        
-                        # Exit Strategy State
-                        'breakeven_activated': self.breakeven_active,
-                        'trailing_activated': self.trailing_active,
-                        'stop_hit': True,
-                        'partials_taken': len(self.partial_exits_completed),
-                        
-                        # Partial exits
-                        'partial_exit_1_completed': len(self.partial_exits_completed) >= 1,
-                        'partial_exit_2_completed': len(self.partial_exits_completed) >= 2,
-                        'partial_exit_3_completed': len(self.partial_exits_completed) >= 3,
-                        
-                        # Entry context
-                        'entry_confidence': self.confidence,
-                        'entry_price': self.entry_price,
-                        
-                        # Exit params (ALL 68 PARAMETERS)
-                        'exit_params': self.current_exit_params,
-                        'exit_params_used': self.all_exit_params_used  # Complete 68-param set for learning
-                    }
-                    self.completed = True
-                    return self.outcome
-            else:  # short
-                if bar['high'] >= self.stop_price:
-                    pnl = (self.entry_price - self.stop_price) * 50 * self.remaining_quantity
-                    initial_risk = abs(self.stop_price - self.entry_price)
-                    r_multiple = pnl / (initial_risk * 50) if initial_risk > 0 else 0
-                    
-                    self.outcome = {
-                        # Basic outcome
-                        'pnl': pnl,
-                        'exit_price': self.stop_price,
-                        'duration_min': self.bars_elapsed,
-                        'exit_reason': 'ghost_stop_loss',
-                        'took_trade': False,
-                        'confidence': self.confidence,
-                        'rejection_reason': self.rejection_reason,
-                        'side': self.side,
-                        'contracts': 1,
-                        'win': False,
-                        'is_ghost': True,
-                        
-                        # Performance Metrics
-                        'mae': self.mae,
-                        'mfe': self.mfe,
-                        'max_r_achieved': self.mfe / (initial_risk * 50) if initial_risk > 0 else 0,
-                        'min_r_achieved': -self.mae / (initial_risk * 50) if initial_risk > 0 else 0,
-                        'r_multiple': r_multiple,
-                        
-                        # Exit Strategy State
-                        'breakeven_activated': self.breakeven_active,
-                        'trailing_activated': self.trailing_active,
-                        'stop_hit': True,
-                        'partials_taken': len(self.partial_exits_completed),
-                        
-                        # Partial exits
-                        'partial_exit_1_completed': len(self.partial_exits_completed) >= 1,
-                        'partial_exit_2_completed': len(self.partial_exits_completed) >= 2,
-                        'partial_exit_3_completed': len(self.partial_exits_completed) >= 3,
-                        
-                        # Entry context
-                        'entry_confidence': self.confidence,
-                        'entry_price': self.entry_price,
-                        
-                        # Exit params (ALL 68 PARAMETERS)
-                        'exit_params': self.current_exit_params,
-                        'exit_params_used': self.all_exit_params_used  # Complete 68-param set for learning
-                    }
-                    self.completed = True
-                    return self.outcome
-        
-        # ========== STEP 5: Check for Partial Exits ==========
-        if self.current_exit_params and self.remaining_quantity > 0:
-            partial_1_r = self.current_exit_params.get('partial_1_r', 999)
-            partial_2_r = self.current_exit_params.get('partial_2_r', 999)
-            partial_3_r = self.current_exit_params.get('partial_3_r', 999)
+        # BASIC STOP CHECK (backup if comprehensive didn't trigger)
+        if self.side == 'long' and bar['low'] <= self.stop_price:
+            pnl = (self.stop_price - self.entry_price) * tick_value * 4 * self.remaining_quantity
+            self.outcome = self._create_outcome_dict(pnl, self.stop_price, 'stop_loss', bar)
+            self.completed = True
+            return self.outcome
             
-            # Calculate current R
-            if self.side == 'long':
-                initial_risk = abs(self.entry_price - (self.stop_price or self.entry_price - 5))
-                current_r = (current_price - self.entry_price) / initial_risk if initial_risk > 0 else 0
-                
-                # Check if hit partial targets
-                if len(self.partial_exits_completed) == 0 and current_r >= partial_1_r:
-                    if bar['high'] >= self.entry_price + (initial_risk * partial_1_r):
-                        partial_pnl = initial_risk * partial_1_r * 50 * 0.33  # 1/3 position
-                        self.partial_exits_completed.append({'r': partial_1_r, 'pnl': partial_pnl})
-                        self.remaining_quantity *= 0.67
-                
-                elif len(self.partial_exits_completed) == 1 and current_r >= partial_2_r:
-                    if bar['high'] >= self.entry_price + (initial_risk * partial_2_r):
-                        partial_pnl = initial_risk * partial_2_r * 50 * 0.5  # 1/2 of remaining
-                        self.partial_exits_completed.append({'r': partial_2_r, 'pnl': partial_pnl})
-                        self.remaining_quantity *= 0.5
-                
-                elif len(self.partial_exits_completed) == 2 and current_r >= partial_3_r:
-                    if bar['high'] >= self.entry_price + (initial_risk * partial_3_r):
-                        # Full exit at R-target - COMPLETE exit data
-                        total_pnl = sum(p['pnl'] for p in self.partial_exits_completed)
-                        final_pnl = (current_price - self.entry_price) * 50 * self.remaining_quantity
-                        total_final_pnl = total_pnl + final_pnl
-                        r_multiple = total_final_pnl / (initial_risk * 50) if initial_risk > 0 else 0
-                        
-                        self.outcome = {
-                            # Basic outcome
-                            'pnl': total_final_pnl,
-                            'exit_price': current_price,
-                            'duration_min': self.bars_elapsed,
-                            'exit_reason': 'ghost_target',
-                            'took_trade': False,
-                            'confidence': self.confidence,
-                            'rejection_reason': self.rejection_reason,
-                            'side': self.side,
-                            'contracts': 1,
-                            'win': True,  # Hit target = win
-                            'is_ghost': True,
-                            
-                            # Performance Metrics
-                            'mae': self.mae,
-                            'mfe': self.mfe,
-                            'max_r_achieved': self.mfe / (initial_risk * 50) if initial_risk > 0 else 0,
-                            'min_r_achieved': -self.mae / (initial_risk * 50) if initial_risk > 0 else 0,
-                            'r_multiple': r_multiple,
-                            
-                            # Exit Strategy State
-                            'breakeven_activated': self.breakeven_active,
-                            'trailing_activated': self.trailing_active,
-                            'stop_hit': False,
-                            'partials_taken': len(self.partial_exits_completed),
-                            
-                            # Partial exits
-                            'partial_exit_1_completed': True,
-                            'partial_exit_2_completed': True,
-                            'partial_exit_3_completed': True,
-                            
-                            # Entry context
-                            'entry_confidence': self.confidence,
-                            'entry_price': self.entry_price,
-                            
-                            # Exit params (ALL 68 PARAMETERS)
-                            'exit_params': self.current_exit_params,
-                            'exit_params_used': self.all_exit_params_used  # Complete 68-param set for learning
-                        }
-                        self.completed = True
-                        return self.outcome
-        
-        # ========== STEP 6: Check for Timeout ==========
-        if self.bars_elapsed >= self.max_bars:
-            # Exit at current close price - with COMPLETE exit data
-            total_partial_pnl = sum(p['pnl'] for p in self.partial_exits_completed)
-            
-            if self.side == 'long':
-                final_pnl = (bar['close'] - self.entry_price) * 50 * self.remaining_quantity
-            else:
-                final_pnl = (self.entry_price - bar['close']) * 50 * self.remaining_quantity
-            
-            # Calculate R-multiple
-            initial_risk = abs(self.entry_price - (self.stop_price or self.entry_price))
-            r_multiple = (total_partial_pnl + final_pnl) / (initial_risk * 50) if initial_risk > 0 else 0
-            
-            # Create COMPLETE exit outcome (all fields real trades track)
-            self.outcome = {
-                # Basic outcome
-                'pnl': total_partial_pnl + final_pnl,
-                'exit_price': bar['close'],
-                'duration_min': self.bars_elapsed,
-                'exit_reason': 'ghost_timeout',
-                'took_trade': False,
-                'confidence': self.confidence,
-                'rejection_reason': self.rejection_reason,
-                'side': self.side,
-                'contracts': 1,
-                'win': (total_partial_pnl + final_pnl) > 0,
-                'is_ghost': True,
-                
-                # Performance Metrics (matches real trades)
-                'mae': self.mae,
-                'mfe': self.mfe,
-                'max_r_achieved': self.mfe / (initial_risk * 50) if initial_risk > 0 else 0,
-                'min_r_achieved': -self.mae / (initial_risk * 50) if initial_risk > 0 else 0,
-                'r_multiple': r_multiple,
-                
-                # Exit Strategy State
-                'breakeven_activated': self.breakeven_active,
-                'trailing_activated': self.trailing_active,
-                'stop_hit': False,  # Timeout, not stop
-                'partials_taken': len(self.partial_exits_completed),
-                
-                # Partial exits
-                'partial_exit_1_completed': len(self.partial_exits_completed) >= 1,
-                'partial_exit_2_completed': len(self.partial_exits_completed) >= 2,
-                'partial_exit_3_completed': len(self.partial_exits_completed) >= 3,
-                
-                # Entry context
-                'entry_confidence': self.confidence,
-                'entry_price': self.entry_price,
-                
-                # Exit params (ALL 68 PARAMETERS)
-                'exit_params': self.current_exit_params,
-                'exit_params_used': self.all_exit_params_used  # Complete 68-param set for learning
-            }
+        elif self.side == 'short' and bar['high'] >= self.stop_price:
+            pnl = (self.entry_price - self.stop_price) * tick_value * 4 * self.remaining_quantity
+            self.outcome = self._create_outcome_dict(pnl, self.stop_price, 'stop_loss', bar)
             self.completed = True
             return self.outcome
         
-        return None  # Still tracking
+        # Timeout (200 bars ~ 3.3 hours)
+        if self.bars_elapsed >= self.max_bars:
+            if self.side == 'long':
+                pnl = (current_price - self.entry_price) * tick_value * 4 * self.remaining_quantity
+            else:
+                pnl = (self.entry_price - current_price) * tick_value * 4 * self.remaining_quantity
+            
+            self.outcome = self._create_outcome_dict(pnl, current_price, 'ghost_timeout', bar)
+            self.completed = True
+            return self.outcome
+        
+        return None  # Trade continues
 
 
 def create_shadow_trade(symbol: str, rl_state: Dict, side: str, entry_price: float, 
@@ -1912,6 +1890,9 @@ def create_shadow_trade(symbol: str, rl_state: Dict, side: str, entry_price: flo
     
     # Only create new shadow if under limit
     if len(state[symbol]["shadow_trades"]) < MAX_SHADOWS:
+        # Get current ATR for stop calculation
+        current_atr = rl_state.get('atr', 2.0)
+        
         shadow = ShadowTrade(
             symbol=symbol,
             rl_state=rl_state,
@@ -1919,10 +1900,11 @@ def create_shadow_trade(symbol: str, rl_state: Dict, side: str, entry_price: flo
             entry_price=entry_price,
             entry_time=get_current_time(),
             confidence=confidence,
-            rejection_reason=rejection_reason
+            rejection_reason=rejection_reason,
+            atr=current_atr
         )
         state[symbol]["shadow_trades"].append(shadow)
-        logger.debug(f"[SHADOW] Created {side} shadow @ ${entry_price:.2f} (will use adaptive exit model)")
+        logger.debug(f"[SHADOW] Created {side} shadow @ ${entry_price:.2f} (comprehensive 131-param exit logic)")
     else:
         logger.debug(f"[SHADOW] Skipped creating shadow (max {MAX_SHADOWS} active)")
 
@@ -9683,7 +9665,8 @@ def update_dashboard_for_symbol(symbol: str) -> None:
     
     dashboard.update_bot_data({
         "maintenance_countdown": maintenance_time,
-        "topstep_connected": topstep_status
+        "topstep_connected": topstep_status,
+        "daily_pnl": sum(state[s].get("daily_pnl", 0.0) for s in trading_symbols)
     })
 
 

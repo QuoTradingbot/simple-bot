@@ -138,19 +138,15 @@ class NeuralConfidenceScorer:
             state.get('entry_slippage_ticks', 0.0),          # 19
             state.get('commission_cost', 0.0),               # 20
             signal_map.get(state.get('signal', 'LONG'), 0),  # 21
-            # ADVANCED ML FEATURES
+            # ADVANCED ML FEATURES (4 features)
             regime_map.get(state.get('market_regime', 'NORMAL'), 0),  # 22
             state.get('recent_volatility_20bar', 2.0),       # 23
             state.get('volatility_trend', 0.0),              # 24
             state.get('vwap_std_dev', 2.0),                  # 25
-            # NEW TEMPORAL/PRICE FEATURES
-            state.get('confidence', 0.5),                    # 26: Meta-learning
-            price / 10000.0,                                 # 27: Normalized price
-            state.get('entry_price', price) / 10000.0,       # 28: Normalized entry
-            state.get('vwap', 6500.0) / 10000.0,             # 29: Raw VWAP normalized
-            minute / 60.0,                                   # 30: Minute of hour
-            time_to_close / 240.0,                           # 31: Time to close (0-1)
-            price_mod_50,                                    # 32: Distance to round 50
+            # NEW TEMPORAL/PRICE FEATURES (3 features - total 31)
+            minute / 60.0,                                   # 26: Minute of hour (0-1)
+            time_to_close / 240.0,                           # 27: Time to close (0-1)
+            price_mod_50,                                    # 28: Distance to round 50 (0-1)
         ]
         
         return np.array(features, dtype=np.float32)

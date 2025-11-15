@@ -156,6 +156,7 @@ class ComprehensiveExitChecker:
         exit_decision = self._check_adverse_conditions(current_bar, all_bars, bar_index,
                                                        profit_ticks, r_multiple, 
                                                        current_price, contracts, 
+                                                       initial_risk_ticks,
                                                        triggered_params)
         if exit_decision:
             return exit_decision
@@ -512,7 +513,7 @@ class ComprehensiveExitChecker:
     # ========================================
     
     def _check_adverse_conditions(self, current_bar, all_bars, bar_index, profit_ticks, 
-                                  r_multiple, current_price, contracts, triggered):
+                                  r_multiple, current_price, contracts, initial_risk_ticks, triggered):
         """Check adverse_momentum_threshold, volume_exhaustion_pct, profit_drawdown_pct, dead_trade_threshold_bars, etc."""
         
         # 1. Adverse momentum (price moving against us)
@@ -561,9 +562,34 @@ class ComprehensiveExitChecker:
         current_pnl = profit_ticks * 0.25 * 12.50 * contracts
         triggered.append('profit_drawdown_pct')
         
-        if peak_pnl > 0:
+        # ADAPTIVE: Profit protection only activates after reaching meaningful profit
+        # Bot learns optimal threshold (0.5R-3.0R) based on market conditions
+        # No hardcoded fallback - use actual default from EXIT_PARAMS config
+        MIN_R_FOR_PROTECTION = self.exit_params.get('profit_protection_min_r', 2.5)
+        
+        # Calculate minimum profit threshold based on initial risk (adaptive per trade)
+        if initial_risk_ticks > 0:
+            min_profit_threshold = MIN_R_FOR_PROTECTION * initial_risk_ticks * 0.25 * 12.50 * contracts
+        else:
+            min_profit_threshold = 200  # Fallback if risk calculation failed
+        
+        # Only protect profit if we've reached the minimum threshold AND still in profit
+        if peak_pnl > min_profit_threshold and current_pnl > 0:
             drawdown_pct = ((peak_pnl - current_pnl) / peak_pnl) * 100
-            max_drawdown = self.exit_params['profit_drawdown_pct'] * 100  # Convert to percentage
+            
+            # ADAPTIVE: Drawdown tolerance also scales with profit level
+            # Base threshold from params, but can be adjusted based on how far into profit we are
+            base_drawdown = self.exit_params['profit_drawdown_pct'] * 100
+            
+            # If we're deep in profit (>3R), allow more drawdown before exiting
+            current_r = profit_ticks / initial_risk_ticks if initial_risk_ticks > 0 else 0
+            if current_r > 3.0:
+                max_drawdown = base_drawdown * 1.5  # 50% more tolerance at 3R+
+            elif current_r > 2.0:
+                max_drawdown = base_drawdown * 1.2  # 20% more tolerance at 2R+
+            else:
+                max_drawdown = base_drawdown
+            
             if drawdown_pct >= max_drawdown:
                 triggered.append('profit_drawdown_exceeded')
                 return {

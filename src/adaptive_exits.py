@@ -372,11 +372,11 @@ class AdaptiveExitManager:
     def record_exit_outcome(self, regime: str, exit_params: Dict, trade_outcome: Dict, 
                            market_state: Dict = None, partial_exits: list = None, backtest_mode: bool = False):
         """
-        Record exit outcome for RL learning WITH COMPLETE 62-FEATURE CAPTURE + 79 EXIT PARAMETERS.
+        Record exit outcome for RL learning WITH COMPLETE 62-FEATURE CAPTURE + 131 EXIT PARAMETERS.
         
         Args:
             regime: Market regime when exit occurred
-            exit_params: Exit parameters used (ALL 68 parameters)
+            exit_params: Exit parameters used (ALL 131 parameters)
             trade_outcome: Trade result (pnl, duration, exit_reason, win/loss, PLUS all 45 tracked features)
             market_state: Optional dict with RSI, volume_ratio, hour, day_of_week, streak, recent_pnl, vix, vwap_distance, atr
             partial_exits: List of partial exit decisions (level, r_multiple, contracts, percentage)
@@ -400,7 +400,7 @@ class AdaptiveExitManager:
             daily_loss_proximity_pct=daily_loss_prox
         )
         
-        # ADD: All 69 exit parameters that were USED for this trade
+        # ADD: All 131 exit parameters that were USED for this trade
         # This is what the neural network will learn to predict
         experience['exit_params_used'] = extract_all_exit_params(exit_params)
         

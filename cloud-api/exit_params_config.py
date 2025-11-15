@@ -643,7 +643,7 @@ EXIT_PARAMS = {
         'category': 'sideways_learning'
     },
     'sideways_max_loss_r': {
-        'min': 0.3, 'max': 1.5, 'default': 0.5,
+        'min': 0.3, 'max': 1.5, 'default': 0.75,
         'description': 'Maximum R to lose in sideways market',
         'category': 'sideways_learning'
     },
@@ -668,8 +668,13 @@ EXIT_PARAMS = {
         'category': 'sideways_learning'
     },
     
-    # PROFIT PROTECTION (2 params)
+    # PROFIT PROTECTION (3 params)
     # -------------------------------------------------------------------------
+    'profit_protection_min_r': {
+        'min': 0.5, 'max': 3.0, 'default': 2.5,
+        'description': 'Minimum R-multiple profit before drawdown protection activates (adaptive)',
+        'category': 'profit_protection'
+    },
     'profit_lock_activation_r': {
         'min': 1.0, 'max': 5.0, 'default': 2.0,
         'description': 'R-multiple to activate profit protection mode',

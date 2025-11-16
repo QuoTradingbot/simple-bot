@@ -46,8 +46,10 @@ class AdaptiveExitManager:
         self.cloud_api_url = cloud_api_url  # NEW: Cloud API endpoint
         self.use_cloud = cloud_api_url is not None  # Use cloud if URL provided
         
-        # REMOVED: Neural network is now cloud-only (protected model)
-        # Users no longer have direct access to exit_model.pth
+        # ADDED BACK: Local neural network support for exit parameter prediction
+        self.neural_model = None
+        self.model_path = "models/exit_model.pth"
+        self.load_exit_model()  # Load trained model if available
         
         # CACHE: Store cloud exit params to avoid rate limiting
         self.cloud_exit_params_cache = {}  # {regime: {params, timestamp}}
@@ -132,6 +134,85 @@ class AdaptiveExitManager:
         self.load_experiences()
         
         logger.info(f"[ADAPTIVE] Exit Manager initialized with {'CLOUD' if self.use_cloud else 'LOCAL'} RL learning ({len(self.exit_experiences)} past exits)")
+    
+    def load_exit_model(self):
+        """
+        Load the trained neural network model for exit parameter prediction.
+        """
+        import os
+        
+        if not os.path.exists(self.model_path):
+            logger.warning(f"Exit model not found at {self.model_path} - using rule-based exits only")
+            self.neural_model = None
+            return
+        
+        try:
+            import torch
+            from neural_exit_model import ExitParamsNet
+            
+            # Create model architecture (208 inputs, 132 outputs)
+            self.neural_model = ExitParamsNet(input_size=208, hidden_size=256)
+            
+            # Load trained weights
+            state_dict = torch.load(self.model_path, map_location=torch.device('cpu'), weights_only=True)
+            self.neural_model.load_state_dict(state_dict)
+            self.neural_model.eval()
+            
+            logger.info(f"✅ Exit neural network loaded from {self.model_path}")
+            logger.info(f"   Model will predict immediate action parameters (partials, exits, trailing)")
+            
+        except Exception as e:
+            logger.error(f"Failed to load exit model: {e}")
+            self.neural_model = None
+    
+    def predict_exit_params(self, experience_dict: Dict) -> Dict:
+        """
+        Use neural network to predict exit parameters based on current state.
+        
+        Args:
+            experience_dict: Current trade/market state as experience format
+            
+        Returns:
+            Dict with predicted exit parameters (132 params)
+        """
+        if self.neural_model is None:
+            return {}  # Return empty if no model
+        
+        try:
+            import torch
+            from exit_feature_extraction import extract_all_features_for_training
+            
+            # Extract 208 features from current state
+            features = extract_all_features_for_training(experience_dict)
+            
+            # Convert to tensor
+            feature_tensor = torch.tensor(features, dtype=torch.float32).unsqueeze(0)
+            
+            # Get prediction
+            with torch.no_grad():
+                normalized_output = self.neural_model(feature_tensor)
+            
+            # Denormalize to actual parameter values
+            from exit_params_config import EXIT_PARAMS
+            predicted_params = {}
+            
+            # Convert normalized [0-1] outputs back to actual ranges
+            param_names = sorted(EXIT_PARAMS.keys())
+            for i, param_name in enumerate(param_names[:132]):  # Only first 132
+                param_config = EXIT_PARAMS[param_name]
+                min_val = param_config['min']
+                max_val = param_config['max']
+                
+                # Denormalize from [0, 1] to [min, max]
+                normalized_value = normalized_output[0, i].item()
+                actual_value = min_val + (normalized_value * (max_val - min_val))
+                predicted_params[param_name] = actual_value
+            
+            return predicted_params
+            
+        except Exception as e:
+            logger.error(f"Error predicting exit params: {e}")
+            return {}
     
     def update_market_state(self, current_atr: float, bars: list):
         """
@@ -2572,7 +2653,187 @@ def get_adaptive_exit_params(bars: list, position: Dict, current_price: float,
                 logger.warning(f"⚠️  Cloud exit NN API returned status {response.status_code}")
             
         except Exception as e:
-            logger.warning(f"⚠️  Cloud exit neural network prediction failed: {e}, falling back to pattern matching")
+            logger.warning(f"⚠️  Cloud exit neural network prediction failed: {e}, falling back to local model or pattern matching")
+            # Fall through to local model or pattern matching below
+    
+    # ========================================================================
+    # LOCAL EXIT NEURAL NETWORK - Use trained local model if available
+    # ========================================================================
+    if adaptive_manager and hasattr(adaptive_manager, 'neural_model') and adaptive_manager.neural_model is not None:
+        try:
+            # Build experience dict for feature extraction (208 features)
+            latest_bar = bars[-1] if len(bars) > 0 else {}
+            entry_price = position.get('entry_price', current_price)
+            side = position.get('side', 'long')
+            quantity = position.get('quantity', 1)
+            tick_size = config.get('tick_size', 0.25)
+            
+            # Calculate current metrics
+            if side.lower() == 'long':
+                profit_ticks = (current_price - entry_price) / tick_size
+            else:
+                profit_ticks = (entry_price - current_price) / tick_size
+            
+            risk_ticks = abs(entry_price - position.get('stop_price', entry_price - current_atr)) / tick_size
+            r_multiple = profit_ticks / risk_ticks if risk_ticks > 0 else 0
+            
+            # Build current experience dict for neural network
+            current_experience = {
+                # Root fields
+                'regime': market_regime,
+                'side': side,
+                'pnl': profit_ticks * tick_size * quantity * config.get('tick_value', 12.50),
+                'r_multiple': r_multiple,
+                'mae': position.get('mae', 0.0),
+                'mfe': position.get('mfe', 0.0),
+                'exit_reason': 'unknown',  # Not exited yet
+                'win': profit_ticks > 0,
+                'breakeven_activated': position.get('breakeven_activated', False),
+                'trailing_activated': position.get('trailing_activated', False),
+                'duration': duration_minutes,
+                'entry_confidence': entry_confidence,
+                'exit_param_update_count': position.get('exit_param_update_count', 0),
+                'max_profit_reached': position.get('mfe', 0.0),
+                'max_r_achieved': position.get('max_r_achieved', 0.0),
+                'min_r_achieved': position.get('min_r_achieved', 0.0),
+                'rejected_partial_count': position.get('rejected_partial_count', 0),
+                'session': latest_bar.get('session', 0),
+                'slippage_ticks': 0.5,
+                'commission_cost': 2.5,
+                'stop_adjustment_count': position.get('stop_adjustment_count', 0),
+                'stop_hit': False,
+                'time_in_breakeven_bars': position.get('time_in_breakeven_bars', 0),
+                'trailing_activation_bar': position.get('trailing_activation_bar', 0),
+                'breakeven_activation_bar': position.get('breakeven_activation_bar', 0),
+                'bars_until_breakeven': position.get('bars_until_breakeven', 0),
+                'bars_until_trailing': position.get('bars_until_trailing', 0),
+                'bid_ask_spread_ticks': 0.5,
+                'volatility_regime_change': False,
+                'volume_at_exit': latest_bar.get('volume', 100.0),
+                
+                # Market state
+                'market_state': {
+                    'rsi': latest_bar.get('rsi', 50.0),
+                    'volume_ratio': latest_bar.get('volume', 1.0) / latest_bar.get('avg_volume', 1.0) if 'avg_volume' in latest_bar else 1.0,
+                    'hour': latest_bar.get('hour', 12),
+                    'day_of_week': latest_bar.get('day_of_week', 0),
+                    'streak': position.get('streak', 0),
+                    'recent_pnl': position.get('recent_pnl', 0.0),
+                    'vix': latest_bar.get('vix', 15.0),
+                    'vwap_distance': abs(current_price - latest_bar.get('vwap', current_price)) if 'vwap' in latest_bar else 0.0,
+                    'atr': current_atr
+                },
+                
+                # Outcome (simplified for live prediction)
+                'outcome': {
+                    'pnl': profit_ticks * tick_size * quantity * config.get('tick_value', 12.50),
+                    'duration': duration_minutes,
+                    'exit_reason': 'unknown',
+                    'side': side,
+                    'contracts': quantity,
+                    'win': profit_ticks > 0,
+                    'entry_confidence': entry_confidence,
+                    'entry_price': entry_price,
+                    'duration_bars': position.get('duration_bars', 1),
+                    'r_multiple': r_multiple,
+                    'mae': position.get('mae', 0.0),
+                    'mfe': position.get('mfe', 0.0),
+                    'max_r_achieved': position.get('max_r_achieved', 0.0),
+                    'min_r_achieved': position.get('min_r_achieved', 0.0),
+                    'exit_param_update_count': position.get('exit_param_update_count', 0),
+                    'stop_adjustment_count': position.get('stop_adjustment_count', 0),
+                    'breakeven_activation_bar': position.get('breakeven_activation_bar', 0),
+                    'trailing_activation_bar': position.get('trailing_activation_bar', 0),
+                    'bars_until_breakeven': position.get('bars_until_breakeven', 0),
+                    'bars_until_trailing': position.get('bars_until_trailing', 0),
+                    'breakeven_activated': position.get('breakeven_activated', False),
+                    'trailing_activated': position.get('trailing_activated', False),
+                    'slippage_ticks': 0.5,
+                    'commission_cost': 2.5,
+                    'bid_ask_spread_ticks': 0.5,
+                    'session': latest_bar.get('session', 0),
+                    'volume_at_exit': latest_bar.get('volume', 100.0),
+                    'volatility_regime_change': False,
+                    'time_in_breakeven_bars': position.get('time_in_breakeven_bars', 0),
+                    'rejected_partial_count': position.get('rejected_partial_count', 0),
+                    'stop_hit': False,
+                    'profit_drawdown_from_peak': 0.0,
+                    'max_drawdown_percent': 0.0,
+                    'drawdown_bars': 0,
+                    'avg_atr_during_trade': current_atr,
+                    'atr_change_percent': 0.0,
+                    'high_volatility_bars': 0,
+                    'trade_number_in_session': 1,
+                    'wins_in_last_5_trades': 0,
+                    'losses_in_last_5_trades': 0,
+                    'cumulative_pnl_before_trade': 0.0,
+                    'daily_pnl_before_trade': 0.0,
+                    'daily_loss_limit': config.get('daily_loss_limit', 1000.0),
+                    'daily_loss_proximity_pct': 0.0,
+                    'entry_bar': 0,
+                    'exit_bar': 0,
+                    'entry_hour': latest_bar.get('hour', 12),
+                    'entry_minute': 0,
+                    'exit_hour': latest_bar.get('hour', 12),
+                    'exit_minute': 0,
+                    'day_of_week': latest_bar.get('day_of_week', 0),
+                    'bars_held': position.get('duration_bars', 1),
+                    'held_through_sessions': False,
+                    'max_profit_reached': position.get('mfe', 0.0),
+                    'vix': latest_bar.get('vix', 15.0),
+                    'minutes_until_close': 240.0,
+                    'peak_unrealized_pnl': position.get('mfe', 0.0),
+                    'peak_r_multiple': position.get('max_r_achieved', 0.0),
+                    'opportunity_cost': 0.0,
+                },
+                
+                # Lists (empty for current prediction)
+                'partial_exits': [],
+                'exit_param_updates': [],
+                'stop_adjustments': [],
+                
+                # Exit params used (use defaults or learned)
+                'exit_params_used': adaptive_manager.learned_params.get(market_regime, {}),
+                'exit_params': {},  # Not needed for prediction
+                
+                # Timestamp
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            # Get neural network predictions
+            predicted_params = adaptive_manager.predict_exit_params(current_experience)
+            
+            if predicted_params:
+                logger.info(f"🧠 💻 [LOCAL EXIT NN] Predicted {len(predicted_params)} params: "
+                           f"BE={predicted_params.get('breakeven_threshold_ticks', 0):.1f}t, "
+                           f"Trail={predicted_params.get('trailing_distance_ticks', 0):.1f}t, "
+                           f"Partials={predicted_params.get('partial_1_r', 0):.1f}R/{predicted_params.get('partial_2_r', 0):.1f}R/{predicted_params.get('partial_3_r', 0):.1f}R, "
+                           f"EXIT_NOW={predicted_params.get('should_exit_now', 0.0):.2f}, "
+                           f"PARTIAL1={predicted_params.get('should_take_partial_1', 0.0):.2f}, "
+                           f"PARTIAL2={predicted_params.get('should_take_partial_2', 0.0):.2f}, "
+                           f"PARTIAL3={predicted_params.get('should_take_partial_3', 0.0):.2f}")
+                
+                # Return predicted parameters
+                result = {
+                    'breakeven_threshold_ticks': int(predicted_params.get('breakeven_threshold_ticks', base_breakeven_threshold)),
+                    'breakeven_offset_ticks': 1,
+                    'trailing_distance_ticks': int(predicted_params.get('trailing_distance_ticks', base_trailing_distance)),
+                    'trailing_min_profit_ticks': int(predicted_params.get('trailing_min_profit_ticks', base_trailing_min_profit)),
+                    'market_regime': market_regime,
+                    'current_volatility_atr': current_atr,
+                    'is_aggressive_mode': entry_confidence < 0.6,
+                    'confidence_adjusted': entry_confidence < 0.6,
+                    'prediction_source': 'local_neural_network',
+                    
+                    # Include ALL predicted parameters (132 total)
+                    **predicted_params
+                }
+                return result
+                
+        except Exception as e:
+            logger.warning(f"⚠️  Local exit neural network prediction failed: {e}, falling back to pattern matching")
+            import traceback
+            traceback.print_exc()
             # Fall through to cloud/pattern matching below
     
     # ========================================================================

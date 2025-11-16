@@ -176,7 +176,11 @@ def load_experiences():
     print("LOADING TRAINING DATA")
     print("=" * 80)
     
-    with open('data/local_experiences/signal_experiences_v2.json') as f:
+    # Use absolute path
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    data_path = os.path.join(script_dir, '..', 'data', 'local_experiences', 'signal_experiences_v2.json')
+    
+    with open(data_path) as f:
         data = json.load(f)
     
     experiences = data['experiences']
@@ -435,6 +439,7 @@ def train_model(epochs=150, batch_size=32, learning_rate=0.001):
             patience_counter = 0
             
             # Save best model
+            model_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'neural_model.pth')
             torch.save({
                 'model_state_dict': model.state_dict(),
                 'train_mae': train_mae,
@@ -442,7 +447,7 @@ def train_model(epochs=150, batch_size=32, learning_rate=0.001):
                 'feature_means': feature_means,
                 'feature_stds': feature_stds,
                 'epoch': epoch,
-            }, 'data/neural_model.pth')
+            }, model_path)
         else:
             patience_counter += 1
             if patience_counter >= patience:
@@ -520,6 +525,7 @@ def train_model(epochs=150, batch_size=32, learning_rate=0.001):
         print()
     
     # Save model with optimized temperature
+    model_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'neural_model.pth')
     torch.save({
         'model_state_dict': model.state_dict(),
         'train_mae': train_mae,
@@ -528,7 +534,7 @@ def train_model(epochs=150, batch_size=32, learning_rate=0.001):
         'feature_stds': feature_stds,
         'temperature': best_temperature,
         'epoch': epoch if 'epoch' in locals() else 0,
-    }, 'data/neural_model.pth')
+    }, model_path)
     
     print("=" * 80)
     print("TRAINING COMPLETE")

@@ -771,47 +771,34 @@ class Trade:
         # Store all 131 parameters used (will be saved to JSON)
         self.all_exit_params_used = self.comprehensive_exit_checker.get_all_used_params()
         
-        # If comprehensive checker triggered an exit, use it
-        if comprehensive_exit and comprehensive_exit['should_exit']:
+        # If comprehensive checker triggered ANY exit (including partials), use it
+        # CRITICAL FIX: Partials return should_exit=False, but still need to be processed
+        if comprehensive_exit:
+            # Track stop hit for learning
+            if 'stop' in comprehensive_exit['exit_reason'].lower():
+                self.stop_hit = True
+            # Partial exits (should_exit=False) and full exits (should_exit=True) both processed here
             return (comprehensive_exit['exit_reason'], 
                    comprehensive_exit['exit_price'], 
                    comprehensive_exit['contracts_to_close'])
         
         # ========================================
-        # EXIT PRIORITY ORDER (matches bot - legacy logic)
+        # LEGACY FALLBACK: If comprehensive checker didn't trigger, no exit
         # ========================================
+        # Note: Comprehensive checker handles ALL 131 exit parameters including:
+        # - Time-based exits (forced_flatten, daily_entry_cutoff)
+        # - Partial exits (partial_1/2/3 with proper R-multiples from config)
+        # - Stop loss, breakeven, trailing stops
+        # - Dead trade detection, sideways market handling
+        # - Profit protection, account protection
+        # - All advanced exit features
+        #
+        # Legacy checks below are kept ONLY for tracking/compatibility but should never trigger
+        # since comprehensive checker is more complete
         
-        # 1. TIME-BASED EXITS (highest priority)
-        if current_time >= CONFIG['forced_flatten_time']:
-            return ('forced_flatten', current_price, self.contracts)
-        
-        if current_time >= CONFIG['flatten_start_time'] and profit_ticks > 0:
-            # Take profit during flatten window
-            return ('flatten_profit', current_price, self.contracts)
-        
-        # 2. PARTIAL EXITS (runners) - CHECK FIRST before stop/target
-        partial_exit = self.check_partial_exits(r_multiple, current_price)
-        if partial_exit:
-            return partial_exit
-        
-        # 3. STOP LOSS
-        if self.side == 'long' and bar['low'] <= self.stop_price:
-            self.stop_hit = True
-            return ('stop_loss', self.stop_price, self.contracts)
-        if self.side == 'short' and bar['high'] >= self.stop_price:
-            self.stop_hit = True
-            return ('stop_loss', self.stop_price, self.contracts)
-        
-        # 4. BREAKEVEN PROTECTION - Handled by comprehensive_exit_logic.py
-        # (Old simple logic removed - comprehensive checker handles this with mult + min_duration)
-        
-        # Track time in breakeven before trailing activates
+        # Track time in breakeven before trailing activates (for learning)
         if self.in_breakeven_zone and not self.trailing_active:
             self.time_in_breakeven_bars += 1
-        
-        # 5. ADAPTIVE TRAILING STOP (uses learned trail distance)
-        if self.breakeven_active:
-            self.update_trailing_stop_adaptive(current_price, trailing_distance_ticks)
         
         return None
     
@@ -2982,7 +2969,9 @@ if __name__ == "__main__":
     # Parse command-line arguments
     days = 15  # Default
     local_mode = True  # Default: save experiences to local JSON (bot needs to learn!)
-    csv_file = "data/historical_data/ES_1min_cleaned.csv"  # Cleaned data (no maintenance/weekend bars)
+    # Default CSV path - works from dev-tools/ directory or repo root
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_file = os.path.join(script_dir, "..", "data", "historical_data", "ES_1min_cleaned.csv")
     save_experiences = True  # Default: save experiences
     confidence_threshold = None  # Will use CONFIG default if not specified
     max_contracts = None  # Will use CONFIG default if not specified

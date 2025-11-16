@@ -116,22 +116,23 @@ class ExitParamsNet(nn.Module):
         Additional Parameters (65): extended exit conditions and thresholds
     """
     
-    def __init__(self, input_size=64, hidden_size=128):
+    def __init__(self, input_size=205, hidden_size=256):
         super(ExitParamsNet, self).__init__()
         
-        # Architecture: 64 inputs → 128 → 128 → 130 outputs
-        # 64 inputs: market/trade context (10 market + 54 other features)
-        # 130 outputs: comprehensive exit parameters (95 base + 35 advanced learning)
+        # Architecture: flexible based on checkpoint
+        # Defaults: 205 inputs → 256 → 256 → 131 outputs
+        # 205 inputs: 10 market_state + 63 outcome + 132 exit_params
+        # 131 outputs: comprehensive exit parameters
         self.network = nn.Sequential(
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
             nn.Dropout(0.3),
             
-            nn.Linear(hidden_size, 128),
+            nn.Linear(hidden_size, hidden_size),  # Use hidden_size consistently
             nn.ReLU(),
             nn.Dropout(0.3),
             
-            nn.Linear(128, 130),  # 95 base + 35 advanced (immediate actions, dead trades, sideways, etc)
+            nn.Linear(hidden_size, 131),  # 131 exit parameters
             nn.Sigmoid()  # Output 0-1, will denormalize later
         )
     

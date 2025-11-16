@@ -14,7 +14,9 @@ class LocalExperienceManager:
     def __init__(self, use_neural_network=True):
         self.signal_experiences = []
         self.exit_experiences = []
-        self.local_dir = "data/local_experiences"
+        # Use absolute path relative to this file's location
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.local_dir = os.path.join(script_dir, "..", "data", "local_experiences")
         self.loaded = False
         self.new_signal_experiences = []  # Track experiences added during backtest
         self.new_exit_experiences = []    # Track exit experiences added during backtest

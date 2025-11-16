@@ -265,8 +265,8 @@ EXIT_PARAMS = {
         'category': 'adverse'
     },
     'profit_drawdown_pct': {
-        'min': 0.10, 'max': 0.35, 'default': 0.15,
-        'description': 'Max profit drawdown % before exit - LEARNS: tighter in choppy, looser in trending',
+        'min': 0.10, 'max': 0.50, 'default': 0.30,
+        'description': 'Max profit drawdown % before exit - LEARNS: tighter in choppy, looser in trending. Default 30% allows trades to run while protecting against major reversals.',
         'category': 'adverse'
     },
     'dead_trade_threshold_bars': {
@@ -671,8 +671,8 @@ EXIT_PARAMS = {
     # PROFIT PROTECTION (3 params)
     # -------------------------------------------------------------------------
     'profit_protection_min_r': {
-        'min': 0.5, 'max': 3.0, 'default': 1.0,
-        'description': 'Min R before profit protection kicks in - LEARNS: protect early in choppy, let run in trending',
+        'min': 0.5, 'max': 3.0, 'default': 2.0,
+        'description': 'Min R before profit protection kicks in - LEARNS: protect early in choppy, let run in trending. Default 2.0R allows partials at 1.2R to execute first, then protects larger wins.',
         'category': 'profit_protection'
     },
     'profit_lock_activation_r': {

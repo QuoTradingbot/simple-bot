@@ -11,9 +11,22 @@ from typing import Any, Dict, Optional, List
 
 JSONDict = Dict[str, Any]
 import pytz
-import torch
 import numpy as np
-from neural_exit_model import ExitParamsNet, denormalize_exit_params
+
+# Try to import torch - gracefully handle if not available
+try:
+    import torch
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    print("⚠️  PyTorch not available - exit neural network disabled")
+
+try:
+    from neural_exit_model import ExitParamsNet, denormalize_exit_params
+    NEURAL_MODEL_AVAILABLE = True
+except ImportError:
+    NEURAL_MODEL_AVAILABLE = False
+    
 from exit_param_utils import extract_all_exit_params
 
 class LocalExitManager:
@@ -21,16 +34,22 @@ class LocalExitManager:
     
     def __init__(self, verbose: bool = False):
         self.exit_experiences: List[JSONDict] = []
-        self.local_dir = "data/local_experiences"
+        # Use absolute path relative to this file's location
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.local_dir = os.path.join(script_dir, "..", "data", "local_experiences")
         self.loaded = False
         self.new_exit_experiences: List[JSONDict] = []  # NEW: Track new exit experiences
         self.verbose = verbose  # Control learning output
         self.learned_insights: List[str] = []  # Collect insights
         
-        # Load neural network model
-        self.exit_model: Optional[ExitParamsNet] = None
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self._load_neural_model()
+        # Load neural network model (if torch available)
+        self.exit_model = None
+        self.device = None
+        if TORCH_AVAILABLE:
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self._load_neural_model()
+        else:
+            print("⚠️  PyTorch not available - using rule-based exits only")
     
     def get_adaptive_exit_params(self, market_state: Optional[JSONDict] = None,
                                  position: Optional[JSONDict] = None,
@@ -57,13 +76,16 @@ class LocalExitManager:
 
     def _load_neural_model(self):
         """Load the trained exit neural network"""
+        if not TORCH_AVAILABLE or not NEURAL_MODEL_AVAILABLE:
+            return False
+            
         try:
             # Use absolute path from this file's location
             model_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'exit_model.pth')
             model_path = os.path.abspath(model_path)
             if not os.path.exists(model_path):
                 print(f"⚠️  Exit neural network not found at {model_path}")
-                print(f"   Falling back to pattern matching")
+                print(f"   Falling back to rule-based exits")
                 return False
             
             checkpoint = torch.load(model_path, map_location=self.device)
@@ -81,7 +103,7 @@ class LocalExitManager:
             
         except Exception as e:
             print(f"❌ Error loading exit neural network: {e}")
-            print(f"   Falling back to pattern matching")
+            print(f"   Falling back to rule-based exits")
             return False
     
     def _predict_with_neural_network(self, market_state: JSONDict, position: JSONDict,
@@ -134,6 +156,7 @@ class LocalExitManager:
         else:
             session = 2
         session_norm = session / 2.0
+        bid_ask_spread = np.clip(market_state.get('bid_ask_spread_ticks', 1.0) / 5.0, 0, 1)
         commission = np.clip(market_state.get('commission_cost', 2.0) / 10.0, 0, 1)
         slippage = np.clip(market_state.get('slippage_ticks', 1.0) / 5.0, 0, 1)
         regime_enc = market_regime_enc

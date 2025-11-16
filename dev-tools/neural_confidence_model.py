@@ -169,10 +169,15 @@ class ConfidencePredictor:
             rl_state.get('recent_volatility_20bar', 2.0),  # Rolling 20-bar price std
             rl_state.get('volatility_trend', 0.0),  # Is volatility increasing
             rl_state.get('vwap_std_dev', 2.0),  # VWAP standard deviation
-            # NEW TEMPORAL/PRICE FEATURES (3 features - brings total to 31)
+            # NEW TEMPORAL/PRICE FEATURES (3 features)
             minute / 60.0,  # Minute of hour (0-1)
             time_to_close / 240.0,  # Time to close normalized (0-1, 4hrs max)
             price_mod_50,  # Distance to round 50-level (0-1)
+            # ADDITIONAL FEATURES (4 features - brings total to 31, match training)
+            rl_state.get('price_momentum', 0.0),  # Price momentum indicator
+            rl_state.get('volume_momentum', 1.0),  # Volume momentum  
+            rl_state.get('spread_normalized', 0.0),  # Bid-ask spread normalized
+            rl_state.get('liquidity_score', 1.0),  # Market liquidity score
         ], dtype=np.float32)
         
         # Normalize features

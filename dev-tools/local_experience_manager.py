@@ -149,10 +149,15 @@ class LocalExperienceManager:
         # No artificial floor - trust the model's predictions
         return best_threshold
     
-    def get_signal_confidence(self, rl_state: Dict, signal: str) -> tuple:
+    def get_signal_confidence(self, rl_state: Dict, signal: str, exploration_rate: float = 0.0) -> tuple:
         """
         Get ML confidence using neural network ONLY.
         Neural network must be trained - no fallback to pattern matching.
+        
+        Args:
+            rl_state: Market state features
+            signal: LONG or SHORT
+            exploration_rate: Probability (0.0-1.0) of taking trade regardless of confidence (for learning)
         
         Returns: (take_signal, confidence, reason)
         """
@@ -163,7 +168,7 @@ class LocalExperienceManager:
         # Neural network only - no fallback
         if self.use_neural_network and self.neural_predictor is not None:
             try:
-                return self._get_confidence_neural(rl_state, signal)
+                return self._get_confidence_neural(rl_state, signal, exploration_rate)
             except Exception as e:
                 print(f"❌ Neural network error: {e}")
                 print(f"   Train the model with: python train_model.py")
@@ -182,10 +187,15 @@ class LocalExperienceManager:
         reason = f"random_exploration (NN not trained): {random_confidence:.0%} vs threshold {threshold:.0%}"
         return (take_signal, random_confidence, reason)
     
-    def _get_confidence_neural(self, rl_state: Dict, signal: str) -> tuple:
+    def _get_confidence_neural(self, rl_state: Dict, signal: str, exploration_rate: float = 0.0) -> tuple:
         """
         Get confidence prediction from trained neural network.
         Neural network uses 32 features to predict R-multiple (converted to confidence).
+        
+        Args:
+            rl_state: Market state features
+            signal: LONG or SHORT
+            exploration_rate: Probability (0.0-1.0) of taking trade regardless of confidence (for learning)
         """
         # Signal is already encoded in rl_state (LONG=0, SHORT=1)
         # Don't overwrite it with string
@@ -201,13 +211,20 @@ class LocalExperienceManager:
             threshold = self._get_learned_confidence_threshold()
             threshold_source = "learned"
         
-        take_signal = confidence >= threshold
+        # Apply exploration: randomly take exploration_rate% of signals regardless of confidence
+        import random
+        explore = random.random() < exploration_rate if exploration_rate > 0 else False
         
-        # Generate reason string
-        wins = sum(1 for e in self.signal_experiences 
-                  if e.get('took_trade') and e.get('pnl', 0) > 0)
-        total = len([e for e in self.signal_experiences if e.get('took_trade')])
-        reason = f"Neural: {confidence:.0%} confidence ({threshold_source} threshold: {threshold:.0%}, trained on {total} trades)"
+        if explore:
+            take_signal = True
+            reason = f"🎲 EXPLORATION: {confidence:.0%} confidence (exploration {exploration_rate:.0%})"
+        else:
+            take_signal = confidence >= threshold
+            # Generate reason string
+            wins = sum(1 for e in self.signal_experiences 
+                      if e.get('took_trade') and e.get('pnl', 0) > 0)
+            total = len([e for e in self.signal_experiences if e.get('took_trade')])
+            reason = f"Neural: {confidence:.0%} confidence ({threshold_source} threshold: {threshold:.0%}, trained on {total} trades)"
         
         return (take_signal, confidence, reason)
     

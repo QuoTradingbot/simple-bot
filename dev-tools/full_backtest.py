@@ -102,7 +102,8 @@ def get_rl_confidence(rl_state: Dict, side: str) -> Tuple[bool, float, str]:
     Uses local_experience_manager.py to match against saved experiences.
     NO cloud API calls - 100% offline backtesting.
     """
-    return local_manager.get_signal_confidence(rl_state, side.upper())
+    exploration_rate = CONFIG.get('exploration_rate', 0.0)
+    return local_manager.get_signal_confidence(rl_state, side.upper(), exploration_rate)
 
 
 # ========================================

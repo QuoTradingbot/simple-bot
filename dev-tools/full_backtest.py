@@ -2543,6 +2543,8 @@ def run_full_backtest(csv_file: str, days: int = 15):
                     'minute': minute,
                     'time_to_close': time_to_close,
                     'price_mod_50': price_mod_50,  # Distance to round 50-level
+                    # POSITION SIZING (default 1 contract for prediction, will be overridden after)
+                    'contracts': 1,  # Default for neural network prediction
                 }
                 
                 # Get RL confidence from local neural network
@@ -2718,6 +2720,8 @@ def run_full_backtest(csv_file: str, days: int = 15):
                     'minute': minute,
                     'time_to_close': time_to_close,
                     'price_mod_50': price_mod_50,  # Distance to round 50-level
+                    # POSITION SIZING (default 1 contract for prediction, will be overridden after)
+                    'contracts': 1,  # Default for neural network prediction
                 }
                 
                 # Get RL confidence from local neural network

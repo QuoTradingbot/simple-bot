@@ -8,6 +8,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import json
+import os
 from sklearn.model_selection import train_test_split
 from neural_exit_model import ExitParamsNet, normalize_exit_params
 
@@ -31,7 +32,11 @@ def load_exit_experiences():
     print("LOADING EXIT TRAINING DATA")
     print("=" * 80)
     
-    with open('data/local_experiences/exit_experiences_v2.json') as f:
+    # Use absolute path
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    data_path = os.path.join(script_dir, '..', 'data', 'local_experiences', 'exit_experiences_v2.json')
+    
+    with open(data_path) as f:
         data = json.load(f)
     
     experiences = data['experiences']
@@ -64,16 +69,13 @@ def load_exit_experiences():
     
     for exp in experiences:
         try:
-            # Extract ALL fields directly (208 total: 66 outcome + 10 market_state + 132 exit_params)
-            market_state = exp.get('market_state', {})
-            outcome = exp.get('outcome', {})
-            exit_params_current = exp.get('exit_params', {})
-            # Extract ALL fields directly (208 total: 66 outcome + 10 market_state + 132 exit_params)
+            # Extract fields (10 market_state + 63 outcome + 132 exit_params = 205 total)
+            # 63 outcome = 57 numeric fields + 6 additional (exit_reason, side, 4 summaries)
             market_state = exp.get('market_state', {})
             outcome = exp.get('outcome', {})
             exit_params_current = exp.get('exit_params', {})
             
-            # Build feature vector from ALL 208 fields (normalized 0-1)
+            # Build feature vector from ALL fields (normalized 0-1)
             # MARKET STATE (10 features)
             market_features = [
                 market_state.get('rsi', 50.0) / 100.0,
@@ -88,65 +90,116 @@ def load_exit_experiences():
                 np.clip(market_state.get('peak_pnl', 0.0) / 1000.0, 0, 1),
             ]
             
-            # OUTCOME (66 features - all normalized) - use sorted keys for consistency
-            outcome_features = []
-            outcome_keys_order = sorted(outcome.keys())  # Use actual keys from JSON, sorted alphabetically
+            # OUTCOME features - extract scalar numeric fields only (skip lists/dicts/strings)
+            # Define explicit list of numeric outcome fields we want as features (sorted for consistency)
+            numeric_outcome_fields = [
+                'atr_change_percent', 'avg_atr_during_trade', 'bars_held', 'bars_until_breakeven',
+                'bars_until_trailing', 'bid_ask_spread_ticks', 'breakeven_activated',
+                'breakeven_activation_bar', 'commission_cost', 'contracts',
+                'cumulative_pnl_before_trade', 'daily_loss_limit', 'daily_loss_proximity_pct',
+                'daily_pnl_before_trade', 'day_of_week', 'drawdown_bars', 'duration',
+                'duration_bars', 'entry_bar', 'entry_confidence', 'entry_hour', 'entry_minute',
+                'entry_price', 'exit_bar', 'exit_hour', 'exit_minute',
+                'exit_param_update_count', 'held_through_sessions', 'high_volatility_bars',
+                'losses_in_last_5_trades', 'mae', 'max_drawdown_percent', 'max_profit_reached',
+                'max_r_achieved', 'mfe', 'min_r_achieved', 'minutes_until_close',
+                'opportunity_cost', 'peak_r_multiple', 'peak_unrealized_pnl', 'pnl',
+                'profit_drawdown_from_peak', 'r_multiple', 'rejected_partial_count',
+                'session', 'slippage_ticks', 'stop_adjustment_count', 'stop_hit',
+                'time_in_breakeven_bars', 'trade_number_in_session', 'trailing_activated',
+                'trailing_activation_bar', 'vix', 'volatility_regime_change',
+                'volume_at_exit', 'win', 'wins_in_last_5_trades'
+            ]
             
-            # Normalize each outcome field
-            for key in outcome_keys_order:
-                val = outcome.get(key, 0.0)
-                # Apply normalization based on field type
-                if key in ['breakeven_activated', 'trailing_activated', 'stop_hit', 'held_through_sessions',
-                          'volatility_regime_change', 'partial_1_triggered', 'partial_2_triggered', 'partial_3_triggered']:
+            # Handle exit_reason and side specially (categorical -> numeric)
+            exit_reason = outcome.get('exit_reason', 'unknown')
+            exit_map = {'stop_loss': 0, 'target': 0.25, 'time': 0.5, 'partial': 0.75, 'trailing': 1.0,
+                       'profit_drawdown': 0.2, 'sideways_market_exit': 0.3, 'volatility_spike': 0.4,
+                       'underwater_timeout': 0.35, 'stale_exit': 0.6, 'forced_flatten': 0.55}
+            exit_reason_encoded = exit_map.get(exit_reason, 0)
+            
+            side = outcome.get('side', 'long')
+            side_encoded = 0.0 if side.lower() == 'long' else 1.0
+            
+            # Extract summary stats from list fields
+            decision_history = outcome.get('decision_history', [])
+            decision_count = len(decision_history) if isinstance(decision_history, list) else 0
+            
+            exit_param_updates = outcome.get('exit_param_updates', [])
+            update_count = len(exit_param_updates) if isinstance(exit_param_updates, list) else 0
+            
+            stop_adjustments = outcome.get('stop_adjustments', [])
+            adjustment_count = len(stop_adjustments) if isinstance(stop_adjustments, list) else 0
+            
+            unrealized_pnl_history = outcome.get('unrealized_pnl_history', [])
+            pnl_history_count = len(unrealized_pnl_history) if isinstance(unrealized_pnl_history, list) else 0
+            
+            # Build outcome feature vector with explicit fields only
+            outcome_features = []
+            for field in numeric_outcome_fields:
+                val = outcome.get(field, 0.0)
+                # Normalize based on field type
+                if field in ['breakeven_activated', 'trailing_activated', 'stop_hit', 'held_through_sessions',
+                            'volatility_regime_change', 'win']:
                     outcome_features.append(float(val))  # Boolean 0/1
-                elif key == 'exit_reason':
-                    # Encode exit reason
-                    exit_map = {'stop_loss': 0, 'target': 0.25, 'time': 0.5, 'partial': 0.75, 'trailing': 1.0,
-                               'profit_drawdown': 0.2, 'sideways_market_exit': 0.3, 'volatility_spike': 0.4}
-                    outcome_features.append(exit_map.get(val, 0))
-                elif key in ['pnl', 'peak_pnl', 'cumulative_pnl_before_trade', 'daily_pnl_before_trade',
-                            'peak_unrealized_pnl', 'opportunity_cost', 'net_profit_after_costs']:
+                elif field in ['pnl', 'peak_unrealized_pnl', 'opportunity_cost', 'cumulative_pnl_before_trade',
+                              'daily_pnl_before_trade']:
                     outcome_features.append(np.clip(val / 1000.0, -1, 1))  # +/- $1000
-                elif key in ['profit_ticks', 'initial_risk_ticks', 'profit_ticks_gross']:
-                    outcome_features.append(np.clip(val / 100.0, -5, 5))  # +/- 100 ticks
-                elif key in ['final_r_multiple', 'max_r_achieved', 'min_r_achieved', 'r_multiple', 'peak_r_multiple']:
+                elif field in ['r_multiple', 'max_r_achieved', 'min_r_achieved', 'peak_r_multiple']:
                     outcome_features.append(np.clip(val / 10.0, -1, 1))  # +/- 10R
-                elif key in ['entry_hour', 'exit_hour']:
+                elif field in ['entry_hour', 'exit_hour']:
                     outcome_features.append(val / 24.0)  # 0-1
-                elif key in ['entry_minute', 'exit_minute']:
+                elif field in ['entry_minute', 'exit_minute']:
                     outcome_features.append(val / 60.0)  # 0-1
-                elif key in ['duration', 'bars_held', 'duration_bars', 'bars_until_breakeven',
-                            'time_in_breakeven_bars', 'bars_until_trailing', 'entry_bar', 'exit_bar',
-                            'breakeven_activation_bar', 'trailing_activation_bar', 'drawdown_bars',
-                            'high_volatility_bars']:
+                elif field in ['duration', 'bars_held', 'duration_bars', 'bars_until_breakeven',
+                              'time_in_breakeven_bars', 'bars_until_trailing', 'entry_bar', 'exit_bar',
+                              'breakeven_activation_bar', 'trailing_activation_bar', 'drawdown_bars',
+                              'high_volatility_bars']:
                     outcome_features.append(min(val / 300.0, 1.0))  # Cap at 300 bars
-                elif key in ['mae', 'mfe', 'max_profit_reached', 'profit_drawdown_from_peak']:
+                elif field in ['mae', 'mfe', 'max_profit_reached', 'profit_drawdown_from_peak']:
                     outcome_features.append(np.clip(val / 500.0, -1, 1))  # +/- $500
-                elif key in ['exit_param_update_count', 'stop_adjustment_count']:
+                elif field in ['exit_param_update_count', 'stop_adjustment_count', 'rejected_partial_count']:
                     outcome_features.append(min(val / 50.0, 1.0))  # Cap at 50
-                elif key in ['atr_change_percent', 'max_drawdown_percent', 'daily_loss_proximity_pct']:
+                elif field in ['atr_change_percent', 'max_drawdown_percent', 'daily_loss_proximity_pct']:
                     outcome_features.append(np.clip(val / 100.0, -1, 1))  # +/- 100%
-                elif key in ['avg_atr_during_trade', 'atr']:
+                elif field in ['avg_atr_during_trade']:
                     outcome_features.append(min(val / 10.0, 1.0))  # Cap at 10
-                elif key in ['entry_price']:
+                elif field in ['entry_price']:
                     outcome_features.append(val / 10000.0)  # Normalize by typical ES price
-                elif key in ['daily_loss_limit']:
+                elif field in ['daily_loss_limit']:
                     outcome_features.append(val / 2000.0)  # Normalize by $2000
-                elif key in ['wins_in_last_5_trades', 'losses_in_last_5_trades']:
+                elif field in ['wins_in_last_5_trades', 'losses_in_last_5_trades']:
                     outcome_features.append(val / 5.0)  # 0-1
-                elif key in ['contracts', 'partial_1_contracts', 'partial_2_contracts',
-                            'partial_3_contracts', 'remaining_contracts_at_exit']:
+                elif field in ['contracts']:
                     outcome_features.append(min(val / 5.0, 1.0))  # Cap at 5 contracts
-                elif key in ['partial_1_price', 'partial_2_price', 'partial_3_price']:
-                    outcome_features.append(val / 10000.0 if val > 0 else 0)  # Normalize by typical ES price
-                elif key in ['trade_number_in_session']:
+                elif field in ['trade_number_in_session']:
                     outcome_features.append(min(val / 10.0, 1.0))  # Cap at 10 trades
-                elif key in ['minutes_until_close']:
+                elif field in ['minutes_until_close']:
                     outcome_features.append(min(val / 480.0, 1.0))  # Cap at 8 hours
-                elif key in ['commission_paid', 'slippage_ticks', 'volume_at_exit', 'partial_exits_taken']:
+                elif field in ['commission_cost']:
+                    outcome_features.append(min(val / 20.0, 1.0))  # Cap at $20
+                elif field in ['slippage_ticks', 'volume_at_exit', 'bid_ask_spread_ticks']:
                     outcome_features.append(min(val / 10.0, 1.0))  # Generic normalization
+                elif field in ['session', 'day_of_week']:
+                    outcome_features.append(val / 7.0)  # 0-1
+                elif field in ['entry_confidence']:
+                    outcome_features.append(np.clip(val, 0, 1))  # Already 0-1
+                elif field in ['vix']:
+                    outcome_features.append(min(val / 50.0, 1.0))  # VIX 0-50
                 else:
-                    outcome_features.append(min(val, 1.0))  # Default: clip at 1
+                    # Default: try to clip to 0-1 range
+                    try:
+                        outcome_features.append(np.clip(float(val), 0, 1))
+                    except:
+                        outcome_features.append(0.0)
+            
+            # Add categorical and summary features
+            outcome_features.append(exit_reason_encoded)  # Exit reason (encoded)
+            outcome_features.append(side_encoded)  # Side (0=long, 1=short)
+            outcome_features.append(min(decision_count / 100.0, 1.0))  # Decision history count
+            outcome_features.append(min(update_count / 50.0, 1.0))  # Exit param update count
+            outcome_features.append(min(adjustment_count / 50.0, 1.0))  # Stop adjustment count
+            outcome_features.append(min(pnl_history_count / 100.0, 1.0))  # P&L history count
             
             # EXIT PARAMS (131 features from EXIT_PARAMS config, excluding current_atr)
             exit_param_features = []
@@ -172,8 +225,13 @@ def load_exit_experiences():
             current_atr_val = exit_params_current.get('current_atr', market_state.get('atr', 2.0))
             exit_param_features.append(min(current_atr_val / 10.0, 1.0))
             
-            # Combine all features (10 + 66 + 132 = 208)
+            # Combine all features (10 market + 63 outcome + 132 exit_params = 205 total)
             feature_vec = market_features + outcome_features + exit_param_features
+            
+            # Validate feature count
+            if len(feature_vec) != 205:
+                print(f"Warning: Expected 205 features, got {len(feature_vec)} - skipping experience")
+                continue
             
             # Extract exit params (labels) - ALL 131 PARAMETERS
             # Use exit_params_used field (complete 131-param dict)
@@ -237,7 +295,8 @@ def train_exit_model():
     print(f"Training on: {device}")
     print()
     
-    model = ExitParamsNet(input_size=64, hidden_size=64).to(device)  # 64 inputs (actual count from feature vector)
+    # Model architecture: 205 inputs → 256 hidden → 256 hidden → 131 outputs
+    model = ExitParamsNet(input_size=205, hidden_size=256).to(device)
     
     # Use MSE loss (predicting continuous values)
     criterion = nn.MSELoss()
@@ -301,15 +360,16 @@ def train_exit_model():
             patience_counter = 0
             
             # Save best model
+            model_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'exit_model.pth')
             torch.save({
                 'model_state_dict': model.state_dict(),
-                'input_size': 62,
-                'hidden_size': 64,
+                'input_size': 205,
+                'hidden_size': 256,
                 'val_loss': val_loss
-            }, 'data/exit_model.pth')
+            }, model_path)
         else:
             patience_counter += 1
-            if patience_counter >= patience:
+            if patience >= patience:
                 print(f"Early stopping at epoch {epoch+1}")
                 print()
                 break

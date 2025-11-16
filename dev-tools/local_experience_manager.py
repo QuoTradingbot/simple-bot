@@ -161,12 +161,12 @@ class LocalExperienceManager:
         
         Returns: (take_signal, confidence, reason)
         """
-        if not self.loaded:
-            if not self.load_experiences():
-                return (False, 0.0, "Local experiences not loaded")
-        
         # Neural network only - no fallback
         if self.use_neural_network and self.neural_predictor is not None:
+            # Try to load experiences if not loaded (for saving new ones later)
+            if not self.loaded:
+                self.load_experiences()  # Doesn't matter if this fails - we have neural network
+            
             try:
                 return self._get_confidence_neural(rl_state, signal, exploration_rate)
             except Exception as e:
@@ -314,10 +314,12 @@ class LocalExperienceManager:
         # Use V2 file with full structure
         signal_file = os.path.join(self.local_dir, "signal_experiences_v2.json")
         
-        # Load existing
-        with open(signal_file, 'r') as f:
-            data = json.load(f)
-            existing_experiences = data.get('experiences', [])
+        # Load existing (if file exists)
+        existing_experiences = []
+        if os.path.exists(signal_file):
+            with open(signal_file, 'r') as f:
+                data = json.load(f)
+                existing_experiences = data.get('experiences', [])
         
         # Add new ones
         all_experiences = existing_experiences + self.new_signal_experiences

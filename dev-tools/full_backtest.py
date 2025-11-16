@@ -1857,9 +1857,9 @@ def run_full_backtest(csv_file: str, days: int = 15):
                     CONFIG['exploration_rate'] = 0.05  # LOW: Test learned strategy, keep adaptability
                     print(f"   🔍 Adaptive Exploration: 5% (rich data: {total_exps} experiences)")
         else:
-            print(f"   ❌ Failed to load local experiences - switching to cloud mode")
-            CONFIG['local_mode'] = False
-            signal_manager_for_vwap = None
+            print(f"   ⚠️  No existing local experiences found - will create new files")
+            print(f"   🎯 Starting fresh - will collect experiences during this backtest")
+            signal_manager_for_vwap = local_manager  # Still use local_manager for saving
         print()
     else:
         signal_manager_for_vwap = None

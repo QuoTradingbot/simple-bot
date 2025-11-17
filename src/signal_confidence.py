@@ -322,42 +322,6 @@ class SignalConfidenceRL:
         # Basic validation - cloud API handles actual regime filtering
         return True, f"Regime {regime} (cloud API validates)"
     
-    def check_time_of_day_acceptable(self, hour: int) -> Tuple[bool, str]:
-        """
-        Check if current time of day is acceptable for trading.
-        Avoid poor performance periods (typically late afternoon chop and low volume periods).
-        
-        Args:
-            hour: Hour of day in UTC (0-23)
-            
-        Returns:
-            (acceptable, reason)
-        """
-        # ES Futures trading hours (UTC):
-        # Market opens: Sunday 23:00 UTC
-        # Market closes: Friday 22:00 UTC
-        # Maintenance: 22:00-23:00 UTC daily
-        
-        # POOR PERFORMANCE HOURS (based on institutional trading patterns):
-        # - 22:00-23:00 UTC: Maintenance window
-        # - 14:00-16:00 UTC: Afternoon chop period (9am-11am EST)
-        # - 0:00-3:00 UTC: Low volume Asian session start
-        
-        # Maintenance window - market closed
-        if hour == 22:
-            return False, f"❌ MAINTENANCE WINDOW (hour {hour} UTC) - Market closed"
-        
-        # Late afternoon chop (EST afternoon = choppy, low edge)
-        if 14 <= hour <= 15:
-            return False, f"❌ AFTERNOON CHOP PERIOD (hour {hour} UTC) - Poor performance window"
-        
-        # Very low volume Asian session start
-        if 0 <= hour <= 2:
-            return False, f"❌ LOW VOLUME PERIOD (hour {hour} UTC) - Thin liquidity"
-        
-        # All other hours are acceptable
-        return True, f"Time OK (hour {hour} UTC)"
-    
     def check_immediate_adverse_movement(self, state: Dict) -> Tuple[bool, str]:
         """
         Check if setup is acceptable.
@@ -482,13 +446,6 @@ class SignalConfidenceRL:
         if not regime_ok:
             self.signals_skipped += 1
             return False, 0.0, 0.0, regime_reason
-        
-        # NEW FEATURE 2: Time of Day Filter
-        hour = state.get('hour', 12)
-        time_ok, time_reason = self.check_time_of_day_acceptable(hour)
-        if not time_ok:
-            self.signals_skipped += 1
-            return False, 0.0, 0.0, time_reason
         
         # SMART EXPLORATION: Only in backtest mode!
         # LIVE MODE: 0% exploration (pure exploitation of learned intelligence)

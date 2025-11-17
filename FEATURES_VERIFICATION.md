@@ -30,39 +30,7 @@ def detect_market_regime(bars: list, current_atr: float) -> str:
 
 ---
 
-### 2. Time-of-Day Filters
-**Status:** ✅ FULLY IMPLEMENTED (Enhanced)
-
-**Location:** `src/signal_confidence.py` - `check_time_of_day_acceptable()` (line 324)
-
-**How it works:**
-- Filters out poor performance hours automatically
-- Blocked hours (UTC):
-  - 22:00 UTC - Maintenance window (market closed)
-  - 14:00-15:00 UTC - Afternoon chop period (poor edge)
-  - 0:00-2:00 UTC - Low volume Asian session start
-- Returns clear rejection messages when time is not acceptable
-
-**Code Reference:**
-```python
-# src/signal_confidence.py (line 324)
-def check_time_of_day_acceptable(self, hour: int) -> Tuple[bool, str]:
-    # Maintenance window
-    if hour == 22:
-        return False, "MAINTENANCE WINDOW"
-    
-    # Afternoon chop
-    if 14 <= hour <= 15:
-        return False, "AFTERNOON CHOP PERIOD"
-    
-    # Low volume
-    if 0 <= hour <= 2:
-        return False, "LOW VOLUME PERIOD"
-```
-
----
-
-### 3. Volume Confirmation
+### 2. Volume Confirmation
 **Status:** ✅ FULLY IMPLEMENTED AND ACTIVE
 
 **Location:** `src/signal_confidence.py` - `check_liquidity_acceptable()` (line 289)
@@ -141,17 +109,15 @@ rl_scaled_max = min(rl_scaled_max, user_max_contracts)
    ↓
 4. Check Regime (acceptable market type?) ✓ [REGIME DETECTION]
    ↓
-5. Check Time of Day (good trading hour?) ✓ [TIME FILTER]
+5. Calculate Confidence (neural network or pattern matching)
    ↓
-6. Calculate Confidence (neural network or pattern matching)
+6. Compare to Threshold (confidence > threshold?)
    ↓
-7. Compare to Threshold (confidence > threshold?)
+7. Calculate Position Size (based on confidence, regime, streaks) ✓ [DYNAMIC SIZING]
    ↓
-8. Calculate Position Size (based on confidence, regime, streaks) ✓ [DYNAMIC SIZING]
+8. Cap at max_contracts (never exceed user limit) ✓
    ↓
-9. Cap at max_contracts (never exceed user limit) ✓
-   ↓
-10. Execute Trade
+9. Execute Trade
 ```
 
 ---
@@ -161,11 +127,10 @@ rl_scaled_max = min(rl_scaled_max, user_max_contracts)
 | Feature | Status | File | Line | Active |
 |---------|--------|------|------|--------|
 | Market Regime Detection | ✅ IMPLEMENTED | adaptive_exits.py | 1937 | YES |
-| Time-of-Day Filters | ✅ IMPLEMENTED | signal_confidence.py | 324 | YES |
 | Volume Confirmation | ✅ IMPLEMENTED | signal_confidence.py | 289 | YES |
 | Dynamic Contracts | ✅ IMPLEMENTED | quotrading_engine.py | 4300+ | YES |
 
-**All 4 requested features are fully implemented and active!**
+**All 3 requested features are fully implemented and active!**
 
 ---
 
@@ -190,8 +155,7 @@ To enable all features, ensure your `config.json` has:
 ## ✨ Key Points
 
 1. **Regime Detection**: Automatically adjusts to market conditions (trending vs choppy, high vol vs low vol)
-2. **Time Filtering**: Avoids poor performance hours automatically
-3. **Volume Confirmation**: Won't trade in thin markets (< 0.3x volume)
-4. **Dynamic Sizing**: Scales position size intelligently BUT never exceeds your max_contracts setting
+2. **Volume Confirmation**: Won't trade in thin markets (< 0.3x volume)
+3. **Dynamic Sizing**: Scales position size intelligently BUT never exceeds your max_contracts setting
 
 All features work together to improve trade quality and risk management!

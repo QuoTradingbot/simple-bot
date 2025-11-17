@@ -13,7 +13,7 @@
   "max_trades_per_day": 9999,
   "daily_loss_limit": 1000.0,
   "auto_calculate_limits": true,
-  "rl_confidence_threshold": 0.7,
+  "rl_confidence_threshold": 0.10,
   "rl_exploration_rate": 0.30,
   "rl_min_exploration_rate": 0.05,
   "rl_exploration_decay": 0.995,

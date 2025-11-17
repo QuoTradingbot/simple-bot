@@ -62,13 +62,13 @@ EXIT_PARAMS = {
     
     # Trailing Stop (9)
     'trailing_distance_ticks': {
-        'min': 6, 'max': 24, 'default': 10,
-        'description': 'How far to trail behind price',
+        'min': 10, 'max': 30, 'default': 16,
+        'description': 'How far to trail behind price - WIDENED to let winners run',
         'category': 'trailing'
     },
     'trailing_min_profit_ticks': {
-        'min': 8, 'max': 20, 'default': 12,
-        'description': 'Minimum profit before trailing activates',
+        'min': 4, 'max': 16, 'default': 8,
+        'description': 'Minimum profit before trailing activates - LOWERED for earlier activation',
         'category': 'trailing'
     },
     'trailing_mult': {
@@ -87,8 +87,8 @@ EXIT_PARAMS = {
         'category': 'trailing'
     },
     'trailing_activation_r': {
-        'min': 1.0, 'max': 2.5, 'default': 1.5,
-        'description': 'R-multiple required to activate trailing stop',
+        'min': 1.5, 'max': 3.0, 'default': 2.0,
+        'description': 'R-multiple required to activate trailing stop - INCREASED for runners',
         'category': 'trailing'
     },
     'trailing_step_size_ticks': {
@@ -109,8 +109,8 @@ EXIT_PARAMS = {
     
     # Partial Exits (9)
     'partial_1_r': {
-        'min': 0.8, 'max': 2.0, 'default': 1.2,
-        'description': 'First partial exit target (R-multiple) - PROFESSIONAL: take profits early',
+        'min': 0.3, 'max': 1.5, 'default': 0.5,
+        'description': 'First partial exit target (R-multiple) - LOWERED to trigger more often',
         'category': 'partials'
     },
     'partial_1_pct': {
@@ -119,13 +119,13 @@ EXIT_PARAMS = {
         'category': 'partials'
     },
     'partial_1_min_profit_ticks': {
-        'min': 4, 'max': 15, 'default': 6,
-        'description': 'Minimum profit in ticks for first partial - LOWERED',
+        'min': 2, 'max': 8, 'default': 3,
+        'description': 'Minimum profit in ticks for first partial - LOWERED to realistic level',
         'category': 'partials'
     },
     'partial_2_r': {
-        'min': 1.5, 'max': 3.5, 'default': 2.0,
-        'description': 'Second partial exit target (R-multiple) - PROFESSIONAL',
+        'min': 0.8, 'max': 2.5, 'default': 1.0,
+        'description': 'Second partial exit target (R-multiple) - LOWERED to trigger more often',
         'category': 'partials'
     },
     'partial_2_pct': {
@@ -134,13 +134,13 @@ EXIT_PARAMS = {
         'category': 'partials'
     },
     'partial_2_min_profit_ticks': {
-        'min': 8, 'max': 25, 'default': 12,
-        'description': 'Minimum profit in ticks for second partial - LOWERED',
+        'min': 4, 'max': 15, 'default': 6,
+        'description': 'Minimum profit in ticks for second partial - LOWERED to realistic level',
         'category': 'partials'
     },
     'partial_3_r': {
-        'min': 2.5, 'max': 6.0, 'default': 3.5,
-        'description': 'Third partial exit target (R-multiple) - RUNNER',
+        'min': 1.5, 'max': 5.0, 'default': 2.5,
+        'description': 'Third partial exit target (R-multiple) - RUNNER, lowered for learning',
         'category': 'partials'
     },
     'partial_3_pct': {
@@ -187,18 +187,18 @@ EXIT_PARAMS = {
         'category': 'time_based'
     },
     'max_hold_duration_minutes': {
-        'min': 45, 'max': 90, 'default': 60,
-        'description': 'Absolute maximum trade duration',
+        'min': 60, 'max': 120, 'default': 90,
+        'description': 'Absolute maximum trade duration - EXTENDED to allow runners',
         'category': 'time_based'
     },
     'max_trade_duration_bars': {
-        'min': 30, 'max': 120, 'default': 60,
-        'description': 'Maximum trade duration in bars',
+        'min': 30, 'max': 120, 'default': 90,
+        'description': 'Maximum trade duration in bars - EXTENDED to allow runners',
         'category': 'time_based'
     },
     'time_decay_start_bar': {
-        'min': 20, 'max': 80, 'default': 40,
-        'description': 'Bar number to start tightening stops',
+        'min': 40, 'max': 100, 'default': 60,
+        'description': 'Bar number to start tightening stops - DELAYED to allow runners',
         'category': 'time_based'
     },
     'time_decay_ticks_per_bar': {
@@ -235,13 +235,13 @@ EXIT_PARAMS = {
         'category': 'adverse'
     },
     'profit_lock_threshold_r': {
-        'min': 3.0, 'max': 6.0, 'default': 4.0,
-        'description': 'R-multiple that triggers profit protection mode',
+        'min': 4.0, 'max': 8.0, 'default': 5.0,
+        'description': 'R-multiple that triggers profit protection mode - RAISED to let big wins develop',
         'category': 'adverse'
     },
     'profit_lock_min_acceptable_r': {
-        'min': 1.5, 'max': 4.0, 'default': 2.5,
-        'description': 'Minimum R to accept after locking profit',
+        'min': 2.0, 'max': 5.0, 'default': 3.0,
+        'description': 'Minimum R to accept after locking profit - RAISED to protect more',
         'category': 'adverse'
     },
     'volume_exhaustion_threshold_pct': {

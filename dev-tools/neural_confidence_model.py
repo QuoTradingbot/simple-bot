@@ -193,7 +193,12 @@ class ConfidencePredictor:
         
         # Predict R-multiple
         with torch.no_grad():
-            r_multiple = self.model(x).item()
+            r_multiple_raw = self.model(x).item()
+        
+        # FIX: Model outputs unbounded values, but training used tanh compression to -3/+3
+        # Apply tanh to compress to expected range, then scale by typical magnitude (divide by 2)
+        # This maps raw outputs to reasonable R-multiple range
+        r_multiple = 3.0 * np.tanh(r_multiple_raw / 6.0)
         
         # Convert R-multiple to confidence (0-1 scale)
         # Use sigmoid-like transformation: confidence = 1 / (1 + exp(-r_multiple))
@@ -204,7 +209,7 @@ class ConfidencePredictor:
         confidence = np.clip(confidence, 0.01, 0.99)
         
         # DETAILED LOGGING for debugging
-        print(f"  🧠 Neural prediction: R-multiple={r_multiple:.3f} → confidence={confidence:.1%}")
+        print(f"  🧠 Neural prediction: R-multiple={r_multiple:.3f} (raw={r_multiple_raw:.1f}) → confidence={confidence:.1%}")
         
         return confidence
     

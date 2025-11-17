@@ -1,8 +1,8 @@
 """
-Signal Confidence - Neural Network + RL Hybrid Layer for VWAP Signals
-======================================================================
+Signal Confidence - Neural Network Layer for VWAP Signals
+==========================================================
 Uses trained neural network (84.80% accuracy) for confidence prediction.
-Falls back to pattern matching RL if neural network unavailable.
+Neural network is REQUIRED - no fallback to simple systems.
 
 Keeps your hardcoded VWAP/RSI entry logic, but adds intelligence:
 - Should I take this signal? (confidence scoring)
@@ -10,6 +10,7 @@ Keeps your hardcoded VWAP/RSI entry logic, but adds intelligence:
 - When to exit? (profit taking)
 
 Learns from every trade outcome to improve decision-making.
+All experiences saved to JSON for continuous learning.
 """
 
 import logging
@@ -52,22 +53,23 @@ class SignalConfidenceRL:
         self.backtest_mode = backtest_mode
         self.freeze_learning = False  # LEARNING ENABLED - Brain learns during backtests
         
-        # Neural network support (NEW!)
+        # Neural network support (REQUIRED!)
         self.neural_predictor = None
-        self.use_neural_network = True
+        self.use_neural_network = False
         try:
             from neural_confidence_model import ConfidencePredictor
             self.neural_predictor = ConfidencePredictor(model_path='data/neural_model.pth')
             if self.neural_predictor.load_model():
-                logger.info("🧠 NEURAL NETWORK LOADED - Using 84.80% accuracy AI model")
+                logger.info("🧠 NEURAL NETWORK LOADED - Using AI model trained on thousands of experiences")
                 self.use_neural_network = True
             else:
-                logger.warning("⚠️  Neural network not found - using pattern matching fallback")
-                self.use_neural_network = False
+                logger.error("❌ Neural network model not found at data/neural_model.pth")
+                logger.error("   Neural network is REQUIRED. Please train the model first.")
+                raise RuntimeError("Neural network model is required but not found")
         except Exception as e:
-            logger.warning(f"⚠️  Could not load neural network: {e}")
-            logger.warning("   Using pattern matching fallback")
-            self.use_neural_network = False
+            logger.error(f"❌ Could not load neural network: {e}")
+            logger.error("   Neural network is REQUIRED for both live trading and backtesting")
+            raise RuntimeError(f"Failed to load required neural network: {e}")
         
         # Random exploration enabled - no fixed seed for natural learning
         
@@ -338,8 +340,9 @@ class SignalConfidenceRL:
     
     def separate_winner_loser_experiences(self) -> tuple:
         """
-        NEW FEATURE 3 UPGRADED: Dual Pattern Matching
-        Separate experiences into winners and losers for intelligent learning.
+        DEPRECATED: Pattern matching fallback removed.
+        This method is kept for backward compatibility but should not be used.
+        Neural network handles all learning now.
         
         Returns:
             (winner_experiences, loser_experiences)
@@ -512,112 +515,49 @@ class SignalConfidenceRL:
     
     def calculate_confidence(self, current_state: Dict) -> Tuple[float, str]:
         """
-        Calculate confidence using NEURAL NETWORK (preferred) or DUAL PATTERN MATCHING (fallback).
+        Calculate confidence using NEURAL NETWORK (required).
         
-        Priority:
-        1. Neural Network (84.80% accuracy) - trained on 5,293 experiences
-        2. Pattern Matching RL - fallback if NN unavailable
+        The neural network is trained on thousands of experiences and provides
+        high-accuracy predictions for signal quality.
         
         Returns:
             (confidence, reason)
         """
-        # TRY NEURAL NETWORK FIRST
-        if self.use_neural_network and self.neural_predictor is not None:
-            try:
-                # Extract features for neural network
-                features = {
-                    'rsi': current_state.get('rsi', 50.0),
-                    'vwap_distance': current_state.get('vwap_distance', 0.0),
-                    'atr': current_state.get('atr', 0.0),
-                    'volume_ratio': current_state.get('volume_ratio', 1.0),
-                    'hour': current_state.get('hour', 12),
-                    'day_of_week': current_state.get('day_of_week', 2),
-                    'vix': current_state.get('vix', 15.0),
-                    'streak': self.current_win_streak if self.current_win_streak > 0 else -self.current_loss_streak,
-                    'recent_pnl': sum(t.get('reward', 0) for t in list(self.recent_trades)[-3:]) if self.recent_trades else 0.0,
-                    'regime': current_state.get('regime', 'NORMAL'),
-                    'side': current_state.get('side', 'LONG'),
-                    'session': current_state.get('session', 'NY')
-                }
-                
-                # Get neural network prediction
-                confidence = self.neural_predictor.predict_confidence(features)
-                
-                # Get calibrated confidence and temperature
-                stats = self.neural_predictor.get_model_stats()
-                calibrated_conf = stats.get('calibrated_confidence', confidence)
-                temperature = stats.get('temperature', 1.0)
-                
-                reason = f"🧠 Neural Network: {calibrated_conf*100:.1f}% (T={temperature:.1f})"
-                return calibrated_conf, reason
-                
-            except Exception as e:
-                logger.warning(f"Neural network prediction failed: {e}, falling back to pattern matching")
-                # Fall through to pattern matching below
+        # Neural network is REQUIRED - no fallback
+        if not self.use_neural_network or self.neural_predictor is None:
+            raise RuntimeError("Neural network is required but not available")
         
-        # FALLBACK: DUAL PATTERN MATCHING (original RL logic)
-        # Need at least 10 experiences before using them for decisions
-        if len(self.experiences) < 10:
-            return 0.65, f"🆕 Limited experience ({len(self.experiences)} trades) - optimistic"
-        
-        # Separate into winners and losers
-        winners, losers = self.separate_winner_loser_experiences()
-        
-        if len(winners) < 5:
-            return 0.65, f"🆕 Limited winning experience ({len(winners)} wins) - optimistic"
-        
-        # Find similar WINNING patterns
-        similar_winners = self.find_similar_states(current_state, max_results=10, experiences=winners)
-        
-        # Find similar LOSING patterns  
-        similar_losers = self.find_similar_states(current_state, max_results=10, experiences=losers) if len(losers) >= 5 else []
-        
-        # Calculate winner confidence
-        if similar_winners:
-            winner_wins = sum(1 for exp in similar_winners if exp['reward'] > 0)
-            winner_win_rate = winner_wins / len(similar_winners)
-            winner_avg_profit = sum(exp['reward'] for exp in similar_winners) / len(similar_winners)
+        try:
+            # Extract features for neural network
+            features = {
+                'rsi': current_state.get('rsi', 50.0),
+                'vwap_distance': current_state.get('vwap_distance', 0.0),
+                'atr': current_state.get('atr', 0.0),
+                'volume_ratio': current_state.get('volume_ratio', 1.0),
+                'hour': current_state.get('hour', 12),
+                'day_of_week': current_state.get('day_of_week', 2),
+                'vix': current_state.get('vix', 15.0),
+                'streak': self.current_win_streak if self.current_win_streak > 0 else -self.current_loss_streak,
+                'recent_pnl': sum(t.get('reward', 0) for t in list(self.recent_trades)[-3:]) if self.recent_trades else 0.0,
+                'regime': current_state.get('regime', 'NORMAL'),
+                'side': current_state.get('side', 'LONG'),
+                'session': current_state.get('session', 'NY')
+            }
             
-            # Winner confidence (same formula as before)
-            winner_confidence = (winner_win_rate * 0.9) + (min(winner_avg_profit / 300, 1.0) * 0.1)
-            winner_confidence = max(0.0, min(1.0, winner_confidence))
-        else:
-            winner_confidence = 0.5
-            winner_win_rate = 0.5
-            winner_avg_profit = 0
-        
-        # Calculate loser penalty
-        if similar_losers:
-            loser_losses = sum(1 for exp in similar_losers if exp['reward'] < 0)
-            loser_loss_rate = loser_losses / len(similar_losers)
-            loser_avg_loss = sum(exp['reward'] for exp in similar_losers) / len(similar_losers)
+            # Get neural network prediction
+            confidence = self.neural_predictor.predict_confidence(features)
             
-            # Penalty is HIGH if very similar to losers
-            # Scale: 0.0 (not similar to losers) to 0.5 (very similar to losers)
-            loser_penalty = (loser_loss_rate * 0.4) + (min(abs(loser_avg_loss) / 300, 1.0) * 0.1)
-            loser_penalty = max(0.0, min(0.5, loser_penalty))
-        else:
-            loser_penalty = 0.0
-            loser_loss_rate = 0.0
-            loser_avg_loss = 0
-        
-        # DUAL PATTERN MATCHING: Confidence = Winners - Losers
-        final_confidence = winner_confidence - loser_penalty
-        final_confidence = max(0.0, min(1.0, final_confidence))
-        
-        # Build detailed reason
-        reason = f" {len(similar_winners)}W/{len(similar_losers)}L similar"
-        reason += f" | Winners: {winner_win_rate*100:.0f}% WR, ${winner_avg_profit:.0f} avg"
-        
-        if similar_losers:
-            reason += f" | Losers: {loser_loss_rate*100:.0f}% LR, ${loser_avg_loss:.0f} avg"
-            reason += f" | Penalty: -{loser_penalty:.1%}"
-        
-        # SAFETY CHECK: Reject if more similar to losers or negative EV
-        if final_confidence < 0.3:
-            reason += " | LOOKS LIKE PAST LOSERS - REJECTED"
-        
-        return final_confidence, reason
+            # Get calibrated confidence and temperature
+            stats = self.neural_predictor.get_model_stats()
+            calibrated_conf = stats.get('calibrated_confidence', confidence)
+            temperature = stats.get('temperature', 1.0)
+            
+            reason = f"🧠 Neural Network: {calibrated_conf*100:.1f}% (T={temperature:.1f})"
+            return calibrated_conf, reason
+            
+        except Exception as e:
+            logger.error(f"❌ Neural network prediction failed: {e}")
+            raise RuntimeError(f"Neural network prediction failed: {e}")
     
     def _calculate_position_size(self, confidence: float, state: Dict) -> float:
         """
@@ -689,6 +629,22 @@ class SignalConfidenceRL:
         return final_mult
     
     def find_similar_states(self, current: Dict, max_results: int = 10, experiences: Optional[list] = None) -> list:
+        """
+        DEPRECATED: Pattern matching fallback removed.
+        This method is kept for backward compatibility but should not be used.
+        Neural network handles all similarity learning now.
+        
+        Args:
+            current: Current market state
+            max_results: Maximum similar states to return
+            experiences: Optional list to search (if None, uses self.experiences)
+            
+        Returns:
+            List of similar experiences (empty list as this is deprecated)
+        """
+        # Return empty list - neural network handles this now
+        logger.debug("find_similar_states called but pattern matching is deprecated - neural network in use")
+        return []
         """
         Find past experiences with similar market states.
         NEW FEATURE 3: Can optionally use filtered experiences list

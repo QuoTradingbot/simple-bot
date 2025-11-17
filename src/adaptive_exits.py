@@ -46,14 +46,14 @@ class AdaptiveExitManager:
         self.cloud_api_url = cloud_api_url  # NEW: Cloud API endpoint
         self.use_cloud = cloud_api_url is not None  # Use cloud if URL provided
         
-        # LOCAL NEURAL NETWORK: Load for backtesting (cloud for live trading)
+        # LOCAL NEURAL NETWORK: Required for both backtesting and live trading
         self.exit_model = None
         self.use_local_neural_network = False
         try:
             import torch
             from neural_exit_model import ExitParamsNet, denormalize_exit_params
             
-            # Try to load local trained model
+            # Try to load local trained model (REQUIRED)
             model_path = os.path.join(os.path.dirname(__file__), '../data/exit_model.pth')
             if os.path.exists(model_path):
                 self.exit_model = ExitParamsNet(input_size=205, hidden_size=256)
@@ -63,10 +63,17 @@ class AdaptiveExitManager:
                 self.use_local_neural_network = True
                 self.denormalize_exit_params = denormalize_exit_params
                 logger.info(f"✅ [LOCAL NN] Loaded exit neural network from {model_path}")
+                logger.info(f"   Model trained on thousands of experiences from JSON files")
             else:
-                logger.warning(f"⚠️  Exit model not found at {model_path}, will use simple learning")
+                logger.error(f"❌ Exit model not found at {model_path}")
+                logger.error("   Neural network is REQUIRED. Please train the model first.")
+                raise RuntimeError(f"Exit neural network model required but not found at {model_path}")
+        except RuntimeError:
+            raise  # Re-raise RuntimeError for missing model
         except Exception as e:
-            logger.warning(f"⚠️  Failed to load local neural network: {e}, will use simple learning")
+            logger.error(f"❌ Failed to load local neural network: {e}")
+            logger.error("   Neural network is REQUIRED for both live and backtest modes")
+            raise RuntimeError(f"Failed to load required exit neural network: {e}")
         
         # CACHE: Store cloud exit params to avoid rate limiting
         self.cloud_exit_params_cache = {}  # {regime: {params, timestamp}}
@@ -2499,8 +2506,9 @@ def get_adaptive_exit_params(bars: list, position: Dict, current_price: float,
             return result
             
         except Exception as e:
-            logger.warning(f"⚠️  Local exit neural network prediction failed: {e}, falling back to learned params")
-            # Fall through to cloud/simple learning below
+            logger.error(f"❌ Local exit neural network prediction failed: {e}")
+            logger.error("   Neural network is REQUIRED. Cannot fall back to simple learning.")
+            raise RuntimeError(f"Exit neural network prediction failed: {e}")
     
     # ========================================================================
     # NEURAL NETWORK EXIT PREDICTION - Cloud API (for live trading only)
@@ -2738,8 +2746,11 @@ def get_adaptive_exit_params(bars: list, position: Dict, current_price: float,
                 logger.warning(f"⚠️  Cloud exit NN API returned status {response.status_code}")
             
         except Exception as e:
-            logger.warning(f"⚠️  Cloud exit neural network prediction failed: {e}, falling back to pattern matching")
-            # Fall through to cloud/pattern matching below
+            logger.error(f"❌ Cloud exit neural network API call failed: {e}")
+            # If cloud fails but local NN is available, we already returned above
+            # If both fail, we should not continue with simple fallback
+            logger.error("   Neural network is REQUIRED. Cannot fall back to simple learning.")
+            raise RuntimeError(f"Exit neural network prediction failed: {e}")
     
     # ========================================================================
     # CLOUD EXIT RL - Query cloud for REAL-TIME exit recommendations

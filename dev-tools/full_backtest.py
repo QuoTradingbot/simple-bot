@@ -47,7 +47,7 @@ CONFIG = {
     "tick_size": 0.25,
     "tick_value": 12.50,  # ES full contract = $12.50 per tick (MATCHES LIVE BOT)
     "max_contracts": 3,
-    "local_mode": True,  # Use local experiences (3,754 saved experiences)
+    "local_mode": True,  # Use local experiences (12,895+ saved experiences)
     "rl_confidence_threshold": 0.10,  # Only take trades above 10% confidence (exploration mode)
     "exploration_rate": 0.30,  # 30% exploration rate (HIGH - for testing and building dataset)
     
@@ -68,7 +68,7 @@ CONFIG = {
     "partial_exit_2_r_multiple": 3.0,
     "partial_exit_2_percentage": 0.30,  # 30% at 3R
     "partial_exit_3_r_multiple": 5.0,
-    "partial_exit_3_percentage": 0.20,  # 20% at 5R,  
+    "partial_exit_3_percentage": 0.20,  # 20% at 5R,
     
     # Time-based exits - UTC schedule (ES maintenance 22:00-23:00 UTC daily)
     # Sunday opens 23:00 UTC, Friday closes 22:00 UTC

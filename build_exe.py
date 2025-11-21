@@ -23,8 +23,9 @@ def build_exe():
         '--windowed',                                        # No console window (GUI only)
         '--icon=NONE',                                       # Add icon later if you have one
         
-        # Add data files
+        # Add source code files only (no data directory)
         f'--add-data={ROOT / "src"}{os.pathsep}{os.path.join(".", "src")}',  # Bundle src/ folder
+        # NOTE: data/ directory is NOT bundled - RL is cloud-based for production
         
         # Hidden imports (modules PyInstaller might miss)
         '--hidden-import=tkinter',

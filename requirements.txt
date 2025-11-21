@@ -8,22 +8,23 @@ python-dateutil>=2.8.2
 aiohttp>=3.8.0
 psutil>=5.9.0
 
-# TopStep SDK and dependencies (excluding uvloop which doesn't work on Windows)
-project-x-py>=3.5.9
-cachetools>=6.1.0
-deprecated>=1.2.18
-httpx[http2]>=0.27.0
-lz4>=4.4.4
-msgpack-python>=0.5.6
-numpy>=2.3.2
-orjson>=3.11.1
-plotly>=6.3.0
-polars>=1.31.0
-pydantic>=2.11.7
-pytz>=2025.2
-pyyaml>=6.0.2
-rich>=14.1.0
-signalrcore>=0.9.5
+# Broker SDK dependencies (optional - install only if using compatible broker)
+# Uncomment the following lines if your broker supports the Project-X SDK:
+# project-x-py>=3.5.9
+# cachetools>=6.1.0
+# deprecated>=1.2.18
+# httpx[http2]>=0.27.0
+# lz4>=4.4.4
+# msgpack-python>=0.5.6
+# numpy>=2.3.2
+# orjson>=3.11.1
+# plotly>=6.3.0
+# polars>=1.31.0
+# pydantic>=2.11.7
+# pytz>=2025.2
+# pyyaml>=6.0.2
+# rich>=14.1.0
+# signalrcore>=0.9.5
 
 # Note: uvloop is excluded as it's not compatible with Windows
-# The TopStep SDK will work without it on Windows systems
+

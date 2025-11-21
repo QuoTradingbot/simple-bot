@@ -1,6 +1,7 @@
 """
-TopStep WebSocket Streamer using SignalR
-Connects to wss://rtc.topstepx.com/hubs/market for real-time market data
+Broker WebSocket Streamer using SignalR
+Generic WebSocket implementation for broker market data streaming
+Supports any broker using SignalR protocol
 """
 
 import logging
@@ -11,19 +12,20 @@ from signalrcore.hub_connection_builder import HubConnectionBuilder
 logger = logging.getLogger(__name__)
 
 
-class TopStepWebSocketStreamer:
-    """Real-time WebSocket streamer for TopStep market data via SignalR"""
+class BrokerWebSocketStreamer:
+    """Real-time WebSocket streamer for broker market data via SignalR"""
     
-    def __init__(self, session_token: str, max_reconnect_attempts: int = 5):
+    def __init__(self, session_token: str, hub_url: str = None, max_reconnect_attempts: int = 5):
         """
         Initialize WebSocket streamer
         
         Args:
-            session_token: TopStep session token (from ProjectX.get_session_token())
+            session_token: Broker session token for authentication
+            hub_url: WebSocket hub URL (broker-specific endpoint)
             max_reconnect_attempts: Maximum reconnection attempts (default: 5)
         """
         self.session_token = session_token
-        self.hub_url = "wss://rtc.topstepx.com/hubs/market"
+        self.hub_url = hub_url or "wss://rtc.topstepx.com/hubs/market"  # Default for backward compatibility
         self.connection = None
         self.is_connected = False
         
@@ -44,9 +46,9 @@ class TopStepWebSocketStreamer:
         self.subscriptions = []  # Track active subscriptions for resubscription
     
     def connect(self) -> bool:
-        """Connect to TopStep SignalR market hub"""
+        """Connect to broker SignalR market hub"""
         try:
-            logger.info(f"Connecting to TopStep WebSocket: {self.hub_url}")
+            logger.info(f"Connecting to broker WebSocket: {self.hub_url}")
             
             auth_url = f"{self.hub_url}?access_token={self.session_token}"
             
@@ -63,7 +65,7 @@ class TopStepWebSocketStreamer:
             time.sleep(1)
             
             self.is_connected = True
-            logger.info("[SUCCESS] Connected to TopStep WebSocket (SignalR Market Hub)")
+            logger.info("[SUCCESS] Connected to broker WebSocket (SignalR Market Hub)")
             return True
             
         except Exception as e:
@@ -178,8 +180,8 @@ class TopStepWebSocketStreamer:
         self.on_quote_callback = callback
         
         try:
-            # TopStep uses contract IDs, not symbols
-            # The calling code should pass the contract ID
+            # Some brokers use contract IDs, others use symbols
+            # The calling code should pass the appropriate identifier
             self.connection.send("SubscribeContractQuotes", [symbol])
             logger.info(f"[SUCCESS] Subscribed to quotes for contract {symbol}")
             
@@ -195,8 +197,8 @@ class TopStepWebSocketStreamer:
         self.on_trade_callback = callback
         
         try:
-            # TopStep uses contract IDs, not symbols
-            # The calling code should pass the contract ID
+            # Some brokers use contract IDs, others use symbols
+            # The calling code should pass the appropriate identifier
             self.connection.send("SubscribeContractTrades", [symbol])
             logger.info(f"[SUCCESS] Subscribed to trades for contract {symbol}")
             
@@ -228,7 +230,7 @@ class TopStepWebSocketStreamer:
         try:
             if self.connection:
                 self.connection.stop()
-                logger.info("Disconnected from TopStep WebSocket")
+                logger.info("Disconnected from broker WebSocket")
             self.is_connected = False
         except Exception as e:
             logger.error(f"Error disconnecting: {e}")
@@ -242,3 +244,7 @@ class TopStepWebSocketStreamer:
             'depth_updates_received': self.depth_updates_received,
             'last_message_time': self.last_message_time
         }
+
+
+# Backward compatibility alias
+TopStepWebSocketStreamer = BrokerWebSocketStreamer

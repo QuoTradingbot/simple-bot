@@ -35,10 +35,9 @@ class SymbolSpec:
     typical_spread_ticks: float     # Typical bid-ask spread
     volatility_factor: float        # Relative volatility (1.0 = ES baseline)
     
-    # Symbol mappings for different brokers
-    topstep_symbol: str      # TopStep symbol format
-    tradovate_symbol: str    # Tradovate symbol format
-    rithmic_symbol: str      # Rithmic symbol format
+    # Symbol mappings for different brokers (broker-specific formats)
+    # Users should configure their specific broker's symbol format in config
+    broker_symbols: Dict[str, str] = None  # Generic broker symbol mappings
     
     # Trading characteristics
     typical_volume: str      # Volume description
@@ -67,9 +66,13 @@ SYMBOL_SPECS: Dict[str, SymbolSpec] = {
         typical_slippage_ticks=1.5,
         typical_spread_ticks=1.0,
         volatility_factor=1.0,         # Baseline
-        topstep_symbol="F.US.EP",
-        tradovate_symbol="ESZ4",       # Month code varies
-        rithmic_symbol="ES",
+        broker_symbols={
+            "topstep": "F.US.EP",
+            "tradovate": "ESZ4",       # Month code varies
+            "rithmic": "ES",
+            "ninjatrader": "ES",
+            "generic": "ES"
+        },
         typical_volume="Very High",
         market_type="equity_index"
     ),
@@ -88,9 +91,13 @@ SYMBOL_SPECS: Dict[str, SymbolSpec] = {
         typical_slippage_ticks=2.0,    # Slightly more due to lower volume
         typical_spread_ticks=1.0,
         volatility_factor=1.0,
-        topstep_symbol="F.US.MESEP",
-        tradovate_symbol="MESZ4",
-        rithmic_symbol="MES",
+        broker_symbols={
+            "topstep": "F.US.MESEP",
+            "tradovate": "MESZ4",
+            "rithmic": "MES",
+            "ninjatrader": "MES",
+            "generic": "MES"
+        },
         typical_volume="High",
         market_type="equity_index"
     ),
@@ -109,9 +116,19 @@ SYMBOL_SPECS: Dict[str, SymbolSpec] = {
         typical_slippage_ticks=2.0,    # More volatile than ES
         typical_spread_ticks=1.0,
         volatility_factor=1.5,         # 50% more volatile than ES
-        topstep_symbol="F.US.NP",
-        tradovate_symbol="NQZ4",
-        rithmic_symbol="NQ",
+        broker_symbols={
+
+            "topstep": "F.US.NP",
+
+            "tradovate": "NQZ4",
+
+            "rithmic": "NQ",
+
+            "ninjatrader": "NQ",
+
+            "generic": "NQ"
+
+        },
         typical_volume="Very High",
         market_type="equity_index"
     ),
@@ -130,9 +147,19 @@ SYMBOL_SPECS: Dict[str, SymbolSpec] = {
         typical_slippage_ticks=2.5,
         typical_spread_ticks=1.0,
         volatility_factor=1.5,
-        topstep_symbol="F.US.MNQEP",
-        tradovate_symbol="MNQZ4",
-        rithmic_symbol="MNQ",
+        broker_symbols={
+
+            "topstep": "F.US.MNQEP",
+
+            "tradovate": "MNQZ4",
+
+            "rithmic": "MNQ",
+
+            "ninjatrader": "MNQ",
+
+            "generic": "MNQ"
+
+        },
         typical_volume="High",
         market_type="equity_index"
     ),
@@ -151,9 +178,19 @@ SYMBOL_SPECS: Dict[str, SymbolSpec] = {
         typical_slippage_ticks=1.5,
         typical_spread_ticks=1.0,
         volatility_factor=0.8,         # Less volatile than ES
-        topstep_symbol="F.US.YM",
-        tradovate_symbol="YMZ4",
-        rithmic_symbol="YM",
+        broker_symbols={
+
+            "topstep": "F.US.YM",
+
+            "tradovate": "YMZ4",
+
+            "rithmic": "YM",
+
+            "ninjatrader": "YM",
+
+            "generic": "YM"
+
+        },
         typical_volume="High",
         market_type="equity_index"
     ),
@@ -172,9 +209,19 @@ SYMBOL_SPECS: Dict[str, SymbolSpec] = {
         typical_slippage_ticks=2.0,
         typical_spread_ticks=1.0,
         volatility_factor=1.3,         # More volatile than ES
-        topstep_symbol="F.US.RTY",
-        tradovate_symbol="RTYZ4",
-        rithmic_symbol="RTY",
+        broker_symbols={
+
+            "topstep": "F.US.RTY",
+
+            "tradovate": "RTYZ4",
+
+            "rithmic": "RTY",
+
+            "ninjatrader": "RTY",
+
+            "generic": "RTY"
+
+        },
         typical_volume="Medium",
         market_type="equity_index"
     ),
@@ -195,9 +242,19 @@ SYMBOL_SPECS: Dict[str, SymbolSpec] = {
         typical_slippage_ticks=3.0,    # Very volatile
         typical_spread_ticks=1.0,
         volatility_factor=2.0,         # 2x ES volatility
-        topstep_symbol="F.US.CL",
-        tradovate_symbol="CLZ4",
-        rithmic_symbol="CL",
+        broker_symbols={
+
+            "topstep": "F.US.CL",
+
+            "tradovate": "CLZ4",
+
+            "rithmic": "CL",
+
+            "ninjatrader": "CL",
+
+            "generic": "CL"
+
+        },
         typical_volume="Very High",
         market_type="commodity"
     ),
@@ -216,9 +273,19 @@ SYMBOL_SPECS: Dict[str, SymbolSpec] = {
         typical_slippage_ticks=2.0,
         typical_spread_ticks=1.0,
         volatility_factor=1.2,
-        topstep_symbol="F.US.GC",
-        tradovate_symbol="GCZ4",
-        rithmic_symbol="GC",
+        broker_symbols={
+
+            "topstep": "F.US.GC",
+
+            "tradovate": "GCZ4",
+
+            "rithmic": "GC",
+
+            "ninjatrader": "GC",
+
+            "generic": "GC"
+
+        },
         typical_volume="High",
         market_type="commodity"
     ),
@@ -237,9 +304,19 @@ SYMBOL_SPECS: Dict[str, SymbolSpec] = {
         typical_slippage_ticks=3.0,    # Very volatile
         typical_spread_ticks=1.0,
         volatility_factor=2.5,         # Extremely volatile
-        topstep_symbol="F.US.NG",
-        tradovate_symbol="NGZ4",
-        rithmic_symbol="NG",
+        broker_symbols={
+
+            "topstep": "F.US.NG",
+
+            "tradovate": "NGZ4",
+
+            "rithmic": "NG",
+
+            "ninjatrader": "NG",
+
+            "generic": "NG"
+
+        },
         typical_volume="High",
         market_type="commodity"
     ),
@@ -260,9 +337,19 @@ SYMBOL_SPECS: Dict[str, SymbolSpec] = {
         typical_slippage_ticks=2.0,
         typical_spread_ticks=1.0,
         volatility_factor=0.9,
-        topstep_symbol="F.US.E7",
-        tradovate_symbol="6EZ4",
-        rithmic_symbol="6E",
+        broker_symbols={
+
+            "topstep": "F.US.E7",
+
+            "tradovate": "6EZ4",
+
+            "rithmic": "6E",
+
+            "ninjatrader": "6E",
+
+            "generic": "6E"
+
+        },
         typical_volume="High",
         market_type="currency"
     ),
@@ -283,9 +370,19 @@ SYMBOL_SPECS: Dict[str, SymbolSpec] = {
         typical_slippage_ticks=1.5,
         typical_spread_ticks=1.0,
         volatility_factor=0.7,         # Less volatile
-        topstep_symbol="F.US.ZN",
-        tradovate_symbol="ZNZ4",
-        rithmic_symbol="ZN",
+        broker_symbols={
+
+            "topstep": "F.US.ZN",
+
+            "tradovate": "ZNZ4",
+
+            "rithmic": "ZN",
+
+            "ninjatrader": "ZN",
+
+            "generic": "ZN"
+
+        },
         typical_volume="Very High",
         market_type="rates"
     ),
@@ -326,23 +423,33 @@ def get_broker_symbol(symbol: str, broker: str) -> str:
     
     Args:
         symbol: Standard symbol (e.g., "ES")
-        broker: Broker name ("TopStep", "Tradovate", "Rithmic")
-        
+        broker: Broker name (case-insensitive: "topstep", "tradovate", "rithmic", "ninjatrader", etc.)
+    
     Returns:
-        Broker-specific symbol string
+        Broker-specific symbol format
+    
+    Examples:
+        get_broker_symbol("ES", "topstep") -> "F.US.EP"
+        get_broker_symbol("ES", "tradovate") -> "ESZ4"
+        get_broker_symbol("ES", "rithmic") -> "ES"
     """
     spec = get_symbol_spec(symbol)
-    broker = broker.lower().strip()
+    if not spec:
+        return symbol  # Fallback to standard symbol
     
-    if "topstep" in broker:
-        return spec.topstep_symbol
-    elif "tradovate" in broker:
-        return spec.tradovate_symbol
-    elif "rithmic" in broker:
-        return spec.rithmic_symbol
-    else:
-        # Default to standard symbol
-        return spec.symbol
+    # Normalize broker name to lowercase
+    broker_lower = broker.lower().strip()
+    
+    # Get broker-specific symbol if available
+    if spec.broker_symbols and broker_lower in spec.broker_symbols:
+        return spec.broker_symbols[broker_lower]
+    
+    # Fallback to generic symbol
+    if spec.broker_symbols and "generic" in spec.broker_symbols:
+        return spec.broker_symbols["generic"]
+    
+    # Final fallback to standard symbol
+    return spec.symbol
 
 
 def get_supported_symbols() -> list[str]:

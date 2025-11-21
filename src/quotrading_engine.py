@@ -537,7 +537,7 @@ def save_trade_experience(
 def initialize_broker() -> None:
     """
     Initialize the broker interface using configuration.
-    Uses TopStep broker with error recovery and circuit breaker.
+    Uses configured broker with error recovery and circuit breaker.
     SHADOW MODE: Shows trading signals without executing (manual trading mode).
     """
     global broker, recovery_manager
@@ -609,7 +609,7 @@ def initialize_broker() -> None:
     try:
         notifier = get_notifier()
         notifier.send_error_alert(
-            error_message=f"Bot started successfully and connected to broker. Ready to trade {CONFIG.get('instrument', 'ES')}.",
+            error_message=f"Bot started successfully and connected to broker. Ready to trade {CONFIG.get('instrument', 'configured symbol')}.",
             error_type="Bot Started"
         )
     except Exception as e:

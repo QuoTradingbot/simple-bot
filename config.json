@@ -1,13 +1,10 @@
 {
   "quotrading_license": "QUOTRADING_ADMIN_MASTER_2025",
   "market_type": "Futures",
-  "broker": "TopStep",
-  "broker_token": "0lqxI8Gt4JRDhbuP9wOoHmdxJE49fIQCxIU+mSbPqGs=",
-  "broker_username": "alvarezjose4201@gmail.com",
-  "symbols": [
-    "ES",
-    "YM"
-  ],
+  "broker": "",
+  "broker_token": "",
+  "broker_username": "",
+  "symbols": [],
   "account_size": 50000.0,
   "max_contracts": 3,
   "max_trades_per_day": 9999,
@@ -18,33 +15,25 @@
   "rl_exploration_rate": 0.05,
   "rl_min_exploration_rate": 0.05,
   "rl_exploration_decay": 0.995,
-  "username": "hi",
-  "quotrading_email": "kevinsuero072897@gmail.com",
-  "quotrading_api_key": "QUOTRADING_ADMIN_MASTER_2025",
-  "quotrading_validated": true,
-  "password": "admin",
-  "user_api_key": "QUOTRADING_ADMIN_MASTER_2025",
-  "validated": true,
+  "username": "",
+  "quotrading_email": "",
+  "quotrading_api_key": "",
+  "quotrading_validated": false,
+  "password": "",
+  "user_api_key": "",
+  "validated": false,
   "user_data": {
-    "email": "admin@quotrading.com",
-    "account_type": "admin",
-    "active": true
+    "email": "",
+    "account_type": "user",
+    "active": false
   },
-  "broker_type": "Prop Firm",
-  "account_type": "Trading Combine $50K",
-  "broker_validated": true,
-  "accounts": [
-    {
-      "id": "50KTC-V2-398684-33989413",
-      "name": "50KTC-V2-398684-33989413",
-      "balance": 50000.0,
-      "equity": 50000.0,
-      "type": "prop_firm"
-    }
-  ],
-  "selected_account": "50KTC-V2-398684-33989413",
-  "fetched_account_balance": 50000.0,
-  "fetched_account_type": "prop_firm",
+  "broker_type": "",
+  "account_type": "",
+  "broker_validated": false,
+  "accounts": [],
+  "selected_account": "",
+  "fetched_account_balance": 0.0,
+  "fetched_account_type": "",
   "max_trades": 10,
   "confidence_threshold": 70.0,
   "shadow_mode": false,
@@ -56,7 +45,6 @@
   "recovery_mode": false,
   "remember_credentials": true,
   "dynamic_confidence": true,
-  "topstep_starting_balance": 50000.0,
   "confidence_trading": false,
   "smtp_provider": "gmail",
   "alert_email": "",
@@ -68,11 +56,8 @@
   "alert_phone": "",
   "alert_carrier": "verizon",
   "theme": "dark",
-  "selected_account_id": "50KTC-V2-398684-33989413",
+  "selected_account_id": "",
   "avoid_news_days": false,
   "alerts_enabled": false,
-  "topstep_starting_balances": {
-    "13897180": 50000.0
-  },
   "cloud_api_url": "https://quotrading-signals.icymeadow-86b2969e.eastus.azurecontainerapps.io"
 }

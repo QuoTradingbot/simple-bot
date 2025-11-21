@@ -18,9 +18,9 @@ class BotConfiguration:
     # Default account size constant
     DEFAULT_ACCOUNT_SIZE: float = 50000.0
     
-    # Instrument Configuration
-    instrument: str = "ES"  # Single instrument (legacy support)
-    instruments: list = field(default_factory=lambda: ["ES"])  # Multi-symbol support
+    # Instrument Configuration (USER CONFIGURABLE - no hardcoded defaults)
+    instrument: str = ""  # Single instrument (set by user, no default)
+    instruments: list = field(default_factory=list)  # Multi-symbol support (empty by default)
     timezone: str = "US/Eastern"  # CME futures use US Eastern wall-clock time (handles DST automatically)
     
     # Broker Configuration
@@ -309,7 +309,8 @@ class BotConfiguration:
     rl_min_contracts: int = 1  # Minimum contracts (low confidence)
     rl_medium_contracts: int = 2  # Medium contracts (moderate confidence)
     rl_max_contracts: int = 3  # Maximum contracts (high confidence)
-    rl_experience_file: str = "data/signal_experience.json"  # Where to save learning
+    # NOTE: For production, RL is cloud-based. Local files only for backtesting/development.
+    rl_experience_file: str = None  # Path to local RL experience file (None = cloud-based RL)
     rl_save_frequency: int = 5  # Save experiences every N trades
     
     # Dynamic AI Features (USER CONFIGURABLE via GUI)

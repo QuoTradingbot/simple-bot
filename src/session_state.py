@@ -14,8 +14,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Constants for recommendations
-PROP_FIRM_NAMES = ["topstep", "apex", "earn2trade", "ftmo", "the5ers"]
-PROP_FIRM_DAILY_LOSS_PERCENT = 0.02  # 2% daily loss rule for prop firms
+# List of known prop firms (for reference only - bot is broker-agnostic)
+PROP_FIRM_NAMES = ["topstep", "apex", "earn2trade", "ftmo", "the5ers", "generic_prop"]
+PROP_FIRM_DAILY_LOSS_PERCENT = 0.02  # 2% daily loss rule (common for many brokers)
 
 # Severity thresholds for recommendations
 SEVERITY_HIGH = 0.90

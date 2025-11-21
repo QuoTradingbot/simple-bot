@@ -457,22 +457,26 @@ def main():
     logging.getLogger('regime_detection').setLevel(logging.WARNING)  # Suppress regime change spam
     logging.getLogger('signal_confidence').setLevel(logging.WARNING)  # Only show warnings and errors
     
-    # Create a custom filter to allow only specific INFO messages through
+    # Initialize clean reporter
+    reporter = reset_reporter(starting_balance=args.initial_equity)
+    
+    # Create a custom filter to allow only specific INFO messages through AND track signals
     class BacktestMessageFilter(logging.Filter):
         def filter(self, record):
-            # Allow only APPROVED signals in backtest (not rejections - too much spam)
+            # Track RL signals for the reporter
             msg = record.getMessage()
             if 'RL APPROVED' in msg:
+                reporter.record_signal(approved=True)
                 return True
+            elif 'RL REJECTED' in msg:
+                reporter.record_signal(approved=False)
+                return False  # Don't show rejections (too much spam)
             # Allow WARNING and above
             return record.levelno >= logging.WARNING
     
     # Add filter to quotrading_engine logger
     qte_logger = logging.getLogger('quotrading_engine')
     qte_logger.addFilter(BacktestMessageFilter())
-    
-    # Initialize clean reporter
-    reporter = reset_reporter(starting_balance=args.initial_equity)
     
     # Run backtest with clean output
     try:

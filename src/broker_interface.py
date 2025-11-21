@@ -181,7 +181,7 @@ class BrokerSDKImplementation(BrokerInterface):
     Compatible with brokers that support the Project-X SDK protocol.
     """
     
-    def __init__(self, api_token: str, username: str = None, max_retries: int = 3, timeout: int = 30, instrument: str = "ES"):
+    def __init__(self, api_token: str, username: str = None, max_retries: int = 3, timeout: int = 30, instrument: str = None):
         """
         Initialize broker connection.
         
@@ -190,7 +190,7 @@ class BrokerSDKImplementation(BrokerInterface):
             username: Broker username/email (required for SDK v3.5+)
             max_retries: Maximum number of retry attempts
             timeout: Request timeout in seconds
-            instrument: Trading instrument symbol (default: ES)
+            instrument: Trading instrument symbol (must be configured by user)
         """
         self.api_token = api_token
         self.username = username
@@ -1056,23 +1056,23 @@ class BrokerSDKImplementation(BrokerInterface):
         logger.info("Circuit breaker reset")
 
 
-def create_broker(api_token: str, username: str = None, instrument: str = "ES") -> BrokerInterface:
+def create_broker(api_token: str, username: str = None, instrument: str = None) -> BrokerInterface:
     """
-    Factory function to create TopStep broker instance.
+    Factory function to create a broker instance.
     
     Args:
-        api_token: API token for TopStep (required)
-        username: TopStep username/email (required for SDK v3.5+)
-        instrument: Trading instrument symbol (default: ES)
+        api_token: Broker API token (required)
+        username: Broker username/email (required for SDK v3.5+)
+        instrument: Trading instrument symbol (must be configured by user)
     
     Returns:
-        TopStepBroker instance
+        BrokerInterface implementation
     
     Raises:
         ValueError: If API token is missing
     """
     if not api_token:
-        raise ValueError("API token is required for TopStep broker")
+        raise ValueError("API token is required for broker connection")
     return TopStepBroker(api_token=api_token, username=username, instrument=instrument)
 
 

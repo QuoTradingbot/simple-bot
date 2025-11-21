@@ -35,13 +35,13 @@ class SymbolSpec:
     typical_spread_ticks: float     # Typical bid-ask spread
     volatility_factor: float        # Relative volatility (1.0 = ES baseline)
     
-    # Symbol mappings for different brokers (broker-specific formats)
-    # Users should configure their specific broker's symbol format in config
-    broker_symbols: Dict[str, str] = None  # Generic broker symbol mappings
-    
     # Trading characteristics
     typical_volume: str      # Volume description
     market_type: str         # "equity_index", "commodity", "currency", "rates"
+    
+    # Symbol mappings for different brokers (broker-specific formats)
+    # Users should configure their specific broker's symbol format in config
+    broker_symbols: Dict[str, str] = None  # Generic broker symbol mappings
 
 
 # ============================================================================

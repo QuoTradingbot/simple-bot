@@ -536,6 +536,11 @@ class SignalConfidenceRL:
     
     def load_experience(self):
         """Load past experiences from file."""
+        # Skip loading if no experience file is configured (cloud-based RL)
+        if self.experience_file is None:
+            logger.debug("[DEBUG] No local experience file configured (using cloud-based RL)")
+            return
+        
         logger.debug(f"[DEBUG] Attempting to load experiences from: {self.experience_file}")
         logger.debug(f"[DEBUG] File exists check: {os.path.exists(self.experience_file)}")
         
@@ -547,7 +552,7 @@ class SignalConfidenceRL:
                     data = json.load(f)
                     logger.debug(f"[DEBUG] JSON loaded successfully. Keys: {list(data.keys())}")
                     self.experiences = data.get('experiences', [])
-                    logger.debug(f" Loaded {len(self.experiences)} past signal experiences")
+                    logger.debug(f"✓ Loaded {len(self.experiences)} past signal experiences")
             except Exception as e:
                 logger.error(f"Failed to load experiences: {e}")
                 import traceback
@@ -557,6 +562,11 @@ class SignalConfidenceRL:
     
     def save_experience(self):
         """Save experiences to file."""
+        # Skip saving if no experience file is configured (cloud-based RL)
+        if self.experience_file is None:
+            logger.debug("[DEBUG] No local experience file configured - skipping save (cloud-based RL)")
+            return
+        
         try:
             with open(self.experience_file, 'w') as f:
                 json.dump({

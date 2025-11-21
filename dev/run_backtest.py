@@ -18,7 +18,8 @@ import sys
 import os
 import logging
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
+from types import ModuleType
 import pytz
 
 # Add parent directory to path to import from src/
@@ -116,13 +117,14 @@ Examples:
     return parser.parse_args()
 
 
-def initialize_rl_brains_for_backtest() -> Any:
+def initialize_rl_brains_for_backtest() -> Tuple[Any, ModuleType]:
     """
     Initialize RL brain (signal confidence) for backtest mode.
     This ensures experience files are loaded before the backtest runs.
     
     Returns:
-        The initialized rl_brain instance
+        Tuple of (rl_brain, bot_module) where rl_brain is the SignalConfidenceRL 
+        instance and bot_module is the loaded trading engine module
     """
     logger = logging.getLogger('backtest')
     

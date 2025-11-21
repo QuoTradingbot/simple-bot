@@ -1,0 +1,11 @@
+{
+  "symbol": "ES",
+  "direction": "LONG",
+  "entry_price": 6718.25,
+  "exit_price": 6715.75,
+  "contracts": 3,
+  "pnl": -382.5,
+  "pnl_percent": -0.15182525211178505,
+  "timestamp": "2025-11-21T11:54:38.082942-05:00",
+  "reason": "stop_loss"
+}

@@ -1003,6 +1003,19 @@ def place_market_order(symbol: str, side: str, quantity: int) -> Optional[Dict[s
     Returns:
         Order object or None if failed
     """
+    # Backtest mode: Simulate order without broker
+    if is_backtest_mode():
+        logger.info(f"[BACKTEST] Market Order: {side} {quantity} {symbol}")
+        return {
+            "order_id": f"BACKTEST_{datetime.now().timestamp()}",
+            "symbol": symbol,
+            "side": side,
+            "quantity": quantity,
+            "type": "MARKET",
+            "status": "FILLED",
+            "backtest": True
+        }
+    
     logger.info(f"Market Order: {side} {quantity} {symbol}")
     
     if broker is None:
@@ -1074,6 +1087,20 @@ def place_stop_order(symbol: str, side: str, quantity: int, stop_price: float) -
     Returns:
         Order object or None if failed
     """
+    # Backtest mode: Simulate order without broker
+    if is_backtest_mode():
+        logger.info(f"[BACKTEST] Stop Order: {side} {quantity} {symbol} @ {stop_price}")
+        return {
+            "order_id": f"BACKTEST_STOP_{datetime.now().timestamp()}",
+            "symbol": symbol,
+            "side": side,
+            "quantity": quantity,
+            "type": "STOP",
+            "stop_price": stop_price,
+            "status": "PENDING",
+            "backtest": True
+        }
+    
     shadow_mode = CONFIG.get("shadow_mode", False)
     logger.info(f"{'[SHADOW MODE] ' if shadow_mode else ''}Stop Order: {side} {quantity} {symbol} @ {stop_price}")
     
@@ -1130,6 +1157,20 @@ def place_limit_order(symbol: str, side: str, quantity: int, limit_price: float)
     Returns:
         Order object or None if failed
     """
+    # Backtest mode: Simulate order without broker
+    if is_backtest_mode():
+        logger.info(f"[BACKTEST] Limit Order: {side} {quantity} {symbol} @ {limit_price}")
+        return {
+            "order_id": f"BACKTEST_LIMIT_{datetime.now().timestamp()}",
+            "symbol": symbol,
+            "side": side,
+            "quantity": quantity,
+            "type": "LIMIT",
+            "limit_price": limit_price,
+            "status": "PENDING",
+            "backtest": True
+        }
+    
     shadow_mode = CONFIG.get("shadow_mode", False)
     logger.info(f"{'[SHADOW MODE] ' if shadow_mode else ''}Limit Order: {side} {quantity} {symbol} @ {limit_price}")
     
@@ -1183,6 +1224,11 @@ def cancel_order(symbol: str, order_id: str) -> bool:
     Returns:
         True if cancelled successfully, False otherwise
     """
+    # Backtest mode: Simulate cancellation
+    if is_backtest_mode():
+        logger.info(f"[BACKTEST] Order {order_id} cancelled (simulated)")
+        return True
+    
     shadow_mode = CONFIG.get("shadow_mode", False)
     logger.info(f"{'[SHADOW MODE] ' if shadow_mode else ''}Cancelling Order: {order_id} for {symbol}")
     
@@ -1221,6 +1267,14 @@ def get_position_quantity(symbol: str) -> int:
     Returns:
         Current position quantity (positive for long, negative for short, 0 for flat)
     """
+    # Backtest mode uses tracked position
+    if is_backtest_mode():
+        if state.get(symbol) and state[symbol]["position"]["active"]:
+            qty = state[symbol]["position"]["quantity"]
+            side = state[symbol]["position"]["side"]
+            return qty if side == "long" else -qty
+        return 0
+    
     # Shadow mode uses tracked position
     if CONFIG.get("shadow_mode", False):
         if state.get(symbol) and state[symbol]["position"]["active"]:

@@ -108,6 +108,7 @@ from error_recovery import ErrorRecoveryManager, ErrorType as RecoveryErrorType
 from bid_ask_manager import BidAskManager, BidAskQuote
 from notifications import get_notifier
 from signal_confidence import SignalConfidenceRL
+from regime_detection import get_regime_detector, REGIME_DEFINITIONS
 
 # Conditionally import broker (only needed for live trading, not backtesting)
 try:
@@ -164,6 +165,9 @@ RECOVERY_SIZE_MODERATE = 0.80  # At 80-90% of limits
 RECOVERY_MULTIPLIER_CRITICAL = 0.20  # Reduce to 20% of position at critical (was 33%)
 RECOVERY_MULTIPLIER_HIGH = 0.40  # Reduce to 40% of position at high severity (was 50%)
 RECOVERY_MULTIPLIER_MODERATE = 0.65  # Reduce to 65% of position at moderate severity (was 75%)
+
+# Regime Detection Constants
+DEFAULT_FALLBACK_ATR = 5.0  # Default ATR when calculation not possible (ES futures typical value)
 
 # Global broker instance (replaces sdk_client)
 broker: Optional[BrokerInterface] = None
@@ -1355,6 +1359,12 @@ def initialize_state(symbol: str) -> None:
             "stop_price": None,
             "target_price": None,
             "entry_time": None,
+            # Regime Information - For dynamic exit management
+            "entry_regime": None,  # Regime at entry
+            "current_regime": None,  # Current regime (updated on each tick)
+            "regime_change_time": None,  # When regime last changed
+            "regime_history": [],  # List of regime transitions with timestamps
+            "entry_atr": None,  # ATR at entry
             # Advanced Exit Management - Breakeven State
             "breakeven_active": False,
             "original_stop_price": None,
@@ -1901,21 +1911,21 @@ def calculate_macd(prices: List[float], fast_period: int = 12,
     }
 
 
-def calculate_atr(symbol: str, period: int = 14) -> float:
+def calculate_atr(symbol: str, period: int = 14) -> Optional[float]:
     """
-    Calculate Average True Range (ATR) for volatility measurement.
+    Calculate Average True Range (ATR) for volatility measurement using 15-minute bars.
     
     Args:
         symbol: Instrument symbol
         period: ATR period (default 14)
     
     Returns:
-        ATR value in price units
+        ATR value in price units, or None if not enough data
     """
     bars = state[symbol]["bars_15min"]
     
     if len(bars) < 2:
-        return 0.0
+        return None
     
     true_ranges = []
     for i in range(1, len(bars)):
@@ -1935,7 +1945,56 @@ def calculate_atr(symbol: str, period: int = 14) -> float:
         true_ranges.append(tr)
     
     if not true_ranges:
-        return 0.0
+        return None
+    
+    # Calculate ATR (simple moving average of TR)
+    if len(true_ranges) >= period:
+        atr = sum(true_ranges[-period:]) / period
+    else:
+        atr = sum(true_ranges) / len(true_ranges)
+    
+    return atr
+
+
+def calculate_atr_1min(symbol: str, period: int = 14) -> Optional[float]:
+    """
+    Calculate Average True Range (ATR) using 1-minute bars for regime detection.
+    
+    This function uses 1-minute bars to provide higher-resolution volatility data
+    for accurate regime detection. The regime detector needs ATR calculated from
+    the same timeframe as the bars it analyzes (1-minute bars).
+    
+    Args:
+        symbol: Instrument symbol
+        period: ATR period (default 14)
+    
+    Returns:
+        ATR value in price units, or None if not enough data
+    """
+    bars = state[symbol]["bars_1min"]
+    
+    if len(bars) < 2:
+        return None
+    
+    true_ranges = []
+    for i in range(1, len(bars)):
+        high = bars[i]["high"]
+        low = bars[i]["low"]
+        prev_close = bars[i-1]["close"]
+        
+        # True Range is the maximum of:
+        # 1. Current High - Current Low
+        # 2. abs(Current High - Previous Close)
+        # 3. abs(Current Low - Previous Close)
+        tr = max(
+            high - low,
+            abs(high - prev_close),
+            abs(low - prev_close)
+        )
+        true_ranges.append(tr)
+    
+    if not true_ranges:
+        return None
     
     # Calculate ATR (simple moving average of TR)
     if len(true_ranges) >= period:
@@ -2728,59 +2787,45 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
     risk_dollars = equity * CONFIG["risk_per_trade"]
     logger.info(f"Account equity: ${equity:.2f}, Risk allowance: ${risk_dollars:.2f}")
     
-    # Determine stop price
+    # Determine stop price using regime-based approach
     vwap_bands = state[symbol]["vwap_bands"]
     vwap = state[symbol]["vwap"]
     tick_size = CONFIG["tick_size"]
     
-    # Check if using ATR-based stops
-    if CONFIG.get("use_atr_stops", False):
-        # Calculate ATR
-        atr = calculate_atr(symbol, CONFIG.get("atr_period", 14))
-        
-        if atr > 0:
-            # Use ATR multipliers from ITERATION 3
-            stop_multiplier = CONFIG.get("stop_loss_atr_multiplier", 3.6)  # Iteration 3
-            target_multiplier = CONFIG.get("profit_target_atr_multiplier", 4.75)  # Iteration 3
-            
-            if side == "long":
-                stop_price = entry_price - (atr * stop_multiplier)
-                target_price = entry_price + (atr * target_multiplier)
-            else:  # short
-                stop_price = entry_price + (atr * stop_multiplier)
-                target_price = entry_price - (atr * target_multiplier)
-            
-            stop_price = round_to_tick(stop_price)
-            target_price = round_to_tick(target_price)
+    # Detect current regime for entry
+    regime_detector = get_regime_detector()
+    bars = state[symbol]["bars_1min"]
+    atr = calculate_atr_1min(symbol, CONFIG.get("atr_period", 14))
+    
+    if atr is None:
+        # Fallback to fixed stops if ATR can't be calculated
+        logger.warning("ATR calculation failed, using fixed stops as fallback")
+        max_stop_ticks = 11
+        if side == "long":
+            stop_price = entry_price - (max_stop_ticks * tick_size)
+            target_price = vwap_bands["upper_3"]
         else:
-            # Fallback to fixed stops if ATR can't be calculated
-            max_stop_ticks = 11
-            if side == "long":
-                stop_price = entry_price - (max_stop_ticks * tick_size)
-                target_price = vwap_bands["upper_3"]
-            else:
-                stop_price = entry_price + (max_stop_ticks * tick_size)
-                target_price = vwap_bands["lower_3"]
-            stop_price = round_to_tick(stop_price)
-            target_price = round_to_tick(target_price)
+            stop_price = entry_price + (max_stop_ticks * tick_size)
+            target_price = vwap_bands["lower_3"]
+        stop_price = round_to_tick(stop_price)
+        target_price = round_to_tick(target_price)
     else:
-        # Use fixed stops (original logic)
-        max_stop_ticks = 11  # Optimized to 11 ticks
+        # Use regime-based stop loss calculation
+        entry_regime = regime_detector.detect_regime(bars, atr, CONFIG.get("atr_period", 14))
+        
+        # Calculate stop using regime multiplier (pure regime-based, no confidence scaling)
+        stop_multiplier = entry_regime.stop_mult
+        logger.info(f"Regime-based stop: {entry_regime.name}, multiplier {stop_multiplier:.2f}x")
+        
+        # Use fixed target multiplier (can be made regime-based in future)
+        target_multiplier = CONFIG.get("profit_target_atr_multiplier", 4.75)
         
         if side == "long":
-            # Stop 11 ticks below entry (or at lower band 3, whichever is tighter)
-            band_stop = vwap_bands["lower_3"] - (2 * tick_size)  # 2 tick buffer
-            tight_stop = entry_price - (max_stop_ticks * tick_size)
-            stop_price = max(tight_stop, band_stop)  # Use tighter of the two
-            # Target at upper band
-            target_price = vwap_bands["upper_3"]
+            stop_price = entry_price - (atr * stop_multiplier)
+            target_price = entry_price + (atr * target_multiplier)
         else:  # short
-            # Stop 11 ticks above entry (or at upper band 3, whichever is tighter)
-            band_stop = vwap_bands["upper_3"] + (2 * tick_size)  # 2 tick buffer
-            tight_stop = entry_price + (max_stop_ticks * tick_size)
-            stop_price = min(tight_stop, band_stop)  # Use tighter of the two
-            # Target at lower band
-            target_price = vwap_bands["lower_3"]
+            stop_price = entry_price + (atr * stop_multiplier)
+            target_price = entry_price - (atr * target_multiplier)
         
         stop_price = round_to_tick(stop_price)
         target_price = round_to_tick(target_price)
@@ -3586,6 +3631,20 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
     # Calculate initial risk in ticks
     stop_distance_ticks = abs(actual_fill_price - stop_price) / CONFIG["tick_size"]
     
+    # Detect entry regime
+    regime_detector = get_regime_detector()
+    bars = state[symbol]["bars_1min"]
+    atr = calculate_atr_1min(symbol, CONFIG.get("atr_period", 14))
+    if atr is None:
+        atr = DEFAULT_FALLBACK_ATR  # Use constant instead of magic number
+        logger.warning(f"ATR not calculable, using fallback value: {DEFAULT_FALLBACK_ATR}")
+    
+    entry_regime = regime_detector.detect_regime(bars, atr, CONFIG.get("atr_period", 14))
+    logger.info(f"  Entry Regime: {entry_regime.name}")
+    logger.info(f"    Stop multiplier: {entry_regime.stop_mult}x ATR")
+    logger.info(f"    Breakeven multiplier: {entry_regime.breakeven_mult}x")
+    logger.info(f"    Trailing multiplier: {entry_regime.trailing_mult}x")
+    
     # Update position tracking
     state[symbol]["position"] = {
         "active": True,
@@ -3602,6 +3661,12 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
         "entry_rl_state": state[symbol].get("entry_rl_state"),  # RL market state
         "original_entry_price": entry_price,  # Original signal price (before validation)
         "actual_entry_price": actual_fill_price,  # Actual fill price
+        # Regime Information - For dynamic exit management
+        "entry_regime": entry_regime.name,  # Regime at entry
+        "current_regime": entry_regime.name,  # Current regime (updated on each tick)
+        "regime_change_time": None,  # When regime last changed
+        "regime_history": [],  # List of regime transitions with timestamps
+        "entry_atr": atr,  # ATR at entry
         # Advanced Exit Management - Breakeven State
         "breakeven_active": False,
         "original_stop_price": stop_price,
@@ -3966,8 +4031,8 @@ def check_breakeven_protection(symbol: str, current_price: float) -> None:
     """
     Check if breakeven protection should be activated and move stop to breakeven.
     
-    Uses static parameters from config:
-    - breakeven_profit_threshold_ticks: Profit needed to activate (config default: 9 ticks, code fallback: 8)
+    Uses regime-based parameters:
+    - breakeven_profit_threshold_ticks: Calculated from regime breakeven_mult
     - breakeven_stop_offset_ticks: Stop offset from entry (default: 1 tick)
     
     Args:
@@ -3985,8 +4050,16 @@ def check_breakeven_protection(symbol: str, current_price: float) -> None:
     entry_price = position["entry_price"]
     tick_size = CONFIG["tick_size"]
     
-    # Static parameters - use config values
-    breakeven_threshold_ticks = CONFIG.get("breakeven_profit_threshold_ticks", 8)
+    # Get regime-based breakeven threshold
+    # Base threshold from config, scaled by regime breakeven multiplier
+    base_threshold_ticks = CONFIG.get("breakeven_profit_threshold_ticks", 8)
+    
+    # Get current regime (or use entry regime if not set)
+    current_regime_name = position.get("current_regime", position.get("entry_regime", "NORMAL"))
+    current_regime = REGIME_DEFINITIONS.get(current_regime_name, REGIME_DEFINITIONS["NORMAL"])
+    
+    # Apply regime multiplier to base threshold
+    breakeven_threshold_ticks = base_threshold_ticks * current_regime.breakeven_mult
     breakeven_offset_ticks = CONFIG.get("breakeven_stop_offset_ticks", 1)
     
     # Step 2 - Calculate current profit in ticks
@@ -4030,7 +4103,8 @@ def check_breakeven_protection(symbol: str, current_price: float) -> None:
         logger.info("=" * 60)
         logger.info("BREAKEVEN PROTECTION ACTIVATED")
         logger.info("=" * 60)
-        logger.info(f"  Current Profit: {profit_ticks:.1f} ticks (threshold: {breakeven_threshold_ticks} ticks)")
+        logger.info(f"  Regime: {current_regime_name} (BE mult: {current_regime.breakeven_mult}x)")
+        logger.info(f"  Current Profit: {profit_ticks:.1f} ticks (threshold: {breakeven_threshold_ticks:.1f} ticks)")
         logger.info(f"  Original Stop: ${original_stop:.2f}")
         logger.info(f"  New Breakeven Stop: ${new_stop_price:.2f}")
         logger.info(f"  Profit Locked In: {profit_locked_ticks:.1f} ticks (${profit_locked_dollars:+.2f})")
@@ -4049,8 +4123,8 @@ def check_trailing_stop(symbol: str, current_price: float) -> None:
     """
     Check and update trailing stop based on price movement.
     
-    Uses static parameters from config:
-    - trailing_stop_distance_ticks: Distance from price extreme (default: 8 ticks)
+    Uses regime-based parameters:
+    - trailing_stop_distance_ticks: Calculated from regime trailing_mult
     - trailing_stop_min_profit_ticks: Minimum profit to activate (default: 12 ticks)
     
     Runs AFTER breakeven check. Only processes positions where breakeven is already active.
@@ -4071,8 +4145,16 @@ def check_trailing_stop(symbol: str, current_price: float) -> None:
     entry_price = position["entry_price"]
     tick_size = CONFIG["tick_size"]
     
-    # Static parameters - use config values
-    trailing_distance_ticks = CONFIG.get("trailing_stop_distance_ticks", 8)
+    # Get regime-based trailing distance
+    # Base distance from config, scaled by regime trailing multiplier
+    base_trailing_ticks = CONFIG.get("trailing_stop_distance_ticks", 8)
+    
+    # Get current regime (or use entry regime if not set)
+    current_regime_name = position.get("current_regime", position.get("entry_regime", "NORMAL"))
+    current_regime = REGIME_DEFINITIONS.get(current_regime_name, REGIME_DEFINITIONS["NORMAL"])
+    
+    # Apply regime multiplier to base trailing distance
+    trailing_distance_ticks = base_trailing_ticks * current_regime.trailing_mult
     min_profit_ticks = CONFIG.get("trailing_stop_min_profit_ticks", 12)
     
     # Calculate current profit
@@ -4137,6 +4219,7 @@ def check_trailing_stop(symbol: str, current_price: float) -> None:
         if not position["trailing_stop_active"]:
             position["trailing_stop_active"] = True
             position["trailing_activated_time"] = get_current_time()
+            logger.info(f"TRAILING STOP ACTIVATED - Regime: {current_regime_name} (trail mult: {current_regime.trailing_mult}x)")
         
         # Update position tracking
         old_stop = position["stop_price"]
@@ -4181,6 +4264,196 @@ def check_trailing_stop(symbol: str, current_price: float) -> None:
             logger.error("  [FAIL] EMERGENCY CLOSE ALSO FAILED - MANUAL INTERVENTION REQUIRED!")
             logger.error(f"  Position: {side.upper()} {contracts} contracts at ${entry_price:.2f}")
             logger.error(f"  Current Price: ${current_price:.2f}, Profit at Risk: ${profit_locked_dollars:+.2f}")
+
+
+# ============================================================================
+# PHASE FOUR-B: Regime-Based Timeout Exits
+# ============================================================================
+
+def check_sideways_timeout(symbol: str, current_price: float, current_time: datetime) -> Tuple[bool, Optional[float]]:
+    """
+    Check if position should exit due to sideways timeout (stagnant price action).
+    
+    Uses regime-based sideways_timeout parameter (8-18 minutes depending on regime).
+    
+    APPLIES ONLY WHEN:
+    - P&L is zero or positive (not losing)
+    - Trailing stop has NOT activated yet
+    
+    Once trailing stop activates, this check is skipped entirely (trailing becomes sole exit mechanism).
+    Timeout clock resets when regime changes.
+    
+    Args:
+        symbol: Instrument symbol
+        current_price: Current market price
+        current_time: Current datetime
+    
+    Returns:
+        Tuple of (should_exit, exit_price)
+    """
+    position = state[symbol]["position"]
+    
+    if not position["active"]:
+        return False, None
+    
+    # PRIORITY CHECK: If trailing stop active, skip sideways timeout entirely
+    if position.get("trailing_stop_active", False):
+        return False, None
+    
+    # Calculate current P&L
+    side = position["side"]
+    entry_price = position["entry_price"]
+    tick_size = CONFIG["tick_size"]
+    
+    if side == "long":
+        pnl_ticks = (current_price - entry_price) / tick_size
+    else:
+        pnl_ticks = (entry_price - current_price) / tick_size
+    
+    # Sideways timeout only applies when P&L >= 0 (zero or positive)
+    if pnl_ticks < 0:
+        # Position losing - sideways timeout disabled
+        return False, None
+    
+    # Position is zero/positive P&L and trailing not active - sideways timeout is ACTIVE
+    # Get current regime and its sideways timeout
+    current_regime_name = position.get("current_regime", position.get("entry_regime", "NORMAL"))
+    current_regime = REGIME_DEFINITIONS.get(current_regime_name, REGIME_DEFINITIONS["NORMAL"])
+    sideways_timeout_minutes = current_regime.sideways_timeout
+    
+    # Determine start time for timeout measurement
+    # Use regime change time if available, otherwise entry time
+    regime_change_time = position.get("regime_change_time")
+    start_time = regime_change_time if regime_change_time else position["entry_time"]
+    
+    if start_time is None:
+        return False, None
+    
+    # Calculate time elapsed
+    time_elapsed_minutes = (current_time - start_time).total_seconds() / 60.0
+    
+    # Check if exceeded sideways timeout
+    if time_elapsed_minutes < sideways_timeout_minutes:
+        return False, None
+    
+    # Track price extremes during the timeout period to measure range
+    # Initialize tracking if not present
+    if "sideways_high" not in position or regime_change_time:
+        # Reset tracking on regime change or first check
+        position["sideways_high"] = current_price
+        position["sideways_low"] = current_price
+        position["sideways_last_reset"] = current_time
+        return False, None
+    
+    # Update price extremes
+    position["sideways_high"] = max(position.get("sideways_high", current_price), current_price)
+    position["sideways_low"] = min(position.get("sideways_low", current_price), current_price)
+    
+    # Calculate price range during timeout period
+    price_range_ticks = (position["sideways_high"] - position["sideways_low"]) / tick_size
+    
+    # Define "stagnant" as narrow range (< 5 ticks) regardless of distance from entry
+    # This catches positions that are profitable but stuck in tight range
+    stagnant_range_threshold_ticks = 5.0
+    
+    if price_range_ticks < stagnant_range_threshold_ticks:
+        # Price stuck in narrow range and timeout exceeded
+        logger.warning("=" * 60)
+        logger.warning("SIDEWAYS TIMEOUT - EXITING STAGNANT POSITION")
+        logger.warning("=" * 60)
+        logger.warning(f"  Regime: {current_regime_name}")
+        logger.warning(f"  Timeout: {sideways_timeout_minutes} minutes")
+        logger.warning(f"  Time Elapsed: {time_elapsed_minutes:.1f} minutes")
+        logger.warning(f"  Price Range: {price_range_ticks:.1f} ticks (High: ${position['sideways_high']:.2f}, Low: ${position['sideways_low']:.2f})")
+        logger.warning(f"  Entry: ${entry_price:.2f}, Current: ${current_price:.2f}")
+        logger.warning(f"  Current P&L: {pnl_ticks:+.1f} ticks (profitable)")
+        logger.warning(f"  Reason: Position stuck in narrow range - not developing momentum")
+        logger.warning("=" * 60)
+        
+        return True, current_price
+    
+    return False, None
+
+
+def check_underwater_timeout(symbol: str, current_price: float, current_time: datetime) -> Tuple[bool, Optional[float]]:
+    """
+    Check if position should exit due to underwater timeout (continuous loss).
+    
+    Uses regime-based underwater_timeout parameter (6-10 minutes depending on regime).
+    
+    KEY BEHAVIOR:
+    - Timer always counts TOTAL elapsed time since entry (never resets)
+    - When position profitable: Underwater timeout disabled (not checking)
+    - When position losing AND trailing NOT active: Underwater timeout active using total elapsed time
+    - If position flips red→green→red: Total time used (red5min + green2min + red = 7min total)
+    - If trailing stop active: This check is skipped entirely
+    
+    Args:
+        symbol: Instrument symbol
+        current_price: Current market price
+        current_time: Current datetime
+    
+    Returns:
+        Tuple of (should_exit, exit_price)
+    """
+    position = state[symbol]["position"]
+    
+    if not position["active"]:
+        return False, None
+    
+    # PRIORITY CHECK: If trailing stop active, skip underwater timeout entirely
+    if position.get("trailing_stop_active", False):
+        return False, None
+    
+    side = position["side"]
+    entry_price = position["entry_price"]
+    entry_time = position.get("entry_time")
+    tick_size = CONFIG["tick_size"]
+    
+    if not entry_time:
+        return False, None
+    
+    # Calculate current P&L in ticks
+    if side == "long":
+        pnl_ticks = (current_price - entry_price) / tick_size
+    else:  # short
+        pnl_ticks = (entry_price - current_price) / tick_size
+    
+    # Check if currently underwater (losing)
+    if pnl_ticks >= 0:
+        # Position is profitable or breakeven - underwater timeout disabled (not active)
+        # But timer keeps running in background
+        return False, None
+    
+    # Position is underwater (losing) and trailing NOT active - underwater timeout is ACTIVE
+    # Get current regime and its underwater timeout
+    current_regime_name = position.get("current_regime", position.get("entry_regime", "NORMAL"))
+    current_regime = REGIME_DEFINITIONS.get(current_regime_name, REGIME_DEFINITIONS["NORMAL"])
+    underwater_timeout_minutes = current_regime.underwater_timeout
+    
+    # Calculate TOTAL elapsed time since entry (never resets)
+    total_elapsed_minutes = (current_time - entry_time).total_seconds() / 60.0
+    
+    # Check if total elapsed time exceeds underwater timeout
+    # This means: if trade has been alive for 7 minutes total and underwater timeout is 6 min, exit
+    if total_elapsed_minutes >= underwater_timeout_minutes:
+        # Total time since entry exceeds underwater timeout while position is losing
+        tick_value = CONFIG["tick_value"]
+        loss_dollars = pnl_ticks * tick_value * position["quantity"]
+        
+        logger.warning("=" * 60)
+        logger.warning("UNDERWATER TIMEOUT - CUTTING LOSS")
+        logger.warning("=" * 60)
+        logger.warning(f"  Regime: {current_regime_name}")
+        logger.warning(f"  Timeout: {underwater_timeout_minutes} minutes")
+        logger.warning(f"  Total Elapsed Time: {total_elapsed_minutes:.1f} minutes (since entry)")
+        logger.warning(f"  Current Loss: {abs(pnl_ticks):.1f} ticks (${loss_dollars:.2f})")
+        logger.warning(f"  Entry: ${entry_price:.2f}, Current: ${current_price:.2f}")
+        logger.warning("=" * 60)
+        
+        return True, current_price
+    
+    return False, None
 
 
 # ============================================================================
@@ -4490,6 +4763,164 @@ def execute_partial_exit(symbol: str, contracts: int, exit_price: float, r_multi
         logger.error(f"Failed to execute partial exit #{level}")
 
 
+def check_regime_change(symbol: str, current_price: float) -> None:
+    """
+    Check if market regime has changed during an active trade and adjust parameters.
+    
+    This function:
+    1. Detects current regime from last 20 bars
+    2. Compares to entry regime
+    3. If changed, updates stop loss and trailing parameters based on new regime
+    4. Uses pure regime multipliers (no confidence scaling)
+    
+    Critical rule: Stop price never moves closer to entry (backward), only trailing can tighten it.
+    
+    Args:
+        symbol: Instrument symbol
+        current_price: Current market price
+    """
+    position = state[symbol]["position"]
+    
+    # Only check for active positions
+    if not position["active"]:
+        return
+    
+    # Get entry regime
+    entry_regime_name = position.get("entry_regime", "NORMAL")
+    
+    # Detect current regime
+    regime_detector = get_regime_detector()
+    bars = state[symbol]["bars_1min"]
+    current_atr = calculate_atr_1min(symbol, CONFIG.get("atr_period", 14))
+    
+    if current_atr is None:
+        logger.debug("ATR not calculable, skipping regime change check")
+        return  # Can't detect regime without ATR
+    
+    current_regime = regime_detector.detect_regime(bars, current_atr, CONFIG.get("atr_period", 14))
+    
+    # Check if regime has changed
+    has_changed, new_regime = regime_detector.check_regime_change(
+        entry_regime_name, current_regime
+    )
+    
+    if not has_changed:
+        return  # No regime change
+    
+    # Update position tracking with new regime
+    change_time = get_current_time()
+    position["current_regime"] = current_regime.name
+    position["regime_change_time"] = change_time
+    
+    # Record regime transition in history
+    if "regime_history" not in position:
+        position["regime_history"] = []
+    
+    position["regime_history"].append({
+        "from_regime": entry_regime_name,
+        "to_regime": current_regime.name,
+        "timestamp": change_time,
+        "stop_mult_change": f"{REGIME_DEFINITIONS[entry_regime_name].stop_mult:.2f}x → {current_regime.stop_mult:.2f}x",
+        "trailing_mult_change": f"{REGIME_DEFINITIONS[entry_regime_name].trailing_mult:.2f}x → {current_regime.trailing_mult:.2f}x"
+    })
+    
+    # Calculate new stop distance based on new regime (pure regime multiplier, no confidence scaling)
+    side = position["side"]
+    entry_price = position["entry_price"]
+    tick_size = CONFIG["tick_size"]
+    current_stop = position["stop_price"]
+    
+    # Calculate new stop distance from entry using regime multiplier
+    new_stop_distance = current_atr * current_regime.stop_mult
+    
+    if side == "long":
+        new_stop_price = entry_price - new_stop_distance
+    else:  # short
+        new_stop_price = entry_price + new_stop_distance
+    
+    new_stop_price = round_to_tick(new_stop_price)
+    
+    # CRITICAL RULE: Never move stop closer to entry (backward)
+    should_update_stop = False
+    if side == "long":
+        # For longs, new stop must be >= current stop (never worse)
+        if new_stop_price >= current_stop:
+            should_update_stop = True
+    else:  # short
+        # For shorts, new stop must be <= current stop (never worse)
+        if new_stop_price <= current_stop:
+            should_update_stop = True
+    
+    if should_update_stop:
+        # Place updated stop order
+        stop_side = "SELL" if side == "long" else "BUY"
+        contracts = position["quantity"]
+        new_stop_order = place_stop_order(symbol, stop_side, contracts, new_stop_price)
+        
+        if new_stop_order:
+            old_stop = position["stop_price"]
+            position["stop_price"] = new_stop_price
+            if new_stop_order.get("order_id"):
+                position["stop_order_id"] = new_stop_order.get("order_id")
+            
+            # Get old regime parameters for comparison
+            old_regime = REGIME_DEFINITIONS[entry_regime_name]
+            
+            logger.info("=" * 60)
+            logger.info(f"REGIME CHANGE - PARAMETERS UPDATED")
+            logger.info("=" * 60)
+            logger.info(f"  Transition: {entry_regime_name} → {current_regime.name}")
+            logger.info(f"  Timestamp: {get_current_time().strftime('%H:%M:%S')}")
+            logger.info(f"")
+            logger.info(f"  Stop Multiplier: {old_regime.stop_mult:.2f}x → {current_regime.stop_mult:.2f}x")
+            logger.info(f"  Old Stop: ${old_stop:.2f} → New Stop: ${new_stop_price:.2f}")
+            logger.info(f"")
+            logger.info(f"  Breakeven Mult: {old_regime.breakeven_mult:.2f}x → {current_regime.breakeven_mult:.2f}x")
+            logger.info(f"  Trailing Mult: {old_regime.trailing_mult:.2f}x → {current_regime.trailing_mult:.2f}x")
+            logger.info(f"")
+            logger.info(f"  Timeouts Changed:")
+            logger.info(f"    Sideways: {old_regime.sideways_timeout}min → {current_regime.sideways_timeout}min")
+            logger.info(f"    Underwater: {old_regime.underwater_timeout}min → {current_regime.underwater_timeout}min")
+            logger.info(f"    (Clocks reset from regime change time)")
+            
+            # Calculate trailing distance impact
+            base_trailing_ticks = CONFIG.get("trailing_stop_distance_ticks", 8)
+            old_trailing_distance = base_trailing_ticks * old_regime.trailing_mult
+            new_trailing_distance = base_trailing_ticks * current_regime.trailing_mult
+            logger.info(f"")
+            logger.info(f"  Trailing Distance: {old_trailing_distance:.1f} → {new_trailing_distance:.1f} ticks")
+            logger.info(f"    (Affects future trailing movements only)")
+            logger.info("=" * 60)
+        else:
+            logger.error("Failed to update stop after regime change")
+    else:
+        # Stop would move backward - log but don't update
+        old_regime = REGIME_DEFINITIONS[entry_regime_name]
+        logger.info("=" * 60)
+        logger.info(f"REGIME CHANGE DETECTED - STOP NOT ADJUSTED")
+        logger.info("=" * 60)
+        logger.info(f"  Transition: {entry_regime_name} → {current_regime.name}")
+        logger.info(f"  Stop would move backward: ${current_stop:.2f} → ${new_stop_price:.2f}")
+        logger.info(f"  Stop remains at: ${current_stop:.2f}")
+        logger.info(f"")
+        logger.info(f"  Other parameters still updated:")
+        logger.info(f"    Breakeven Mult: {old_regime.breakeven_mult:.2f}x → {current_regime.breakeven_mult:.2f}x")
+        logger.info(f"    Trailing Mult: {old_regime.trailing_mult:.2f}x → {current_regime.trailing_mult:.2f}x")
+        logger.info(f"    Timeouts: Sideways {old_regime.sideways_timeout}→{current_regime.sideways_timeout}min, "
+                   f"Underwater {old_regime.underwater_timeout}→{current_regime.underwater_timeout}min")
+        logger.info("=" * 60)
+    
+    # Update breakeven threshold based on new regime (if not already active)
+    if not position["breakeven_active"]:
+        old_regime = REGIME_DEFINITIONS[entry_regime_name]
+        base_threshold_ticks = CONFIG.get("breakeven_profit_threshold_ticks", 8)
+        old_breakeven_threshold = base_threshold_ticks * old_regime.breakeven_mult
+        new_breakeven_threshold = base_threshold_ticks * current_regime.breakeven_mult
+        logger.info(f"  Breakeven threshold updated: {old_breakeven_threshold:.1f} → {new_breakeven_threshold:.1f} ticks")
+    else:
+        logger.info(f"  Breakeven already active - threshold change does not apply")
+
+
 def check_exit_conditions(symbol: str) -> None:
     """
     Check exit conditions for open position on each bar.
@@ -4724,6 +5155,26 @@ def check_exit_conditions(symbol: str) -> None:
     if should_close:
         logger.warning(f"Proactive stop close: within {CONFIG['proactive_stop_buffer_ticks']} ticks of stop")
         execute_exit(symbol, price, "proactive_stop")
+        return
+    
+    # REGIME CHANGE CHECK - Detect regime changes and adjust parameters
+    # This must happen BEFORE breakeven/trailing checks so they use updated regime parameters
+    check_regime_change(symbol, current_bar["close"])
+    
+    # REGIME-BASED TIMEOUT CHECKS - Check sideways and underwater timeouts
+    # These use regime-specific timeout values and reset on regime changes
+    current_time = get_current_time()
+    
+    # Check sideways timeout (stagnant price action)
+    should_exit_sideways, exit_price = check_sideways_timeout(symbol, current_bar["close"], current_time)
+    if should_exit_sideways:
+        execute_exit(symbol, exit_price, "sideways_timeout")
+        return
+    
+    # Check underwater timeout (continuous loss)
+    should_exit_underwater, exit_price = check_underwater_timeout(symbol, current_bar["close"], current_time)
+    if should_exit_underwater:
+        execute_exit(symbol, exit_price, "underwater_timeout")
         return
     
     # FOURTH - Partial exits (happens before breakeven/trailing because it reduces position size)

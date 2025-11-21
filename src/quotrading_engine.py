@@ -747,13 +747,6 @@ def check_azure_time_service() -> str:
                 else:
                     state = "closed"  # Unknown halt reason - be safe
             else:
-                # Clear event block flag when trading resumes
-                if bot_status.get("event_block_active", False):
-                    logger.info("=" * 80)
-                    logger.info("✅ ECONOMIC EVENT ENDED - Trading resumed")
-                    logger.info("=" * 80)
-                    bot_status["event_block_active"] = False
-                
                 # Trading allowed - check if we're approaching maintenance (flatten mode)
                 # Azure doesn't send flatten mode, so we check local time
                 # If current ET time is 4:45-5:00 PM, enter flatten mode

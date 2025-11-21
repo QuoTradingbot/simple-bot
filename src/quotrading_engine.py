@@ -2813,23 +2813,9 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
         # Use regime-based stop loss calculation
         entry_regime = regime_detector.detect_regime(bars, atr, CONFIG.get("atr_period", 14))
         
-        # Calculate stop using regime multiplier
+        # Calculate stop using regime multiplier (pure regime-based, no confidence scaling)
         stop_multiplier = entry_regime.stop_mult
-        
-        # Apply confidence-based scaling to stop multiplier if RL confidence available
-        if rl_confidence is not None:
-            if rl_confidence >= 0.80:
-                confidence_scaling = 1.0
-            elif rl_confidence >= 0.70:
-                confidence_scaling = 1.15
-            elif rl_confidence >= 0.60:
-                confidence_scaling = 1.30
-            else:
-                confidence_scaling = 1.50
-            
-            stop_multiplier = stop_multiplier * confidence_scaling
-            logger.info(f"Regime-based stop: {entry_regime.name}, base mult {entry_regime.stop_mult}x, "
-                       f"confidence scaled to {stop_multiplier:.2f}x")
+        logger.info(f"Regime-based stop: {entry_regime.name}, multiplier {stop_multiplier:.2f}x")
         
         # Use fixed target multiplier (can be made regime-based in future)
         target_multiplier = CONFIG.get("profit_target_atr_multiplier", 4.75)
@@ -4775,7 +4761,7 @@ def check_regime_change(symbol: str, current_price: float) -> None:
     1. Detects current regime from last 20 bars
     2. Compares to entry regime
     3. If changed, updates stop loss and trailing parameters based on new regime
-    4. Applies confidence-based scaling to new regime multipliers
+    4. Uses pure regime multipliers (no confidence scaling)
     
     Critical rule: Stop price never moves closer to entry (backward), only trailing can tighten it.
     
@@ -4789,9 +4775,8 @@ def check_regime_change(symbol: str, current_price: float) -> None:
     if not position["active"]:
         return
     
-    # Get entry regime and confidence
+    # Get entry regime
     entry_regime_name = position.get("entry_regime", "NORMAL")
-    rl_confidence = position.get("entry_rl_confidence", 0.5)
     
     # Detect current regime
     regime_detector = get_regime_detector()
@@ -4805,8 +4790,8 @@ def check_regime_change(symbol: str, current_price: float) -> None:
     current_regime = regime_detector.detect_regime(bars, current_atr, CONFIG.get("atr_period", 14))
     
     # Check if regime has changed
-    has_changed, new_regime, adjusted_stop_mult, adjusted_trailing_mult = regime_detector.check_regime_change(
-        entry_regime_name, current_regime, rl_confidence if rl_confidence else 0.5
+    has_changed, new_regime = regime_detector.check_regime_change(
+        entry_regime_name, current_regime
     )
     
     if not has_changed:
@@ -4829,14 +4814,14 @@ def check_regime_change(symbol: str, current_price: float) -> None:
         "trailing_mult_change": f"{REGIME_DEFINITIONS[entry_regime_name].trailing_mult:.2f}x → {current_regime.trailing_mult:.2f}x"
     })
     
-    # Calculate new stop distance based on new regime
+    # Calculate new stop distance based on new regime (pure regime multiplier, no confidence scaling)
     side = position["side"]
     entry_price = position["entry_price"]
     tick_size = CONFIG["tick_size"]
     current_stop = position["stop_price"]
     
-    # Calculate new stop distance from entry using adjusted multiplier
-    new_stop_distance = current_atr * adjusted_stop_mult
+    # Calculate new stop distance from entry using regime multiplier
+    new_stop_distance = current_atr * current_regime.stop_mult
     
     if side == "long":
         new_stop_price = entry_price - new_stop_distance
@@ -4877,23 +4862,21 @@ def check_regime_change(symbol: str, current_price: float) -> None:
             logger.info(f"  Transition: {entry_regime_name} → {current_regime.name}")
             logger.info(f"  Timestamp: {get_current_time().strftime('%H:%M:%S')}")
             logger.info(f"")
-            logger.info(f"  Stop Multiplier: {old_regime.stop_mult:.2f}x → {current_regime.stop_mult:.2f}x (adjusted: {adjusted_stop_mult:.2f}x)")
+            logger.info(f"  Stop Multiplier: {old_regime.stop_mult:.2f}x → {current_regime.stop_mult:.2f}x")
             logger.info(f"  Old Stop: ${old_stop:.2f} → New Stop: ${new_stop_price:.2f}")
             logger.info(f"")
             logger.info(f"  Breakeven Mult: {old_regime.breakeven_mult:.2f}x → {current_regime.breakeven_mult:.2f}x")
-            logger.info(f"  Trailing Mult: {old_regime.trailing_mult:.2f}x → {current_regime.trailing_mult:.2f}x (adjusted: {adjusted_trailing_mult:.2f}x)")
+            logger.info(f"  Trailing Mult: {old_regime.trailing_mult:.2f}x → {current_regime.trailing_mult:.2f}x")
             logger.info(f"")
             logger.info(f"  Timeouts Changed:")
             logger.info(f"    Sideways: {old_regime.sideways_timeout}min → {current_regime.sideways_timeout}min")
             logger.info(f"    Underwater: {old_regime.underwater_timeout}min → {current_regime.underwater_timeout}min")
             logger.info(f"    (Clocks reset from regime change time)")
-            logger.info(f"")
-            logger.info(f"  Signal Confidence: {rl_confidence:.2f}")
             
             # Calculate trailing distance impact
             base_trailing_ticks = CONFIG.get("trailing_stop_distance_ticks", 8)
             old_trailing_distance = base_trailing_ticks * old_regime.trailing_mult
-            new_trailing_distance = base_trailing_ticks * adjusted_trailing_mult
+            new_trailing_distance = base_trailing_ticks * current_regime.trailing_mult
             logger.info(f"")
             logger.info(f"  Trailing Distance: {old_trailing_distance:.1f} → {new_trailing_distance:.1f} ticks")
             logger.info(f"    (Affects future trailing movements only)")
@@ -4912,7 +4895,7 @@ def check_regime_change(symbol: str, current_price: float) -> None:
         logger.info(f"")
         logger.info(f"  Other parameters still updated:")
         logger.info(f"    Breakeven Mult: {old_regime.breakeven_mult:.2f}x → {current_regime.breakeven_mult:.2f}x")
-        logger.info(f"    Trailing Mult: {old_regime.trailing_mult:.2f}x → {adjusted_trailing_mult:.2f}x")
+        logger.info(f"    Trailing Mult: {old_regime.trailing_mult:.2f}x → {current_regime.trailing_mult:.2f}x")
         logger.info(f"    Timeouts: Sideways {old_regime.sideways_timeout}→{current_regime.sideways_timeout}min, "
                    f"Underwater {old_regime.underwater_timeout}→{current_regime.underwater_timeout}min")
         logger.info("=" * 60)

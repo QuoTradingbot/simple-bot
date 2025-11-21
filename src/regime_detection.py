@@ -269,41 +269,26 @@ class RegimeDetector:
             else:  # Default to baseline NORMAL
                 return REGIME_DEFINITIONS["NORMAL"]
     
-    def check_regime_change(self, entry_regime: str, current_regime: RegimeParameters, 
-                           confidence: float) -> Tuple[bool, Optional[RegimeParameters], float, float]:
+    def check_regime_change(self, entry_regime: str, current_regime: RegimeParameters) -> Tuple[bool, Optional[RegimeParameters]]:
         """
-        Check if regime has changed and calculate adjusted multipliers.
+        Check if regime has changed.
         
         Args:
             entry_regime: Name of regime when position was entered
             current_regime: Currently detected regime parameters
-            confidence: Signal confidence score (0-1)
         
         Returns:
-            Tuple of (has_changed, new_regime, adjusted_stop_mult, adjusted_trailing_mult)
+            Tuple of (has_changed, new_regime)
         """
         if entry_regime == current_regime.name:
-            return False, None, 0.0, 0.0
+            return False, None
         
-        # Regime has changed - calculate confidence-based scaling
-        if confidence >= 0.80:
-            scaling = 1.0
-        elif confidence >= 0.70:
-            scaling = 1.15
-        elif confidence >= 0.60:
-            scaling = 1.30
-        else:
-            scaling = 1.50
+        # Regime has changed - use pure regime multipliers (no confidence scaling)
+        logger.info(f"REGIME CHANGE: {entry_regime} → {current_regime.name}")
+        logger.info(f"  Regime multipliers: stop={current_regime.stop_mult:.2f}x, "
+                   f"trailing={current_regime.trailing_mult:.2f}x")
         
-        adjusted_stop_mult = current_regime.stop_mult * scaling
-        adjusted_trailing_mult = current_regime.trailing_mult * scaling
-        
-        logger.info(f"REGIME CHANGE: {entry_regime} → {current_regime.name} "
-                   f"(confidence: {confidence:.2f}, scaling: {scaling:.2f})")
-        logger.info(f"  Adjusted multipliers: stop={adjusted_stop_mult:.2f}x, "
-                   f"trailing={adjusted_trailing_mult:.2f}x")
-        
-        return True, current_regime, adjusted_stop_mult, adjusted_trailing_mult
+        return True, current_regime
 
 
 # Singleton instance

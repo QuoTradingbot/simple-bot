@@ -3973,7 +3973,7 @@ def check_breakeven_protection(symbol: str, current_price: float) -> None:
     Check if breakeven protection should be activated and move stop to breakeven.
     
     Uses static parameters from config:
-    - breakeven_profit_threshold_ticks: Profit needed to activate (default: 8 ticks)
+    - breakeven_profit_threshold_ticks: Profit needed to activate (config default: 9 ticks, code fallback: 8)
     - breakeven_stop_offset_ticks: Stop offset from entry (default: 1 tick)
     
     Args:

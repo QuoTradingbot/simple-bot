@@ -166,6 +166,9 @@ RECOVERY_MULTIPLIER_CRITICAL = 0.20  # Reduce to 20% of position at critical (wa
 RECOVERY_MULTIPLIER_HIGH = 0.40  # Reduce to 40% of position at high severity (was 50%)
 RECOVERY_MULTIPLIER_MODERATE = 0.65  # Reduce to 65% of position at moderate severity (was 75%)
 
+# Regime Detection Constants
+DEFAULT_FALLBACK_ATR = 5.0  # Default ATR when calculation not possible (ES futures typical value)
+
 # Global broker instance (replaces sdk_client)
 broker: Optional[BrokerInterface] = None
 
@@ -1907,7 +1910,7 @@ def calculate_macd(prices: List[float], fast_period: int = 12,
     }
 
 
-def calculate_atr(symbol: str, period: int = 14) -> float:
+def calculate_atr(symbol: str, period: int = 14) -> Optional[float]:
     """
     Calculate Average True Range (ATR) for volatility measurement.
     
@@ -1916,12 +1919,12 @@ def calculate_atr(symbol: str, period: int = 14) -> float:
         period: ATR period (default 14)
     
     Returns:
-        ATR value in price units
+        ATR value in price units, or None if not enough data
     """
     bars = state[symbol]["bars_15min"]
     
     if len(bars) < 2:
-        return 0.0
+        return None
     
     true_ranges = []
     for i in range(1, len(bars)):
@@ -1941,7 +1944,7 @@ def calculate_atr(symbol: str, period: int = 14) -> float:
         true_ranges.append(tr)
     
     if not true_ranges:
-        return 0.0
+        return None
     
     # Calculate ATR (simple moving average of TR)
     if len(true_ranges) >= period:
@@ -2744,9 +2747,9 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
     bars = state[symbol]["bars_1min"]
     atr = calculate_atr(symbol, CONFIG.get("atr_period", 14))
     
-    if atr is None or atr == 0:
+    if atr is None:
         # Fallback to fixed stops if ATR can't be calculated
-        atr = 0
+        logger.warning("ATR calculation failed, using fixed stops as fallback")
         max_stop_ticks = 11
         if side == "long":
             stop_price = entry_price - (max_stop_ticks * tick_size)
@@ -3596,8 +3599,9 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
     regime_detector = get_regime_detector()
     bars = state[symbol]["bars_1min"]
     atr = calculate_atr(symbol, CONFIG.get("atr_period", 14))
-    if atr is None or atr == 0:
-        atr = 5.0  # Default ATR if not calculable
+    if atr is None:
+        atr = DEFAULT_FALLBACK_ATR  # Use constant instead of magic number
+        logger.warning(f"ATR not calculable, using fallback value: {DEFAULT_FALLBACK_ATR}")
     
     entry_regime = regime_detector.detect_regime(bars, atr, CONFIG.get("atr_period", 14))
     logger.info(f"  Entry Regime: {entry_regime.name}")
@@ -4563,7 +4567,8 @@ def check_regime_change(symbol: str, current_price: float) -> None:
     bars = state[symbol]["bars_1min"]
     current_atr = calculate_atr(symbol, CONFIG.get("atr_period", 14))
     
-    if current_atr is None or current_atr == 0:
+    if current_atr is None:
+        logger.debug("ATR not calculable, skipping regime change check")
         return  # Can't detect regime without ATR
     
     current_regime = regime_detector.detect_regime(bars, current_atr, CONFIG.get("atr_period", 14))

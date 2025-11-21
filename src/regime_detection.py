@@ -164,6 +164,10 @@ class RegimeDetector:
         """
         Calculate average ATR over the given bars.
         
+        Note: This uses the bars passed in (typically 1-minute bars for regime detection),
+        while quotrading_engine.calculate_atr() uses 15-minute bars. This is intentional
+        as regime detection needs higher-resolution data for accurate volatility classification.
+        
         Args:
             bars: List of bars (must have 'high', 'low', 'close')
             period: ATR period

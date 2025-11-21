@@ -5794,6 +5794,10 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
     except Exception as e:
         logger.debug(f"RL outcome recording failed: {e}")
     
+    # Store exit reason in state for backtest tracking (position gets reset)
+    state[symbol]["last_exit_reason"] = reason
+    position["exit_reason"] = reason
+    
     # Log time-based exits with detailed audit trail
     time_based_reasons = [
         "flatten_mode_exit", "time_based_profit_take", "time_based_loss_cut",

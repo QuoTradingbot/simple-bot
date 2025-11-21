@@ -283,6 +283,8 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
     
     # Track RL confidence for each trade
     trade_confidences = {}
+    last_exit_reason = 'bot_exit'  # Track last exit reason
+    prev_position_active = False
     
     def vwap_strategy_backtest(bars_1min: List[Dict[str, Any]], bars_15min: List[Dict[str, Any]]) -> None:
         """
@@ -296,7 +298,7 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
         - All trade management (stops, targets, breakeven, trailing)
         - UTC maintenance and flatten rules
         """
-        nonlocal prev_position_active, bars_processed, total_bars
+        nonlocal prev_position_active, bars_processed, total_bars, last_exit_reason
         total_bars = len(bars_1min)
         
         for bar_idx, bar in enumerate(bars_1min):
@@ -333,10 +335,17 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
                 pos = state[symbol]['position']
                 current_active = pos.get('active', False)
                 
+                # Capture exit reason while position is still active or just closed
+                if current_active or (not current_active and prev_position_active):
+                    # Check state for last_exit_reason (persists after position reset)
+                    if 'last_exit_reason' in state[symbol]:
+                        last_exit_reason = state[symbol]['last_exit_reason']
+                
                 # Capture confidence when position opens
                 if current_active and not prev_position_active:
                     # Position just opened - save the confidence
-                    entry_time_key = str(timestamp)
+                    entry_time = pos.get('entry_time', timestamp)
+                    entry_time_key = str(entry_time)
                     confidence = state[symbol].get('entry_rl_confidence', 0.5)
                     # Convert to percentage
                     if confidence <= 1.0:
@@ -361,8 +370,9 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
                 elif not pos.get('active') and engine.current_position is not None:
                     exit_price = price
                     exit_time = timestamp
-                    exit_reason = 'bot_exit'
-                    engine._close_position(exit_time, exit_price, exit_reason)
+                    # Use the last captured exit reason
+                    engine._close_position(exit_time, exit_price, last_exit_reason)
+                    last_exit_reason = 'bot_exit'  # Reset for next trade
         
         # Ensure final progress is shown
         print()  # New line after progress

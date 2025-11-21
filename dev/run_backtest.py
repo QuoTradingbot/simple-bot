@@ -22,6 +22,12 @@ from typing import List, Dict, Any, Optional, Tuple
 from types import ModuleType
 import pytz
 
+# CRITICAL: Set backtest mode BEFORE any imports that load the bot module
+# This ensures config validation skips broker requirements
+os.environ['BOT_BACKTEST_MODE'] = 'true'
+# Disable cloud API calls during backtest (use local RL only)
+os.environ['USE_CLOUD_SIGNALS'] = 'false'
+
 # Add parent directory to path to import from src/
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
@@ -185,10 +191,8 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
     logger.info("Backtesting does NOT use broker API - runs on historical data only")
     logger.info("="*60)
     
-    # Set backtest mode environment variable
-    os.environ['BOT_BACKTEST_MODE'] = 'true'
-    # Disable cloud API calls during backtest (use local RL only)
-    os.environ['USE_CLOUD_SIGNALS'] = 'false'
+    # Backtest mode environment variables already set at module import
+    # (see top of file - BOT_BACKTEST_MODE and USE_CLOUD_SIGNALS)
     
     # Load configuration
     bot_config = load_config(backtest_mode=True)

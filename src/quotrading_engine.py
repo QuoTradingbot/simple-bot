@@ -132,8 +132,12 @@ except ImportError:
     BrokerInterface = None
 
 # Load configuration from environment and config module
-_bot_config = load_config()
-_bot_config.validate()  # Validate configuration at startup
+# Check if running in backtest mode from environment variable
+_is_backtest = os.getenv('BOT_BACKTEST_MODE') == 'true'
+_bot_config = load_config(backtest_mode=_is_backtest)
+# Only validate if not in backtest mode (backtest mode skips broker requirements)
+if not _is_backtest:
+    _bot_config.validate()  # Validate configuration at startup
 
 # Convert BotConfiguration to dictionary for backward compatibility with existing code
 CONFIG: Dict[str, Any] = _bot_config.to_dict()
@@ -1320,8 +1324,11 @@ def initialize_state(symbol: str) -> None:
     """
     # CRITICAL FIX: Reload config to get latest values (fixes subprocess caching issue)
     global _bot_config, CONFIG
-    _bot_config = load_config()
-    _bot_config.validate()
+    _is_backtest = os.getenv('BOT_BACKTEST_MODE') == 'true'
+    _bot_config = load_config(backtest_mode=_is_backtest)
+    # Only validate if not in backtest mode
+    if not _is_backtest:
+        _bot_config.validate()
     CONFIG = _bot_config.to_dict()
     
     state[symbol] = {

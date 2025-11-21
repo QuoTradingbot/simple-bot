@@ -4275,8 +4275,12 @@ def check_sideways_timeout(symbol: str, current_price: float, current_time: date
     Check if position should exit due to sideways timeout (stagnant price action).
     
     Uses regime-based sideways_timeout parameter (8-18 minutes depending on regime).
-    Monitors if price not making meaningful progress in either direction.
-    Applies regardless of profit/loss - can trigger even if position is profitable.
+    
+    APPLIES ONLY WHEN:
+    - P&L is zero or positive (not losing)
+    - Trailing stop has NOT activated yet
+    
+    Once trailing stop activates, this check is skipped entirely (trailing becomes sole exit mechanism).
     Timeout clock resets when regime changes.
     
     Args:
@@ -4292,6 +4296,26 @@ def check_sideways_timeout(symbol: str, current_price: float, current_time: date
     if not position["active"]:
         return False, None
     
+    # PRIORITY CHECK: If trailing stop active, skip sideways timeout entirely
+    if position.get("trailing_stop_active", False):
+        return False, None
+    
+    # Calculate current P&L
+    side = position["side"]
+    entry_price = position["entry_price"]
+    tick_size = CONFIG["tick_size"]
+    
+    if side == "long":
+        pnl_ticks = (current_price - entry_price) / tick_size
+    else:
+        pnl_ticks = (entry_price - current_price) / tick_size
+    
+    # Sideways timeout only applies when P&L >= 0 (zero or positive)
+    if pnl_ticks < 0:
+        # Position losing - sideways timeout disabled
+        return False, None
+    
+    # Position is zero/positive P&L and trailing not active - sideways timeout is ACTIVE
     # Get current regime and its sideways timeout
     current_regime_name = position.get("current_regime", position.get("entry_regime", "NORMAL"))
     current_regime = REGIME_DEFINITIONS.get(current_regime_name, REGIME_DEFINITIONS["NORMAL"])
@@ -4313,8 +4337,6 @@ def check_sideways_timeout(symbol: str, current_price: float, current_time: date
         return False, None
     
     # Track price extremes during the timeout period to measure range
-    side = position["side"]
-    
     # Initialize tracking if not present
     if "sideways_high" not in position or regime_change_time:
         # Reset tracking on regime change or first check
@@ -4328,7 +4350,6 @@ def check_sideways_timeout(symbol: str, current_price: float, current_time: date
     position["sideways_low"] = min(position.get("sideways_low", current_price), current_price)
     
     # Calculate price range during timeout period
-    tick_size = CONFIG["tick_size"]
     price_range_ticks = (position["sideways_high"] - position["sideways_low"]) / tick_size
     
     # Define "stagnant" as narrow range (< 5 ticks) regardless of distance from entry
@@ -4337,14 +4358,6 @@ def check_sideways_timeout(symbol: str, current_price: float, current_time: date
     
     if price_range_ticks < stagnant_range_threshold_ticks:
         # Price stuck in narrow range and timeout exceeded
-        entry_price = position["entry_price"]
-        
-        # Calculate current profit/loss for logging
-        if side == "long":
-            pnl_ticks = (current_price - entry_price) / tick_size
-        else:
-            pnl_ticks = (entry_price - current_price) / tick_size
-        
         logger.warning("=" * 60)
         logger.warning("SIDEWAYS TIMEOUT - EXITING STAGNANT POSITION")
         logger.warning("=" * 60)
@@ -4353,7 +4366,7 @@ def check_sideways_timeout(symbol: str, current_price: float, current_time: date
         logger.warning(f"  Time Elapsed: {time_elapsed_minutes:.1f} minutes")
         logger.warning(f"  Price Range: {price_range_ticks:.1f} ticks (High: ${position['sideways_high']:.2f}, Low: ${position['sideways_low']:.2f})")
         logger.warning(f"  Entry: ${entry_price:.2f}, Current: ${current_price:.2f}")
-        logger.warning(f"  Current P&L: {pnl_ticks:+.1f} ticks ({'profit' if pnl_ticks >= 0 else 'loss'})")
+        logger.warning(f"  Current P&L: {pnl_ticks:+.1f} ticks (profitable)")
         logger.warning(f"  Reason: Position stuck in narrow range - not developing momentum")
         logger.warning("=" * 60)
         
@@ -4371,8 +4384,9 @@ def check_underwater_timeout(symbol: str, current_price: float, current_time: da
     KEY BEHAVIOR:
     - Timer always counts TOTAL elapsed time since entry (never resets)
     - When position profitable: Underwater timeout disabled (not checking)
-    - When position losing: Underwater timeout active using total elapsed time
+    - When position losing AND trailing NOT active: Underwater timeout active using total elapsed time
     - If position flips red→green→red: Total time used (red5min + green2min + red = 7min total)
+    - If trailing stop active: This check is skipped entirely
     
     Args:
         symbol: Instrument symbol
@@ -4385,6 +4399,10 @@ def check_underwater_timeout(symbol: str, current_price: float, current_time: da
     position = state[symbol]["position"]
     
     if not position["active"]:
+        return False, None
+    
+    # PRIORITY CHECK: If trailing stop active, skip underwater timeout entirely
+    if position.get("trailing_stop_active", False):
         return False, None
     
     side = position["side"]
@@ -4407,7 +4425,7 @@ def check_underwater_timeout(symbol: str, current_price: float, current_time: da
         # But timer keeps running in background
         return False, None
     
-    # Position is underwater (losing) - underwater timeout is ACTIVE
+    # Position is underwater (losing) and trailing NOT active - underwater timeout is ACTIVE
     # Get current regime and its underwater timeout
     current_regime_name = position.get("current_regime", position.get("entry_regime", "NORMAL"))
     current_regime = REGIME_DEFINITIONS.get(current_regime_name, REGIME_DEFINITIONS["NORMAL"])

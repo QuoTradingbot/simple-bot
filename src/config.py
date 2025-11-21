@@ -21,7 +21,7 @@ class BotConfiguration:
     # Instrument Configuration
     instrument: str = "ES"  # Single instrument (legacy support)
     instruments: list = field(default_factory=lambda: ["ES"])  # Multi-symbol support
-    timezone: str = "America/New_York"
+    timezone: str = "UTC"  # CME futures use UTC for global trading
     
     # Broker Configuration
     broker: str = ""  # USER CONFIGURABLE - TopStep, Tradovate, Rithmic, NinjaTrader, etc.
@@ -69,18 +69,18 @@ class BotConfiguration:
     volume_spike_multiplier: float = 1.5
     volume_lookback: int = 20
     
-    # Time Windows (all in Eastern Time)
-    market_open_time: time = field(default_factory=lambda: time(9, 30))
-    entry_start_time: time = field(default_factory=lambda: time(18, 0))  # 6 PM ET - ES futures session opens
-    entry_end_time: time = field(default_factory=lambda: time(16, 55))  # 4:55 PM ET next day - before maintenance
-    flatten_time: time = field(default_factory=lambda: time(16, 45))  # 4:45 PM ET - 15 min before maintenance
-    forced_flatten_time: time = field(default_factory=lambda: time(17, 0))  # 5:00 PM ET - maintenance starts
-    shutdown_time: time = field(default_factory=lambda: time(18, 0))  # 6:00 PM ET - after maintenance, session restarts
-    vwap_reset_time: time = field(default_factory=lambda: time(18, 0))  # 6 PM ET - futures daily session reset
+    # Time Windows (all in UTC - CME Futures Schedule)
+    market_open_time: time = field(default_factory=lambda: time(9, 30))  # Stock market open (9:30 AM ET = 14:30 UTC winter / 13:30 UTC summer)
+    entry_start_time: time = field(default_factory=lambda: time(23, 0))  # 23:00 UTC - CME futures session opens (6 PM ET)
+    entry_end_time: time = field(default_factory=lambda: time(21, 40))  # 21:40 UTC - 5 min before flatten (4:40 PM ET)
+    flatten_time: time = field(default_factory=lambda: time(21, 45))  # 21:45 UTC - flatten positions (15 min before maintenance)
+    forced_flatten_time: time = field(default_factory=lambda: time(22, 0))  # 22:00 UTC - maintenance starts (5 PM ET)
+    shutdown_time: time = field(default_factory=lambda: time(23, 0))  # 23:00 UTC - market reopens after maintenance
+    vwap_reset_time: time = field(default_factory=lambda: time(23, 0))  # 23:00 UTC - daily session reset
     
-    # Friday Special Rules - Close before weekend
-    friday_entry_cutoff: time = field(default_factory=lambda: time(16, 30))  # Stop entries 4:30 PM Friday
-    friday_close_target: time = field(default_factory=lambda: time(16, 45))  # Flatten by 4:45 PM Friday
+    # Friday Special Rules - Close before weekend (UTC times)
+    friday_entry_cutoff: time = field(default_factory=lambda: time(20, 30))  # 20:30 UTC - stop entries Friday (3:30 PM ET)
+    friday_close_target: time = field(default_factory=lambda: time(21, 0))  # 21:00 UTC - Friday weekly close (4 PM ET)
     
     # Safety Parameters - USER CONFIGURABLE
     daily_loss_limit: float = 1000.0  # USER CONFIGURABLE - max $ loss per day (or auto-calculated)

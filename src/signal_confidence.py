@@ -228,7 +228,7 @@ class SignalConfidenceRL:
             return 0.65, f"🆕 Limited experience ({len(self.experiences)} trades) - optimistic"
         
         # Find similar past situations
-        similar = self.find_similar_states(current_state, max_results=20)
+        similar = self.find_similar_states(current_state, max_results=10)
         
         if not similar:
             return 0.5, " No similar situations - neutral confidence"

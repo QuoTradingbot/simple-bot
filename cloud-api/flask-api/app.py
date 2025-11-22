@@ -653,6 +653,348 @@ def stripe_webhook():
     finally:
         conn.close()
 
+# ============================================================================
+# ADMIN DASHBOARD ENDPOINTS
+# ============================================================================
+
+@app.route('/api/admin/dashboard-stats', methods=['GET'])
+def admin_dashboard_stats():
+    """Get overall dashboard statistics"""
+    admin_key = request.args.get('license_key') or request.args.get('admin_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection failed"}), 500
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            # Total users
+            cursor.execute("SELECT COUNT(*) as total FROM users")
+            total_users = cursor.fetchone()['total']
+            
+            # Active licenses
+            cursor.execute("SELECT COUNT(*) as active FROM users WHERE license_status = 'active'")
+            active_licenses = cursor.fetchone()['active']
+            
+            # Online users (active in last 5 minutes)
+            cursor.execute("""
+                SELECT COUNT(*) as online FROM users 
+                WHERE last_active > NOW() - INTERVAL '5 minutes'
+                AND license_status = 'active'
+            """)
+            online_users = cursor.fetchone()['online']
+            
+            # Total revenue (count of active monthly subscriptions * $200)
+            total_revenue = active_licenses * 200
+            
+            return jsonify({
+                "total_users": total_users,
+                "active_licenses": active_licenses,
+                "online_users": online_users,
+                "total_revenue": total_revenue,
+                "revenue_this_month": total_revenue  # Simplified for now
+            }), 200
+    except Exception as e:
+        logging.error(f"Dashboard stats error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/admin/users', methods=['GET'])
+def admin_list_users():
+    """List all users (same as list-licenses but formatted for dashboard)"""
+    admin_key = request.args.get('license_key') or request.args.get('admin_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection failed"}), 500
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT id, email, license_key, license_type, license_status, 
+                       license_expiration, created_at, last_active,
+                       CASE WHEN last_active > NOW() - INTERVAL '5 minutes' THEN true ELSE false END as is_online
+                FROM users
+                ORDER BY created_at DESC
+            """)
+            users = cursor.fetchall()
+            
+            # Format for dashboard (use account_id instead of id for compatibility)
+            formatted_users = []
+            for user in users:
+                formatted_users.append({
+                    "account_id": str(user['id']),
+                    "email": user['email'],
+                    "license_key": user['license_key'],
+                    "license_type": user['license_type'],
+                    "license_status": user['license_status'],
+                    "license_expiration": user['license_expiration'].isoformat() if user['license_expiration'] else None,
+                    "created_at": user['created_at'].isoformat() if user['created_at'] else None,
+                    "last_active": user['last_active'].isoformat() if user['last_active'] else None,
+                    "is_online": user['is_online']
+                })
+            
+            return jsonify(formatted_users), 200
+    except Exception as e:
+        logging.error(f"List users error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/admin/user/<account_id>', methods=['GET'])
+def admin_get_user(account_id):
+    """Get detailed information about a specific user"""
+    admin_key = request.args.get('license_key') or request.args.get('admin_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection failed"}), 500
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            # Get user details
+            cursor.execute("""
+                SELECT id, email, license_key, license_type, license_status,
+                       license_expiration, created_at, last_active
+                FROM users WHERE id = %s OR license_key = %s
+            """, (account_id, account_id))
+            user = cursor.fetchone()
+            
+            if not user:
+                return jsonify({"error": "User not found"}), 404
+            
+            # Format user data
+            user_data = {
+                "user": {
+                    "account_id": str(user['id']),
+                    "email": user['email'],
+                    "license_key": user['license_key'],
+                    "license_type": user['license_type'],
+                    "license_status": user['license_status'],
+                    "license_expiration": user['license_expiration'].isoformat() if user['license_expiration'] else None,
+                    "created_at": user['created_at'].isoformat() if user['created_at'] else None,
+                    "last_active": user['last_active'].isoformat() if user['last_active'] else None,
+                    "notes": None
+                },
+                "recent_api_calls": 0,
+                "trade_stats": {
+                    "total_trades": 0,
+                    "total_pnl": 0.0,
+                    "avg_pnl": 0.0,
+                    "winning_trades": 0
+                },
+                "recent_activity": []
+            }
+            
+            return jsonify(user_data), 200
+    except Exception as e:
+        logging.error(f"Get user error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/admin/recent-activity', methods=['GET'])
+def admin_recent_activity():
+    """Get recent API activity (placeholder - returns empty for now)"""
+    admin_key = request.args.get('license_key') or request.args.get('admin_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    # For now, return empty array - can add API logging later
+    return jsonify([]), 200
+
+@app.route('/api/admin/online-users', methods=['GET'])
+def admin_online_users():
+    """Get currently online users"""
+    admin_key = request.args.get('license_key') or request.args.get('admin_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection failed"}), 500
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT id, email, license_key, license_type, last_active
+                FROM users 
+                WHERE last_active > NOW() - INTERVAL '5 minutes'
+                AND license_status = 'active'
+                ORDER BY last_active DESC
+            """)
+            online = cursor.fetchall()
+            
+            formatted = []
+            for user in online:
+                formatted.append({
+                    "account_id": str(user['id']),
+                    "email": user['email'],
+                    "license_key": user['license_key'],
+                    "license_type": user['license_type'],
+                    "last_active": user['last_active'].isoformat() if user['last_active'] else None
+                })
+            
+            return jsonify(formatted), 200
+    except Exception as e:
+        logging.error(f"Online users error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/admin/suspend-user/<account_id>', methods=['POST'])
+def admin_suspend_user(account_id):
+    """Suspend a user (same as update-license-status)"""
+    admin_key = request.args.get('license_key') or request.args.get('admin_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection failed"}), 500
+    
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                UPDATE users SET license_status = 'suspended'
+                WHERE id = %s OR license_key = %s
+                RETURNING license_key
+            """, (account_id, account_id))
+            result = cursor.fetchone()
+            conn.commit()
+            
+            if result:
+                return jsonify({"status": "success", "message": "User suspended"}), 200
+            else:
+                return jsonify({"error": "User not found"}), 404
+    except Exception as e:
+        logging.error(f"Suspend user error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/admin/activate-user/<account_id>', methods=['POST'])
+def admin_activate_user(account_id):
+    """Activate a user"""
+    admin_key = request.args.get('license_key') or request.args.get('admin_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection failed"}), 500
+    
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                UPDATE users SET license_status = 'active'
+                WHERE id = %s OR license_key = %s
+                RETURNING license_key
+            """, (account_id, account_id))
+            result = cursor.fetchone()
+            conn.commit()
+            
+            if result:
+                return jsonify({"status": "success", "message": "User activated"}), 200
+            else:
+                return jsonify({"error": "User not found"}), 404
+    except Exception as e:
+        logging.error(f"Activate user error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/admin/extend-license/<account_id>', methods=['POST'])
+def admin_extend_license(account_id):
+    """Extend a user's license"""
+    admin_key = request.args.get('license_key') or request.args.get('admin_key')
+    days = int(request.args.get('days', 30))
+    
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection failed"}), 500
+    
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                UPDATE users 
+                SET license_expiration = COALESCE(license_expiration, NOW()) + INTERVAL '%s days'
+                WHERE id = %s OR license_key = %s
+                RETURNING license_key, license_expiration
+            """, (days, account_id, account_id))
+            result = cursor.fetchone()
+            conn.commit()
+            
+            if result:
+                return jsonify({
+                    "status": "success", 
+                    "message": f"License extended by {days} days",
+                    "new_expiration": result[1].isoformat() if result[1] else None
+                }), 200
+            else:
+                return jsonify({"error": "User not found"}), 404
+    except Exception as e:
+        logging.error(f"Extend license error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+@app.route('/api/admin/add-user', methods=['POST'])
+def admin_add_user():
+    """Create a new user (same as create-license but formatted for dashboard)"""
+    admin_key = request.args.get('license_key') or request.args.get('admin_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    data = request.get_json()
+    email = data.get('email')
+    license_type = data.get('license_type', 'monthly')
+    days_valid = data.get('days_valid', 30)
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database connection failed"}), 500
+    
+    try:
+        license_key = generate_license_key()
+        expiration = datetime.now(pytz.UTC) + timedelta(days=days_valid)
+        
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO users (email, license_key, license_type, license_status, license_expiration)
+                VALUES (%s, %s, %s, 'active', %s)
+                RETURNING id
+            """, (email, license_key, license_type, expiration))
+            user_id = cursor.fetchone()[0]
+            conn.commit()
+            
+            return jsonify({
+                "status": "success",
+                "license_key": license_key,
+                "account_id": str(user_id),
+                "email": email,
+                "expiration": expiration.isoformat()
+            }), 201
+    except Exception as e:
+        logging.error(f"Add user error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        conn.close()
+
+# ============================================================================
+# END ADMIN DASHBOARD ENDPOINTS
+# ============================================================================
+
 @app.route('/api/admin/expire-licenses', methods=['POST'])
 def expire_licenses():
     """Manually trigger license expiration check (can be called by cron/scheduler)"""

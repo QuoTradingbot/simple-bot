@@ -616,7 +616,7 @@ def get_development_config() -> BotConfiguration:
     config.environment = "development"
     
     # Load additional config from JSON file if it exists
-    config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.json")
+    config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data/config.json")
     if os.path.exists(config_file):
         import json
         with open(config_file, 'r') as f:
@@ -636,7 +636,7 @@ def get_staging_config() -> BotConfiguration:
     config.environment = "staging"
     
     # Load additional config from JSON file if it exists
-    config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.json")
+    config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data/config.json")
     if os.path.exists(config_file):
         import json
         with open(config_file, 'r') as f:
@@ -656,7 +656,7 @@ def get_production_config() -> BotConfiguration:
     config.environment = "production"
     
     # Load additional config from JSON file if it exists
-    config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.json")
+    config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data/config.json")
     if os.path.exists(config_file):
         import json
         with open(config_file, 'r') as f:

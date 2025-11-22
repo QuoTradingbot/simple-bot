@@ -61,6 +61,9 @@ Examples:
   
   # Save backtest report to file
   python dev/run_backtest.py --days 30 --report backtest_results.txt
+
+Note: All trading parameters (account_size, max_contracts, rl_exploration_rate, etc.) 
+      are configured in data/config.json
         """
     )
     
@@ -87,13 +90,6 @@ Examples:
         type=str,
         default=None,
         help='Path to historical data directory (default: <project_root>/data/historical_data)'
-    )
-    
-    parser.add_argument(
-        '--initial-equity',
-        type=float,
-        default=50000.0,
-        help='Initial equity for backtesting (default: 50000)'
     )
     
     parser.add_argument(
@@ -227,7 +223,8 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
     )
     
     # Show config values being used for backtest (from config.json)
-    print(f"Backtest Configuration (from config.json):")
+    print(f"Backtest Configuration (from data/config.json):")
+    print(f"   Account Size: ${bot_config.account_size:,.2f}")
     print(f"   Max Contracts: {bot_config.max_contracts}")
     print(f"   RL Exploration Rate: {bot_config.rl_exploration_rate*100:.1f}%")
     print(f"   RL Min Exploration: {bot_config.rl_min_exploration_rate*100:.1f}%")
@@ -239,7 +236,7 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
     backtest_config = BacktestConfig(
         start_date=start_date,
         end_date=end_date,
-        initial_equity=args.initial_equity,
+        initial_equity=bot_config.account_size,
         symbols=[args.symbol] if args.symbol else [bot_config.instrument],
         data_path=data_path,
         use_tick_data=args.use_tick_data
@@ -442,6 +439,9 @@ def main():
     """Main entry point for development backtesting"""
     args = parse_arguments()
     
+    # Load configuration early to get account_size for reporter
+    bot_config = load_config(backtest_mode=True)
+    
     # Setup logging - suppress verbose output for clean backtest display
     config_dict = {'log_directory': os.path.join(PROJECT_ROOT, 'logs')}
     logger = setup_logging(config_dict)
@@ -473,8 +473,8 @@ def main():
     logging.getLogger('regime_detection').setLevel(logging.WARNING)  # Suppress regime change spam
     logging.getLogger('signal_confidence').setLevel(logging.WARNING)  # Only show warnings and errors
     
-    # Initialize clean reporter
-    reporter = reset_reporter(starting_balance=args.initial_equity)
+    # Initialize clean reporter with account_size from config
+    reporter = reset_reporter(starting_balance=bot_config.account_size)
     
     # Create a custom filter to allow only specific INFO messages through AND track signals
     class BacktestMessageFilter(logging.Filter):

@@ -1,0 +1,123 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: quotrading-postgres
+    environment:
+      POSTGRES_DB: quotrading
+      POSTGRES_USER: quotradingadmin
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deployment/db_init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quotradingadmin -d quotrading"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - quotrading-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: quotrading-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - quotrading-network
+
+  # QuoTrading Signal Engine (Cloud API)
+  signal-engine:
+    build:
+      context: .
+      dockerfile: cloud-api/Dockerfile
+    container_name: quotrading-signal-engine
+    environment:
+      # Database Configuration
+      DB_HOST: postgres
+      DB_NAME: quotrading
+      DB_USER: quotradingadmin
+      DB_PASSWORD: ${DB_PASSWORD:-changeme}
+      DB_SSL_MODE: ${DB_SSL_MODE:-prefer}
+      
+      # Redis Configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      
+      # API Configuration
+      API_PORT: 8000
+      API_HOST: 0.0.0.0
+      
+      # Stripe Configuration (for payments)
+      STRIPE_API_KEY: ${STRIPE_API_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      
+      # Environment
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - quotrading-network
+    restart: unless-stopped
+
+  # Trading Bot (optional - for development/testing)
+  trading-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    container_name: quotrading-bot
+    environment:
+      # Cloud API Configuration
+      QUOTRADING_API_URL: http://signal-engine:8000
+      
+      # Broker Configuration
+      TOPSTEP_API_TOKEN: ${TOPSTEP_API_TOKEN}
+      TOPSTEP_USERNAME: ${TOPSTEP_USERNAME}
+      
+      # Bot Configuration
+      BOT_ENVIRONMENT: ${BOT_ENVIRONMENT:-development}
+      BOT_DRY_RUN: ${BOT_DRY_RUN:-true}
+      BOT_INSTRUMENT: ${BOT_INSTRUMENT:-ES}
+      BOT_MAX_CONTRACTS: ${BOT_MAX_CONTRACTS:-1}
+      BOT_LOG_LEVEL: ${BOT_LOG_LEVEL:-INFO}
+    depends_on:
+      signal-engine:
+        condition: service_healthy
+    networks:
+      - quotrading-network
+    restart: unless-stopped
+    profiles:
+      - bot  # Only start with --profile bot
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  quotrading-network:
+    driver: bridge

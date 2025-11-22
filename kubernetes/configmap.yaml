@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: quotrading-config
+  namespace: quotrading
+data:
+  # Database Configuration
+  DB_HOST: "quotrading-db.postgres.database.azure.com"
+  DB_NAME: "quotrading"
+  DB_USER: "quotradingadmin"
+  DB_SSL_MODE: "require"
+  
+  # Environment
+  ENVIRONMENT: "production"
+  
+  # API URLs
+  QUOTRADING_API_URL: "http://signal-engine-service:8000"
+  
+  # Bot Configuration
+  BOT_ENVIRONMENT: "production"
+  BOT_DRY_RUN: "false"
+  BOT_INSTRUMENT: "ES"
+  BOT_MAX_CONTRACTS: "3"
+  BOT_LOG_LEVEL: "INFO"

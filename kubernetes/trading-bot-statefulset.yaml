@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: trading-bot
+  namespace: quotrading
+  labels:
+    app: trading-bot
+spec:
+  serviceName: trading-bot
+  replicas: 2
+  selector:
+    matchLabels:
+      app: trading-bot
+  template:
+    metadata:
+      labels:
+        app: trading-bot
+    spec:
+      containers:
+      - name: trading-bot
+        image: quotradingacr.azurecr.io/trading-bot:latest
+        imagePullPolicy: Always
+        env:
+        - name: QUOTRADING_API_URL
+          valueFrom:
+            configMapKeyRef:
+              name: quotrading-config
+              key: QUOTRADING_API_URL
+        - name: BOT_ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: quotrading-config
+              key: BOT_ENVIRONMENT
+        - name: BOT_DRY_RUN
+          valueFrom:
+            configMapKeyRef:
+              name: quotrading-config
+              key: BOT_DRY_RUN
+        - name: BOT_INSTRUMENT
+          valueFrom:
+            configMapKeyRef:
+              name: quotrading-config
+              key: BOT_INSTRUMENT
+        - name: BOT_MAX_CONTRACTS
+          valueFrom:
+            configMapKeyRef:
+              name: quotrading-config
+              key: BOT_MAX_CONTRACTS
+        - name: BOT_LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: quotrading-config
+              key: BOT_LOG_LEVEL
+        - name: TOPSTEP_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: quotrading-secrets
+              key: topstep-api-token
+        - name: TOPSTEP_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: quotrading-secrets
+              key: topstep-username
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "250m"
+        volumeMounts:
+        - name: bot-logs
+          mountPath: /app/logs
+        - name: bot-data
+          mountPath: /app/data
+  volumeClaimTemplates:
+  - metadata:
+      name: bot-logs
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: managed-premium
+      resources:
+        requests:
+          storage: 1Gi
+  - metadata:
+      name: bot-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      storageClassName: managed-premium
+      resources:
+        requests:
+          storage: 2Gi

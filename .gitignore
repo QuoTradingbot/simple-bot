@@ -171,3 +171,11 @@ launcher/config.json
 # Keep example/template files
 !data/.gitkeep
 !launcher/.gitkeep
+
+# Docker and Kubernetes sensitive files
+kubernetes/secrets.yaml
+.env.docker
+docker-compose.override.yml
+
+# Azure CLI local config
+.azure/

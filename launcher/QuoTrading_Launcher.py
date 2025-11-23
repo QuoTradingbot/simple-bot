@@ -1247,7 +1247,7 @@ class QuoTradingLauncher:
             account_names = [acc['id'] for acc in pre_loaded_accounts]
             default_value = account_names[0]
         else:
-            account_names = ["Click 'Fetch Account Info' to load accounts"]
+            account_names = ["Default Account"]
             default_value = account_names[0]
         
         self.account_dropdown_var = tk.StringVar(value=default_value)
@@ -1262,21 +1262,21 @@ class QuoTradingLauncher:
         self.account_dropdown.pack(fill=tk.X)
         self.account_dropdown.bind("<<ComboboxSelected>>", self.on_account_selected)
         
-        # Middle: Sync button with label
+        # Middle: Test Connection button with label
         fetch_button_frame = tk.Frame(fetch_frame, bg=self.colors['card'])
         fetch_button_frame.pack(side=tk.LEFT, padx=5)
         
         sync_label = tk.Label(
             fetch_button_frame,
-            text="🔄 SYNC:",
+            text="🔄 TEST:",
             font=("Segoe UI", 8, "bold"),
             bg=self.colors['card'],
-            fg=self.colors['success']  # Changed from 'primary' to 'success' for better visibility
+            fg=self.colors['success']
         )
         sync_label.pack(anchor=tk.W)
         
-        # Change button text based on whether accounts are pre-loaded
-        button_text = "Sync Accounts" if pre_loaded_accounts else "Load Accounts"
+        # Button to test RL server connection
+        button_text = "Test RL Server"
         fetch_btn = self.create_button(fetch_button_frame, button_text, self.fetch_account_info, "next")
         fetch_btn.pack()
         
@@ -1726,419 +1726,179 @@ class QuoTradingLauncher:
         self.save_config()
     
     def fetch_account_info(self):
-        """Sync accounts: refresh equity, positions, and open orders from broker API."""
-        print("\n[DEBUG] Sync Accounts button clicked!")
-        
-        broker = self.config.get("broker", "TopStep")
-        token = self.config.get("broker_token", "")
-        username = self.config.get("broker_username", "")
-        
-        print(f"[DEBUG] Broker: {broker}")
-        print(f"[DEBUG] Token exists: {bool(token)}")
-        print(f"[DEBUG] Username: {username}")
-        
-        if not token or not username:
-            print("[DEBUG] Missing credentials - showing error")
-            messagebox.showerror(
-                "Missing Credentials",
-                "Please enter your broker credentials on the first screen."
-            )
-            return
-        
-        print(f"[DEBUG] Starting account sync for {broker}...")
+        """Test connection to RL server to verify API connectivity."""
+        print("\n[DEBUG] Test Connection button clicked!")
         
         # Show loading spinner
-        self.show_loading(f"Syncing accounts from {broker}...")
+        self.show_loading("Testing RL server connection...")
         
-        def fetch_in_thread():
-            print("[DEBUG] Inside fetch thread...")
-            import traceback  # Import at top of thread function
+        def test_connection_thread():
+            """Test connection to RL server."""
+            print("[DEBUG] Testing RL server connection...")
+            import traceback
             try:
-                # Import broker interface (SDK already installed with AI)
-                import sys
-                from pathlib import Path
-                src_path = Path(__file__).parent.parent / "src"
-                if str(src_path) not in sys.path:
-                    sys.path.insert(0, str(src_path))
+                import requests
                 
-                accounts = []
+                # Get RL server URL
+                rl_server_url = CLOUD_API_BASE_URL
+                health_endpoint = f"{rl_server_url}/health"
                 
-                # REAL API CALL ONLY - NO DEMO DATA
-                if broker == "TopStep":
-                    print("[DEBUG] Connecting to TopStep API...")
-                    from broker_interface import TopStepBroker
+                print(f"[DEBUG] Pinging RL server: {health_endpoint}")
+                
+                # Test connection with timeout
+                response = requests.get(health_endpoint, timeout=10)
+                
+                if response.status_code == 200:
+                    print("[DEBUG] RL server connection successful!")
                     
-                    # Create broker instance with user's REAL credentials
-                    print(f"[DEBUG] Creating TopStepBroker instance...")
-                    ts_broker = TopStepBroker(api_token=token, username=username)
+                    # Get response data if available
+                    try:
+                        data = response.json()
+                        status = data.get("status", "ok")
+                        version = data.get("version", "unknown")
+                    except:
+                        status = "ok"
+                        version = "unknown"
                     
-                    # Connect to broker API
-                    print("[DEBUG] Calling connect()...")
-                    connected = ts_broker.connect()
-                    
-                    if connected:
-                        print("[DEBUG] Connected successfully! Getting accounts...")
+                    # Update UI on main thread
+                    def show_success():
+                        self.hide_loading()
                         
-                        # Get account info from SDK client property (same as login)
-                        try:
-                            account_info = ts_broker.sdk_client.account_info
-                            
-                            if account_info:
-                                # Extract real account details from TopStep
-                                # Use the account name (e.g., "50KTC-V2-398684-33989413") as the display ID
-                                account_name = getattr(account_info, 'name', f'TopStep Account')
-                                account_id = account_name  # Use name as ID for display
-                                internal_id = str(getattr(account_info, 'id', 'TOPSTEP_MAIN'))  # Keep numeric ID for storage
-                                current_balance = float(getattr(account_info, 'balance', 0))
-                                is_simulated = getattr(account_info, 'simulated', True)
-                                acc_type = 'prop_firm' if is_simulated else 'live'
-                                
-                                # Check if we have a stored starting balance for this account (use internal ID)
-                                stored_balances = self.config.get("topstep_starting_balances", {})
-                                if internal_id in stored_balances:
-                                    starting_balance = stored_balances[internal_id]
-                                    equity = current_balance
-                                else:
-                                    starting_balance = current_balance
-                                    equity = current_balance
-                                    # Store starting balance for this account
-                                    if "topstep_starting_balances" not in self.config:
-                                        self.config["topstep_starting_balances"] = {}
-                                    self.config["topstep_starting_balances"][internal_id] = starting_balance
-                                
-                                accounts = [{
-                                    "id": account_id,  # Display name
-                                    "name": account_name,
-                                    "balance": starting_balance,
-                                    "equity": equity,
-                                    "type": acc_type
-                                }]
-                                print(f"[DEBUG] Account: {account_name}, Balance: ${starting_balance:,.2f}, Equity: ${equity:,.2f}")
-                            else:
-                                raise Exception("No account info available")
-                        except Exception as e:
-                            # Fallback if account_info is not available
-                            print(f"[DEBUG] account_info failed ({str(e)}), using fallback")
-                            current_equity = ts_broker.get_account_equity()
-                            stored_starting_balance = self.config.get("topstep_starting_balance")
-                            
-                            if stored_starting_balance:
-                                starting_balance = stored_starting_balance
-                                equity = current_equity
-                            else:
-                                starting_balance = current_equity
-                                equity = current_equity
-                                self.config["topstep_starting_balance"] = starting_balance
-                                self.save_config()
-                            
-                            accounts = [{
-                                "id": "TOPSTEP_MAIN",
-                                "name": f"TopStep Account ({username})",
-                                "balance": starting_balance,
-                                "equity": equity,
-                                "type": "prop_firm"
-                            }]
+                        # Update info label to show connection success
+                        self.account_info_label.config(
+                            text=f"✓ RL Server connected successfully! Status: {status}",
+                            fg=self.colors['success']
+                        )
                         
-                        # Disconnect
-                        ts_broker.disconnect()
-                        print("[DEBUG] Disconnected from TopStep")
-                    else:
-                        raise Exception("Failed to connect to TopStep API. Check your API token and username.")
-                
-                elif broker == "Tradovate":
-                    print("[DEBUG] Connecting to Tradovate API...")
-                    # TODO: Implement Tradovate multi-account support when SDK is available
-                    # from broker_interface import TradovateBroker
-                    # tradovate_broker = TradovateBroker(api_token=token, username=username)
-                    # connected = tradovate_broker.connect()
-                    # if connected:
-                    #     account_list = tradovate_broker.list_accounts()
-                    #     ... process accounts similar to TopStep
-                    raise Exception("Tradovate API integration coming soon. Please use TopStep for now.")
-                
+                        messagebox.showinfo(
+                            "Connection Test Successful",
+                            f"✓ Successfully connected to RL server!\n\n"
+                            f"Server: {rl_server_url}\n"
+                            f"Status: {status}\n"
+                            f"Version: {version}\n\n"
+                            f"The bot is ready to receive ML signals."
+                        )
+                    
+                    self.root.after(0, show_success)
                 else:
-                    raise Exception(f"Unsupported broker: {broker}")
+                    raise Exception(f"Server returned status code {response.status_code}")
                 
-                # If no accounts fetched, raise error
-                if not accounts:
-                    raise Exception("No accounts retrieved from broker API")
+            except requests.exceptions.Timeout:
+                error_msg = "Connection timeout - RL server is not responding"
                 
-                # Update UI on main thread
-                def update_ui():
+                def show_error():
                     self.hide_loading()
-                    
-                    # Update account dropdown with fetched accounts
-                    account_names = [f"{acc['name']} - ${acc['balance']:,.2f}" for acc in accounts]
-                    self.account_dropdown['values'] = account_names
-                    self.account_dropdown.current(0)
-                    
-                    # Store accounts data
-                    self.config["accounts"] = accounts
-                    self.config["selected_account"] = account_names[0]
-                    self.config["fetched_account_balance"] = accounts[0]['balance']
-                    self.config["fetched_account_type"] = accounts[0].get('type', 'live_broker')
-                    self.save_config()
-                    
-                    # Check for mismatch between user input and fetched data
-                    user_account_size = float(self.config.get("account_size", "0"))
-                    fetched_balance = accounts[0]['balance']
-                    
-                    mismatch_warning = ""
-                    if user_account_size > 0 and abs(user_account_size - fetched_balance) > self.ACCOUNT_MISMATCH_THRESHOLD:
-                        mismatch_warning = (
-                            f"\n\n⚠️ MISMATCH DETECTED:\n"
-                            f"You entered: ${user_account_size:,.2f}\n"
-                            f"Fetched account: ${fetched_balance:,.2f}\n\n"
-                            f"Using fetched account data (more accurate)."
-                        )
-                        # Update account size to fetched value using helper method
-                        self._update_account_size_from_fetched(fetched_balance)
-                    
-                    # Update info label
-                    selected_acc = accounts[0]
-                    self.account_info_label.config(
-                        text=f"✓ Balance: ${selected_acc['balance']:,.2f} | Equity: ${selected_acc['equity']:,.2f} | Type: {selected_acc.get('type', 'Unknown')}",
-                        fg=self.colors['success']
+                    messagebox.showerror(
+                        "Connection Test Failed",
+                        f"❌ Failed to connect to RL server:\n\n{error_msg}\n\n"
+                        f"Server: {rl_server_url}\n\n"
+                        f"Please check:\n"
+                        f"• Your internet connection\n"
+                        f"• Firewall settings\n"
+                        f"• RL server is operational\n\n"
+                        f"Contact support if the issue persists."
                     )
-                    
-                    # Show success message with account count
-                    account_count = len(accounts)
-                    account_summary = f"Successfully synced {account_count} account{'s' if account_count > 1 else ''} from {broker}.\n\n"
-                    
-                    if account_count > 1:
-                        account_summary += "Accounts:\n"
-                        for acc in accounts:
-                            account_summary += f"• {acc['name']} - ${acc['equity']:,.2f}\n"
-                    else:
-                        account_summary += (
-                            f"Selected: {selected_acc['name']}\n"
-                            f"Balance: ${selected_acc['balance']:,.2f}\n"
-                            f"Equity: ${selected_acc['equity']:,.2f}\n"
-                            f"Type: {selected_acc.get('type', 'Unknown')}"
-                        )
-                    
-                    messagebox.showinfo(
-                        "Accounts Synced",
-                        account_summary + (mismatch_warning if mismatch_warning else "")
-                    )
+                    print(f"[ERROR] {error_msg}")
                 
-                self.root.after(0, update_ui)
+                self.root.after(0, show_error)
+                
+            except requests.exceptions.ConnectionError:
+                error_msg = "Cannot connect to RL server - network error"
+                
+                def show_error():
+                    self.hide_loading()
+                    messagebox.showerror(
+                        "Connection Test Failed",
+                        f"❌ Failed to connect to RL server:\n\n{error_msg}\n\n"
+                        f"Server: {rl_server_url}\n\n"
+                        f"Please check:\n"
+                        f"• Your internet connection\n"
+                        f"• Firewall settings\n"
+                        f"• RL server is operational\n\n"
+                        f"Contact support if the issue persists."
+                    )
+                    print(f"[ERROR] {error_msg}")
+                
+                self.root.after(0, show_error)
                 
             except Exception as error:
-                # Capture error in outer scope
                 error_msg = str(error)
                 error_traceback = traceback.format_exc()
                 
                 def show_error():
                     self.hide_loading()
-                    
-                    # Show user-friendly error
                     messagebox.showerror(
-                        "Fetch Failed",
-                        f"Failed to fetch account information:\n\n{error_msg}\n\n"
-                        f"Please check:\n"
-                        f"• API Token is valid and not expired\n"
-                        f"• Username/Email matches your account\n"
-                        f"• You have an active {broker} account\n\n"
+                        "Connection Test Failed",
+                        f"❌ Failed to connect to RL server:\n\n{error_msg}\n\n"
+                        f"Server: {rl_server_url}\n\n"
                         f"Contact support if the issue persists."
                     )
                     
                     # Log to console for debugging
                     print(f"\n{'='*60}")
-                    print(f"FETCH ACCOUNT ERROR - {broker}")
+                    print(f"RL SERVER CONNECTION ERROR")
                     print(f"{'='*60}")
-                    print(f"Token: {token[:15]}... (hidden)")
-                    print(f"Username: {username}")
+                    print(f"URL: {rl_server_url}")
                     print(f"Error: {error_msg}")
                     print(f"\nFull traceback:")
                     print(error_traceback)
                     print(f"{'='*60}\n")
-                    
+                
                 self.root.after(0, show_error)
         
-        # Start fetch in background thread
-        thread = threading.Thread(target=fetch_in_thread, daemon=True)
+        # Start connection test in background thread
+        thread = threading.Thread(target=test_connection_thread, daemon=True)
         thread.start()
     
     def auto_adjust_parameters(self):
-        """Auto-adjust trading parameters based on FETCHED account data (prioritized over user input)."""
-        # IMPORTANT: Prioritize fetched account data over user input
-        # Check if account info has been fetched
-        accounts = self.config.get("accounts", [])
-        
-        if not accounts:
+        """Auto-adjust trading parameters based on user-entered account size."""
+        # Get account size from user input
+        try:
+            account_size = float(self.account_entry.get() or "10000")
+        except ValueError:
             messagebox.showwarning(
-                "No Account Info",
-                "⚠️ IMPORTANT: Please fetch account information first using the 'Fetch Account Info' button.\n\n"
-                "Fetching helps the bot:\n"
-                "• Detect your account type (prop firm vs live broker)\n"
-                "• Determine accurate account size\n"
-                "• Provide optimal risk settings\n"
-                "• Apply broker-specific rules"
+                "Invalid Account Size",
+                "Please enter a valid account size before using Auto Configure."
             )
             return
         
-        # Use SELECTED account from dropdown (user can have multiple accounts)
-        selected_account_name = self.account_dropdown_var.get()
+        if account_size <= 0:
+            messagebox.showwarning(
+                "Invalid Account Size",
+                "Account size must be greater than 0."
+            )
+            return
         
-        # Find the matching account from fetched accounts list
-        selected_account = None
-        for acc in accounts:
-            acc_display_name = f"{acc['name']} - ${acc['balance']:,.2f}"
-            if acc_display_name == selected_account_name:
-                selected_account = acc
-                break
+        # Simple auto-configuration based on account size
+        # Daily loss limit: 2% of account size (standard conservative rule)
+        daily_loss_limit = account_size * 0.02
         
-        # Fallback: If no match, use first account
-        if not selected_account:
-            selected_account = accounts[0]
-            print(f"[WARNING] Selected account '{selected_account_name}' not found, using first account")
+        # Max contracts: Scale based on account size
+        # Small accounts (< $25k): 1-2 contracts
+        # Medium accounts ($25k-$50k): 2-3 contracts  
+        # Large accounts ($50k-$100k): 3-5 contracts
+        # Very large accounts (> $100k): 5-10 contracts
+        if account_size < 25000:
+            max_contracts = 2
+        elif account_size < 50000:
+            max_contracts = 3
+        elif account_size < 100000:
+            max_contracts = 5
+        elif account_size < 250000:
+            max_contracts = 8
+        else:
+            max_contracts = 10
         
-        # Extract balance, equity, and type from SELECTED account
-        balance = selected_account.get("balance", 10000)       # Starting balance
-        equity = selected_account.get("equity", balance)       # Current equity (with profits)
-        account_type = selected_account.get("type", "live_broker")
-        
-        # Update account size with fetched data (overrides user input) using helper method
-        self._update_account_size_from_fetched(balance)
-        
-        # Calculate drawdown percentage (how far from starting balance)
-        drawdown_pct = ((balance - equity) / balance) * 100 if balance > 0 else 0
-        drawdown_pct = max(0, drawdown_pct)  # Ensure non-negative
-        
-        # Sophisticated risk management based on ACCOUNT TYPE (from fetched data)
-        if account_type == "prop_firm":
-            # Prop firm rules: Be more conservative as drawdown increases
-            # Most prop firms fail traders at 8-10% drawdown
-            
-            # Calculate distance to failure using configured max drawdown
-            max_dd = self.PROP_FIRM_MAX_DRAWDOWN
-            distance_to_failure = max_dd - drawdown_pct
-            
-            # Daily loss limit: Scale based on distance to failure
-            # Use 2% rule as baseline for prop firms
-            if distance_to_failure > 6:  # Safe zone (0-2% drawdown)
-                daily_loss_pct = 0.02  # 2% of equity (standard prop firm rule)
-            elif distance_to_failure > 4:  # Caution zone (2-4% drawdown)
-                daily_loss_pct = 0.015   # 1.5% of equity
-            elif distance_to_failure > 2:  # Warning zone (4-6% drawdown)
-                daily_loss_pct = 0.01  # 1% of equity
-            else:  # Danger zone (6-8% drawdown)
-                daily_loss_pct = 0.005   # 0.5% of equity - very conservative
-            
-            daily_loss_limit = equity * daily_loss_pct
-            
-            # Contracts: Smart sizing based on DOLLAR BUFFER to failure
-            # CRITICAL: Failure threshold is based on INITIAL/STARTING BALANCE, not current equity
-            # Example: $50k starting account fails at $48k (96% of initial), even if equity is now $54k
-            # 
-            # Fresh $50k account: buffer = $50,000 - $48,000 = $2,000
-            # Same account at $54k equity: buffer = $54,000 - $48,000 = $6,000 (more room with profits!)
-            # Same account at $49k equity: buffer = $49,000 - $48,000 = $1,000 (danger!)
-            #
-            # IMPORTANT: Must account for:
-            # 1. Risk per contract (~$300 avg on ES: slippage + spread + volatility)
-            # 2. Trailing drawdown (profits can evaporate quickly)
-            # 3. Multiple losing trades (need buffer for at least 6 bad trades)
-            # 4. Daily loss limits (can't risk entire buffer in one day)
-            
-            failure_threshold = balance * 0.96  # Prop firms fail at ~4% drawdown from STARTING balance
-            buffer_to_failure = equity - failure_threshold  # How far current equity is from failure
-            
-            # Risk per contract accounting for:
-            # - Average loss per contract: $250 (4-5 ticks on ES)
-            # - Slippage: $25 per contract
-            # - Spread costs: $25 per contract  
-            # - Volatility buffer: $50 (bad fills, gaps)
-            # Total conservative estimate: $350 per contract
-            risk_per_contract = 350
-            
-            # Safety factor: Want to survive at least 6 consecutive losing trades
-            # This accounts for bad days and protects trailing drawdown
-            safe_losing_trades = 6
-            
-            # Calculate max contracts based on buffer safety
-            # Example: $6k buffer / ($350 × 6 trades) = 2.85 → 2 contracts
-            max_safe_contracts = max(1, int(buffer_to_failure / (risk_per_contract * safe_losing_trades)))
-            
-            # Apply TopStep tier limits (can't exceed these even if math allows)
-            tier_limit = 5  # Default for < $50k
-            for tier_balance, limit in sorted(self.TOPSTEP_CONTRACT_LIMITS.items()):
-                if balance >= tier_balance * 0.9:
-                    tier_limit = limit
-            
-            # FINAL CONTRACT SIZING: Take minimum of calculated safe amount and tier limit
-            # This respects both mathematical safety AND broker rules
-            # Also accounts for trailing drawdown protection
-            
-            # Adjust for current drawdown severity (protects trailing profits)
-            if drawdown_pct < 2:  # Very safe (fresh account or profits) - use full calculated amount
-                base_contracts = min(max_safe_contracts, tier_limit)
-            elif drawdown_pct < 5:  # Moderately safe - reduce by 40% (trailing drawdown risk)
-                base_contracts = max(1, min(int(max_safe_contracts * 0.6), tier_limit))
-            else:  # In drawdown - very conservative
-                base_contracts = 1  # Single contract only
-            
-            # Additional safety: Don't let contracts exceed what daily loss limit can handle
-            # If daily loss limit is $1000 and risk is $350/contract, max 2 contracts for one bad day
-            # But allow multiple bad trades, so divide by 3 (assume 3 losing trades per day max)
-            max_daily_risk_contracts = max(1, int(daily_loss_limit / (risk_per_contract * 3)))
-            
-            # Final decision: Take minimum of all constraints
-            max_contracts = min(base_contracts, max_daily_risk_contracts, tier_limit)
-            
-            # Trades per day: Calculate based on contracts × trades interaction
-            # Total daily risk = max_contracts × max_trades × risk_per_contract
-            # Should not exceed daily loss limit
-            # Formula: max_trades = daily_loss_limit / (max_contracts × risk_per_contract)
-            
-            safe_max_trades = max(3, int(daily_loss_limit / (max_contracts * risk_per_contract)))
-            
-            # Cap based on distance to failure
-            if distance_to_failure > 5:  # Safe zone
-                max_trades = min(safe_max_trades, 12)  # Never more than 12
-            else:  # Near limits - be very selective
-                max_trades = min(safe_max_trades, 8)   # Never more than 8
-            
-            # Absolute minimum: 3 trades (need some opportunities)
-            max_trades = max(3, max_trades)
-                
-        else:  # Live Broker - More flexible but still strategic
-            # Daily loss limit: 2-4% based on account size
-            if equity < 25000:
-                daily_loss_limit = equity * 0.02  # 2%
-            elif equity < 50000:
-                daily_loss_limit = equity * 0.025  # 2.5%
-            elif equity < 100000:
-                daily_loss_limit = equity * 0.03  # 3%
-            else:
-                daily_loss_limit = equity * 0.035  # 3.5%
-            
-            # Contracts: Strategic based on equity
-            max_contracts = max(1, min(10, int(equity / 20000)))
-            
-            # Trades: More flexible with live brokers
-            if equity < 50000:
-                max_trades = 15
-            elif equity < 100000:
-                max_trades = 18
-            else:
-                max_trades = 20
-        
-        # Intelligently set max drawdown based on account type and prop firm rules
-        if account_type == "Prop Firm":
-            # Most prop firms enforce 10% max drawdown
-            # Set to 8% for safety buffer (strategic, not maxing out)
-            recommended_max_drawdown = 8.0
-        else:  # Live Broker
-            # Live brokers are more flexible
-            # Set based on equity size
-            if equity < 50000:
-                recommended_max_drawdown = 12.0
-            elif equity < 100000:
-                recommended_max_drawdown = 15.0
-            else:
-                recommended_max_drawdown = 18.0
+        # Max trades per day: Scale based on account size
+        # Smaller accounts should trade less frequently
+        if account_size < 25000:
+            max_trades = 5
+        elif account_size < 50000:
+            max_trades = 7
+        elif account_size < 100000:
+            max_trades = 10
+        else:
+            max_trades = 15
         
         # Apply the calculated settings
         self.loss_entry.delete(0, tk.END)
@@ -2146,17 +1906,11 @@ class QuoTradingLauncher:
         self.contracts_var.set(max_contracts)
         self.trades_var.set(max_trades)
         
-        # Update info label with comprehensive feedback
-        if account_type == "Prop Firm":
-            self.auto_adjust_info_label.config(
-                text=f"✓ Optimized for ${equity:,.2f} equity ({drawdown_pct:.1f}% current drawdown) - {max_contracts} contracts, ${daily_loss_limit:.0f} daily limit, {max_trades} trades/day",
-                fg=self.colors['success']
-            )
-        else:
-            self.auto_adjust_info_label.config(
-                text=f"✓ Optimized for ${equity:,.2f} equity - {max_contracts} contracts, ${daily_loss_limit:.0f} daily limit, {max_trades} trades/day",
-                fg=self.colors['success']
-            )
+        # Update info label with feedback
+        self.auto_adjust_info_label.config(
+            text=f"✓ Optimized for ${account_size:,.2f} account - {max_contracts} contracts, ${daily_loss_limit:.0f} daily limit, {max_trades} trades/day",
+            fg=self.colors['success']
+        )
     
     def start_bot(self):
         """Validate settings and start the trading AI."""

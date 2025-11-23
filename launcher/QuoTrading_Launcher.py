@@ -106,18 +106,6 @@ class QuoTradingLauncher:
         # Account mismatch detection threshold
         self.ACCOUNT_MISMATCH_THRESHOLD = 5000  # Dollars - warn if difference is > $5000 (catches wrong account tier selection)
         
-        # Prop firm maximum drawdown percentage (most common rule)
-        self.PROP_FIRM_MAX_DRAWDOWN = 8.0  # 8% for most prop firms (some use 10%)
-        
-        # TopStep contract limits by account tier
-        # Official TopStep rules: https://www.topstepfx.com/rules
-        self.TOPSTEP_CONTRACT_LIMITS = {
-            50000: 5,    # $50k account = max 5 contracts
-            100000: 10,  # $100k account = max 10 contracts
-            150000: 15,  # $150k account = max 15 contracts
-            250000: 25   # $250k account = max 25 contracts
-        }
-        
         self.root.configure(bg=self.colors['background'])
         
         # Load saved config
@@ -1262,21 +1250,21 @@ class QuoTradingLauncher:
         self.account_dropdown.pack(fill=tk.X)
         self.account_dropdown.bind("<<ComboboxSelected>>", self.on_account_selected)
         
-        # Middle: Test Connection button with label
+        # Middle: Ping button with label
         fetch_button_frame = tk.Frame(fetch_frame, bg=self.colors['card'])
         fetch_button_frame.pack(side=tk.LEFT, padx=5)
         
         sync_label = tk.Label(
             fetch_button_frame,
-            text="🔄 TEST:",
+            text="🔄 PING:",
             font=("Segoe UI", 8, "bold"),
             bg=self.colors['card'],
             fg=self.colors['success']
         )
         sync_label.pack(anchor=tk.W)
         
-        # Button to test RL server connection
-        button_text = "Test RL Server"
+        # Button to ping RL server
+        button_text = "Ping"
         fetch_btn = self.create_button(fetch_button_frame, button_text, self.fetch_account_info, "next")
         fetch_btn.pack()
         
@@ -1718,23 +1706,17 @@ class QuoTradingLauncher:
         except Exception as e:
             print(f"[ERROR] Failed to update account info: {e}")
     
-    def _update_account_size_from_fetched(self, balance: float):
-        """Helper method to update account size field with fetched balance."""
-        self.config["account_size"] = str(int(balance))
-        self.account_entry.delete(0, tk.END)
-        self.account_entry.insert(0, str(int(balance)))
-        self.save_config()
     
     def fetch_account_info(self):
-        """Test connection to RL server to verify API connectivity."""
-        print("\n[DEBUG] Test Connection button clicked!")
+        """Ping RL server to verify API connectivity."""
+        print("\n[DEBUG] Ping button clicked!")
         
         # Show loading spinner
-        self.show_loading("Testing RL server connection...")
+        self.show_loading("Pinging RL server...")
         
         def test_connection_thread():
-            """Test connection to RL server."""
-            print("[DEBUG] Testing RL server connection...")
+            """Ping RL server."""
+            print("[DEBUG] Pinging RL server...")
             import traceback
             try:
                 import requests
@@ -1743,21 +1725,21 @@ class QuoTradingLauncher:
                 rl_server_url = CLOUD_API_BASE_URL
                 health_endpoint = f"{rl_server_url}/health"
                 
-                print(f"[DEBUG] Pinging RL server: {health_endpoint}")
+                print(f"[DEBUG] Pinging: {health_endpoint}")
                 
-                # Test connection with timeout
+                # Ping with timeout
                 response = requests.get(health_endpoint, timeout=10)
                 
                 if response.status_code == 200:
-                    print("[DEBUG] RL server connection successful!")
+                    print("[DEBUG] Ping successful!")
                     
                     # Get response data if available
                     try:
                         data = response.json()
-                        status = data.get("status", "ok")
+                        status = data.get("status", "online")
                         version = data.get("version", "unknown")
                     except:
-                        status = "ok"
+                        status = "online"
                         version = "unknown"
                     
                     # Update UI on main thread
@@ -1766,17 +1748,17 @@ class QuoTradingLauncher:
                         
                         # Update info label to show connection success
                         self.account_info_label.config(
-                            text=f"✓ RL Server connected successfully! Status: {status}",
+                            text=f"✓ Ping successful! RL Server is online",
                             fg=self.colors['success']
                         )
                         
                         messagebox.showinfo(
-                            "Connection Test Successful",
-                            f"✓ Successfully connected to RL server!\n\n"
+                            "Ping Successful",
+                            f"✓ Connection Successful!\n\n"
                             f"Server: {rl_server_url}\n"
-                            f"Status: {status}\n"
+                            f"Status: {status.upper()}\n"
                             f"Version: {version}\n\n"
-                            f"The bot is ready to receive ML signals."
+                            f"RL server is ready."
                         )
                     
                     self.root.after(0, show_success)
@@ -1784,38 +1766,38 @@ class QuoTradingLauncher:
                     raise Exception(f"Server returned status code {response.status_code}")
                 
             except requests.exceptions.Timeout:
-                error_msg = "Connection timeout - RL server is not responding"
+                error_msg = "Timeout - RL server not responding"
                 
                 def show_error():
                     self.hide_loading()
                     messagebox.showerror(
-                        "Connection Test Failed",
-                        f"❌ Failed to connect to RL server:\n\n{error_msg}\n\n"
+                        "Ping Failed",
+                        f"❌ Connection Failed\n\n{error_msg}\n\n"
                         f"Server: {rl_server_url}\n\n"
                         f"Please check:\n"
-                        f"• Your internet connection\n"
+                        f"• Internet connection\n"
                         f"• Firewall settings\n"
-                        f"• RL server is operational\n\n"
-                        f"Contact support if the issue persists."
+                        f"• RL server status\n\n"
+                        f"Contact support if issue persists."
                     )
                     print(f"[ERROR] {error_msg}")
                 
                 self.root.after(0, show_error)
                 
             except requests.exceptions.ConnectionError:
-                error_msg = "Cannot connect to RL server - network error"
+                error_msg = "Cannot connect - network error"
                 
                 def show_error():
                     self.hide_loading()
                     messagebox.showerror(
-                        "Connection Test Failed",
-                        f"❌ Failed to connect to RL server:\n\n{error_msg}\n\n"
+                        "Ping Failed",
+                        f"❌ Connection Failed\n\n{error_msg}\n\n"
                         f"Server: {rl_server_url}\n\n"
                         f"Please check:\n"
-                        f"• Your internet connection\n"
+                        f"• Internet connection\n"
                         f"• Firewall settings\n"
-                        f"• RL server is operational\n\n"
-                        f"Contact support if the issue persists."
+                        f"• RL server status\n\n"
+                        f"Contact support if issue persists."
                     )
                     print(f"[ERROR] {error_msg}")
                 
@@ -1828,15 +1810,15 @@ class QuoTradingLauncher:
                 def show_error():
                     self.hide_loading()
                     messagebox.showerror(
-                        "Connection Test Failed",
-                        f"❌ Failed to connect to RL server:\n\n{error_msg}\n\n"
+                        "Ping Failed",
+                        f"❌ Connection Failed\n\n{error_msg}\n\n"
                         f"Server: {rl_server_url}\n\n"
-                        f"Contact support if the issue persists."
+                        f"Contact support if issue persists."
                     )
                     
                     # Log to console for debugging
                     print(f"\n{'='*60}")
-                    print(f"RL SERVER CONNECTION ERROR")
+                    print(f"PING ERROR")
                     print(f"{'='*60}")
                     print(f"URL: {rl_server_url}")
                     print(f"Error: {error_msg}")
@@ -1846,7 +1828,7 @@ class QuoTradingLauncher:
                 
                 self.root.after(0, show_error)
         
-        # Start connection test in background thread
+        # Start ping in background thread
         thread = threading.Thread(target=test_connection_thread, daemon=True)
         thread.start()
     

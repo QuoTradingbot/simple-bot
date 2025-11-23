@@ -776,11 +776,6 @@ def admin_dashboard_stats():
             signal_exp_total = rl_stats['total'] or 0
             signal_exp_24h = rl_stats['today'] or 0
             
-            # Exit experiences (for now, use same data as signal experiences)
-            # TODO: Add separate tracking for exit experiences when exit decision logic is implemented
-            exit_exp_total = signal_exp_total
-            exit_exp_24h = signal_exp_24h
-            
             return jsonify({
                 "users": {
                     "total": total_users,
@@ -796,9 +791,7 @@ def admin_dashboard_stats():
                 },
                 "rl_experiences": {
                     "total_signal_experiences": signal_exp_total,
-                    "total_exit_experiences": exit_exp_total,
-                    "signal_experiences_24h": signal_exp_24h,
-                    "exit_experiences_24h": exit_exp_24h
+                    "signal_experiences_24h": signal_exp_24h
                 }
             }), 200
     except Exception as e:

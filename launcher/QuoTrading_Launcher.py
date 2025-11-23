@@ -1231,11 +1231,11 @@ class QuoTradingLauncher:
         # Check if accounts were already fetched during login
         pre_loaded_accounts = self.config.get("accounts", [])
         if pre_loaded_accounts:
-            # Just show the account ID
-            account_names = [acc['id'] for acc in pre_loaded_accounts]
+            # Show account name with balance for better visibility
+            account_names = [f"{acc['name']} (${acc['balance']:,.0f})" for acc in pre_loaded_accounts]
             default_value = account_names[0]
         else:
-            account_names = ["Default Account"]
+            account_names = ["No accounts loaded"]
             default_value = account_names[0]
         
         self.account_dropdown_var = tk.StringVar(value=default_value)
@@ -1501,33 +1501,24 @@ class QuoTradingLauncher:
         ).pack(anchor=tk.W, pady=(0, 1))
         
         # Get account type to set ENFORCED limits
-        account_type = self.config.get("broker_type", "Prop Firm")
+        # Max contracts - user configurable, no account type restrictions
+        self.max_contracts_allowed = 25  # General limit for safety
         
-        # Enforce actual broker limits - exceeding these will cause trade rejection
-        if account_type == "Prop Firm":
-            max_contracts_allowed = 5  # Prop firm strict limit
-        else:
-            max_contracts_allowed = 25  # Live broker flexible limit
-        
-        # Store for validation
-        self.max_contracts_allowed = max_contracts_allowed
-        self.account_type = account_type
-        
-        self.contracts_var = tk.IntVar(value=min(self.config.get("max_contracts", 3), max_contracts_allowed))
+        self.contracts_var = tk.IntVar(value=min(self.config.get("max_contracts", 3), self.max_contracts_allowed))
         
         contracts_spin = ttk.Spinbox(
             contracts_frame,
             from_=1,
-            to=max_contracts_allowed,  # Enforced based on account type
+            to=self.max_contracts_allowed,
             textvariable=self.contracts_var,
             width=12
         )
         contracts_spin.pack(fill=tk.X, ipady=2)
         
-        # Info label showing enforced contract limit
+        # Info label
         contracts_info = tk.Label(
             contracts_frame,
-            text=f"Max {max_contracts_allowed} for {account_type} (enforced)",
+            text=f"Max {self.max_contracts_allowed} contracts (safety limit)",
             font=("Segoe UI", 7, "bold"),
             bg=self.colors['card'],
             fg=self.colors['text_light']
@@ -1684,15 +1675,19 @@ class QuoTradingLauncher:
     
     def on_account_selected(self, event=None):
         """Update account size field when user selects a different account from dropdown."""
-        selected_id = self.account_dropdown_var.get()
+        selected_display = self.account_dropdown_var.get()
         accounts = self.config.get("accounts", [])
         
-        if not accounts or "Click" in selected_id:
+        if not accounts or "No accounts" in selected_display:
             return
         
-        # Find account by ID
+        # Parse account name from display format: "Account Name ($50,000)"
         try:
-            selected_account = next((acc for acc in accounts if acc['id'] == selected_id), None)
+            # Extract account name (everything before the last opening parenthesis)
+            account_name = selected_display.rsplit('(', 1)[0].strip()
+            
+            # Find account by name
+            selected_account = next((acc for acc in accounts if acc['name'] == account_name), None)
             
             if selected_account:
                 # Update account size field with selected account's balance
@@ -1701,7 +1696,7 @@ class QuoTradingLauncher:
                 self.account_entry.insert(0, str(int(balance)))
                 
                 # Update info label
-                info_text = f"✓ Balance: ${selected_account['balance']:,.2f} | Equity: ${selected_account['equity']:,.2f} | Type: {selected_account.get('type', 'Unknown')}"
+                info_text = f"✓ {selected_account['name']} | Balance: ${selected_account['balance']:,.2f}"
                 self.account_info_label.config(text=info_text, fg=self.colors['success'])
         except Exception as e:
             print(f"[ERROR] Failed to update account info: {e}")
@@ -1941,34 +1936,31 @@ class QuoTradingLauncher:
         self.config["confidence_trading"] = self.confidence_trading_var.get()
         self.config["selected_account"] = self.account_dropdown_var.get()
         
-        # Get selected account ID - use the actual account ID from accounts list
-        selected_account_name = self.account_dropdown_var.get()
+        # Get selected account ID - parse from dropdown display format
+        selected_display = self.account_dropdown_var.get()
         selected_account_id = None
         accounts = self.config.get("accounts", [])
         
-        # Try to match by display name first
-        for acc in accounts:
-            acc_display_name = f"{acc['name']} - ${acc['balance']:,.2f}"
-            if acc_display_name == selected_account_name:
-                selected_account_id = acc.get("id")
-                self.config["selected_account_id"] = selected_account_id
-                break
-        
-        # If no match, try direct name match
-        if not selected_account_id:
+        # Parse account name from display format: "Account Name ($50,000)"
+        try:
+            account_name = selected_display.rsplit('(', 1)[0].strip()
+            
+            # Find matching account
             for acc in accounts:
-                if acc['name'] == selected_account_name:
+                if acc['name'] == account_name:
                     selected_account_id = acc.get("id")
                     self.config["selected_account_id"] = selected_account_id
                     break
+        except:
+            pass
         
-        # If still no match and we have accounts, use the first one
+        # If no match and we have accounts, use the first one
         if not selected_account_id and accounts:
             selected_account_id = accounts[0].get("id")
             self.config["selected_account_id"] = selected_account_id
-            print(f"[WARNING] Could not match account '{selected_account_name}', using first account: {selected_account_id}")
+            print(f"[WARNING] Could not parse account from '{selected_display}', using first account: {selected_account_id}")
         
-        print(f"[DEBUG] Selected account: {selected_account_name}")
+        print(f"[DEBUG] Selected account: {selected_display}")
         print(f"[DEBUG] Account ID: {selected_account_id}")
         
         # CHECK INSTANCE LOCK - Prevent duplicate trading on same account

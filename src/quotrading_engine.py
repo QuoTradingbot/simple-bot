@@ -6215,6 +6215,11 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
     """
     current_time = get_current_time()
     
+    # Check if license has expired
+    if bot_status.get("license_expired", False):
+        reason = bot_status.get("license_expiry_reason", "License expired")
+        return False, f"Trading disabled: {reason}"
+    
     # Check trade limits and emergency stops
     is_safe, reason = check_trade_limits(current_time)
     if not is_safe:
@@ -7051,6 +7056,7 @@ def main(symbol_override: str = None) -> None:
     event_loop.register_handler(EventType.FLATTEN_MODE, handle_flatten_mode_event)
     event_loop.register_handler(EventType.POSITION_RECONCILIATION, handle_position_reconciliation_event)
     event_loop.register_handler(EventType.CONNECTION_HEALTH, handle_connection_health_event)
+    event_loop.register_handler(EventType.LICENSE_CHECK, handle_license_check_event)
     event_loop.register_handler(EventType.SHUTDOWN, handle_shutdown_event)
     
     # Register shutdown handlers for cleanup
@@ -7163,10 +7169,74 @@ def handle_time_check_event(data: Dict[str, Any]) -> None:
     symbol = CONFIG["instrument"]
     if symbol in state:
         tz = pytz.timezone(CONFIG["timezone"])
-        current_time = datetime.now(tz).time()
+        current_time = datetime.now(tz)
+        current_time_only = current_time.time()
         
         # Check for daily reset
-        check_daily_reset(symbol, datetime.now(tz))
+        check_daily_reset(symbol, current_time)
+        
+        # Check for delayed license expiration stop conditions
+        from datetime import time as datetime_time
+        
+        # If license expired and we're waiting for market close (Friday)
+        if bot_status.get("stop_at_market_close", False):
+            maintenance_start = CONFIG.get("forced_flatten_time", datetime_time(17, 0))  # 5:00 PM ET
+            if current_time_only >= maintenance_start:
+                logger.critical("🛑 Market closed - stopping trading due to expired license")
+                
+                # Flatten any open positions
+                if state[symbol]["position"]["active"]:
+                    logger.critical(f"🔒 Closing position at market close")
+                    position = state[symbol]["position"]
+                    current_price = state[symbol]["bars"][-1]["close"] if state[symbol]["bars"] else None
+                    
+                    if current_price:
+                        side = position["side"]
+                        exit_side = "SELL" if side == "long" else "BUY"
+                        quantity = position["quantity"]
+                        
+                        try:
+                            order = broker.place_market_order(symbol, exit_side, quantity)
+                            if order:
+                                logger.info(f"✅ Position closed at market close")
+                        except Exception as e:
+                            logger.error(f"Failed to close position: {e}")
+                
+                # Disable trading
+                bot_status["trading_enabled"] = False
+                bot_status["emergency_stop"] = True
+                bot_status["stop_reason"] = "License expired - stopped at Friday market close"
+                bot_status["stop_at_market_close"] = False
+        
+        # If license expired and we're waiting for maintenance window
+        elif bot_status.get("stop_at_maintenance", False):
+            maintenance_start = CONFIG.get("forced_flatten_time", datetime_time(17, 0))  # 5:00 PM ET
+            if current_time_only >= maintenance_start:
+                logger.critical("🛑 Maintenance window reached - stopping trading due to expired license")
+                
+                # Flatten any open positions
+                if state[symbol]["position"]["active"]:
+                    logger.critical(f"🔒 Closing position at maintenance window")
+                    position = state[symbol]["position"]
+                    current_price = state[symbol]["bars"][-1]["close"] if state[symbol]["bars"] else None
+                    
+                    if current_price:
+                        side = position["side"]
+                        exit_side = "SELL" if side == "long" else "BUY"
+                        quantity = position["quantity"]
+                        
+                        try:
+                            order = broker.place_market_order(symbol, exit_side, quantity)
+                            if order:
+                                logger.info(f"✅ Position closed at maintenance window")
+                        except Exception as e:
+                            logger.error(f"Failed to close position: {e}")
+                
+                # Disable trading
+                bot_status["trading_enabled"] = False
+                bot_status["emergency_stop"] = True
+                bot_status["stop_reason"] = "License expired - stopped at maintenance window"
+                bot_status["stop_at_maintenance"] = False
         
         # Critical safety check - NO positions past 5 PM
         check_no_overnight_positions(symbol)
@@ -7286,6 +7356,163 @@ def handle_connection_health_event(data: Dict[str, Any]) -> None:
     Runs every 30 seconds.
     """
     check_broker_connection()
+
+
+def handle_license_check_event(data: Dict[str, Any]) -> None:
+    """
+    Handle periodic license validation check event.
+    Validates license with cloud API and gracefully stops trading if expired.
+    Runs every 5 minutes.
+    
+    Expiration Handling Strategy:
+    - If expires during maintenance window (5:00-6:00 PM ET): Stop when maintenance begins
+    - If expires on Friday after hours: Stop when market closes (5:00 PM ET)  
+    - If expires on weekend: Stop on Friday at close
+    - Otherwise: Stop immediately and flatten positions
+    """
+    global cloud_api_client
+    
+    # Skip if in backtest mode or no cloud client
+    if is_backtest_mode() or cloud_api_client is None:
+        return
+    
+    # Skip if already stopped for expiration
+    if bot_status.get("license_expired", False):
+        return
+    
+    try:
+        # Get license key from config
+        license_key = CONFIG.get("quotrading_license") or CONFIG.get("user_api_key")
+        if not license_key:
+            logger.warning("No license key configured - cannot validate")
+            return
+        
+        # Validate license via API
+        import requests
+        api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-api-v2.azurewebsites.net")
+        
+        response = requests.post(
+            f"{api_url}/api/main",
+            json={"license_key": license_key},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            # Check if license is valid
+            if not data.get("license_valid", False):
+                # License has expired or been revoked
+                reason = data.get("message", "License invalid")
+                logger.critical(f"🚨 LICENSE EXPIRED: {reason}")
+                bot_status["license_expired"] = True
+                bot_status["license_expiry_reason"] = reason
+                
+                # Determine when to stop trading based on current time
+                current_time = get_current_time()
+                trading_state = get_trading_state(current_time)
+                
+                eastern_tz = pytz.timezone('US/Eastern')
+                eastern_time = current_time.astimezone(eastern_tz)
+                weekday = eastern_time.weekday()  # 0=Monday, 6=Sunday
+                current_time_only = eastern_time.time()
+                
+                from datetime import time as datetime_time
+                
+                # Check if we're approaching maintenance or end of week
+                flatten_time = CONFIG.get("flatten_time", datetime_time(16, 45))  # 4:45 PM ET
+                maintenance_start = CONFIG.get("forced_flatten_time", datetime_time(17, 0))  # 5:00 PM ET
+                
+                should_stop_now = True
+                stop_reason = "License expired - stopping trading immediately"
+                
+                # If Friday and before close, wait until market closes
+                if weekday == 4 and current_time_only < maintenance_start:
+                    logger.warning(f"⏰ License expired on Friday - will stop at market close (5:00 PM ET)")
+                    should_stop_now = False
+                    stop_reason = "License expired - will stop at Friday market close"
+                    # Set flag to stop at market close
+                    bot_status["stop_at_market_close"] = True
+                
+                # If weekday and close to maintenance, wait until maintenance
+                elif weekday < 4 and flatten_time <= current_time_only < maintenance_start:
+                    logger.warning(f"⏰ License expired during flatten window - will stop at maintenance (5:00 PM ET)")
+                    should_stop_now = False
+                    stop_reason = "License expired - will stop at maintenance window"
+                    bot_status["stop_at_maintenance"] = True
+                
+                # If weekend, should have already stopped on Friday
+                elif weekday in [5, 6]:  # Saturday or Sunday
+                    logger.critical("⏰ License expired over weekend - stopping immediately")
+                    should_stop_now = True
+                    stop_reason = "License expired over weekend"
+                
+                if should_stop_now:
+                    logger.critical(f"🛑 {stop_reason}")
+                    
+                    # Flatten any open positions
+                    symbol = CONFIG["instrument"]
+                    if symbol in state and state[symbol]["position"]["active"]:
+                        logger.critical(f"🔒 Closing position due to license expiration")
+                        position = state[symbol]["position"]
+                        current_price = state[symbol]["bars"][-1]["close"] if state[symbol]["bars"] else None
+                        
+                        if current_price:
+                            # Force exit position
+                            side = position["side"]
+                            exit_side = "SELL" if side == "long" else "BUY"
+                            quantity = position["quantity"]
+                            
+                            try:
+                                # Execute market order to close
+                                order = broker.place_market_order(symbol, exit_side, quantity)
+                                if order:
+                                    logger.info(f"✅ Position closed due to license expiration")
+                            except Exception as e:
+                                logger.error(f"Failed to close position: {e}")
+                    
+                    # Disable trading
+                    bot_status["trading_enabled"] = False
+                    bot_status["emergency_stop"] = True
+                    bot_status["stop_reason"] = stop_reason
+                    
+                    # Send notification
+                    try:
+                        notifier = get_notifier()
+                        notifier.send_error_alert(
+                            error_message=f"🚨 TRADING STOPPED: {reason}\n\nPlease renew your license to continue trading.",
+                            error_type="License Expired"
+                        )
+                    except Exception as e:
+                        logger.debug(f"Failed to send license expiry notification: {e}")
+                    
+                    logger.critical("🔒 Trading disabled - license renewal required")
+                    logger.critical("Contact support@quotrading.com to renew your license")
+                else:
+                    logger.warning(f"⚠️ {stop_reason}")
+            else:
+                # License is still valid
+                logger.debug("✅ License validation successful")
+        
+        elif response.status_code == 401 or response.status_code == 403:
+            # Unauthorized - license likely expired
+            logger.critical("🚨 LICENSE VALIDATION FAILED - Unauthorized")
+            bot_status["license_expired"] = True
+            bot_status["trading_enabled"] = False
+            bot_status["emergency_stop"] = True
+            bot_status["stop_reason"] = "License validation failed - unauthorized"
+        
+        else:
+            # Other error - log but don't stop trading (could be temporary API issue)
+            logger.warning(f"⚠️ License validation returned HTTP {response.status_code} - continuing for now")
+    
+    except requests.Timeout:
+        # Timeout - don't stop trading, could be temporary network issue
+        logger.warning("⏱️ License validation timeout - will retry in 5 minutes")
+    
+    except Exception as e:
+        # Other error - log but continue trading
+        logger.warning(f"License validation error: {e} - will retry in 5 minutes")
 
 
 def handle_shutdown_event(data: Dict[str, Any]) -> None:

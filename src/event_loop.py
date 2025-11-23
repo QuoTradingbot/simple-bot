@@ -39,6 +39,7 @@ class EventType(IntEnum):
     STOP_HIT = 13
     POSITION_RECONCILIATION = 14  # New: Periodic position sync check
     CONNECTION_HEALTH = 15  # New: Periodic broker connection health check
+    LICENSE_CHECK = 16  # New: Periodic license validation check
     
     # Medium priority events
     TICK_DATA = 20
@@ -393,6 +394,14 @@ class TimerManager:
                 if self._should_check("connection_health", current_time, 30):
                     self.event_loop.post_event(
                         EventType.CONNECTION_HEALTH,
+                        EventPriority.HIGH,
+                        {"time": current_time}
+                    )
+                
+                # License validation check (every 5 minutes)
+                if self._should_check("license_check", current_time, 300):
+                    self.event_loop.post_event(
+                        EventType.LICENSE_CHECK,
                         EventPriority.HIGH,
                         {"time": current_time}
                     )

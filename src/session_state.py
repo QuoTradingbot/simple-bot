@@ -69,7 +69,6 @@ class SessionStateManager:
             "current_drawdown_percent": 0.0,
             "daily_loss_percent": 0.0,
             "approaching_failure": False,
-            "in_recovery_mode": False,
             "warnings": [],
             "recommendations": [],
             "account_type": None,
@@ -138,13 +137,12 @@ class SessionStateManager:
         account_size: float,
         daily_loss_limit: float,
         current_confidence: float,
-        max_contracts: int,
-        recovery_mode_enabled: bool
+        max_contracts: int
     ) -> Tuple[list, list, Dict[str, Any]]:
         """
         Check current state and generate warnings/recommendations.
         
-        Recovery mode only tracks daily loss limit and initial balance.
+        Tracks daily loss limit only.
         No maximum drawdown or trailing drawdown tracking.
         
         Returns:
@@ -168,7 +166,6 @@ class SessionStateManager:
         critical_failure = daily_loss_severity >= 0.95
         
         self.state["approaching_failure"] = approaching_failure
-        self.state["in_recovery_mode"] = recovery_mode_enabled
         
         # Generate warnings
         if critical_failure:
@@ -177,16 +174,10 @@ class SessionStateManager:
                 "message": f"⚠️ CRITICAL: At {daily_loss_severity*100:.0f}% of daily loss limit! Account failure imminent!"
             })
         elif approaching_failure:
-            if recovery_mode_enabled:
-                warnings.append({
-                    "level": "warning",
-                    "message": f"⚠️ RECOVERY MODE ACTIVE: At {daily_loss_severity*100:.0f}% of daily loss limit. Bot continues trading with increased confidence."
-                })
-            else:
-                warnings.append({
-                    "level": "warning",
-                    "message": f"⚠️ WARNING: Approaching daily loss limit ({daily_loss_severity*100:.0f}% of max). Bot will STOP trading. Consider enabling Recovery Mode."
-                })
+            warnings.append({
+                "level": "warning",
+                "message": f"⚠️ WARNING: Approaching daily loss limit ({daily_loss_severity*100:.0f}% of max). Bot will STOP trading."
+            })
         
         if daily_loss_pct > 1.5 and account_type == "prop_firm":
             loss_dollars = abs(daily_pnl)
@@ -197,17 +188,6 @@ class SessionStateManager:
         
         # Generate recommendations based on account type and state
         if approaching_failure:
-            if not recovery_mode_enabled:
-                recommendations.append({
-                    "priority": "high",
-                    "message": "🔄 RECOMMEND: Enable Recovery Mode to continue trading when approaching limits with high-confidence signals"
-                })
-            else:
-                recommendations.append({
-                    "priority": "info",
-                    "message": "✅ Recovery Mode is ENABLED - Bot continues trading with dynamic risk management"
-                })
-            
             # Recommend higher confidence based on daily loss severity
             if daily_loss_severity >= SEVERITY_HIGH:
                 recommended_confidence = CONFIDENCE_THRESHOLD_HIGH
@@ -300,7 +280,6 @@ class SessionStateManager:
             "total_trades_today": self.state.get("total_trades_today"),
             "current_drawdown_percent": self.state.get("current_drawdown_percent"),
             "approaching_failure": self.state.get("approaching_failure"),
-            "in_recovery_mode": self.state.get("in_recovery_mode"),
             "account_type": self.state.get("account_type"),
             "broker": self.state.get("broker"),
         }

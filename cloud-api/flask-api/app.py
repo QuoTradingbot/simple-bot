@@ -3,7 +3,6 @@ QuoTrading Flask API with RL Brain + PostgreSQL License Validation
 Simple, reliable API that works everywhere
 """
 from flask import Flask, request, jsonify
-from azure.storage.blob import BlobServiceClient
 import os
 import json
 import psycopg2
@@ -21,11 +20,6 @@ from rl_decision_engine import CloudRLDecisionEngine
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-
-# Azure Storage configuration (for RL data)
-STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
-CONTAINER_NAME = "rl-data"
-BLOB_NAME = "signal_experience.json"
 
 # PostgreSQL configuration
 DB_HOST = os.environ.get("DB_HOST", "quotrading-db.postgres.database.azure.com")
@@ -205,8 +199,8 @@ def load_experiences(symbol='ES'):
     """
     Load RL experiences from PostgreSQL database for specific symbol.
     Each symbol (ES, NQ, YM, etc.) has separate RL brain.
-    Much faster for 1000+ concurrent users than blob storage.
-    Still uses 30-second cache for performance.
+    Uses PostgreSQL for scalability and performance with 1000+ concurrent users.
+    Implements 30-second cache for optimal performance.
     
     Args:
         symbol: Trading symbol (ES, NQ, YM, RTY, etc.)
@@ -1223,135 +1217,9 @@ def expire_licenses():
 # ============================================================================
 # RL EXPERIENCE ENDPOINTS - Centralized Learning System
 # ============================================================================
-
-@app.route('/api/rl/submit-experience', methods=['POST'])
-def submit_rl_experience():
-    """Bot submits trading experience to centralized RL database"""
-    try:
-        # Validate license
-        license_key = request.headers.get('X-License-Key') or request.json.get('license_key')
-        if not license_key:
-            return jsonify({"error": "License key required"}), 401
-        
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({"error": "Database error"}), 500
-        
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                cursor.execute("""
-                    SELECT license_status FROM users WHERE license_key = %s
-                """, (license_key,))
-                user = cursor.fetchone()
-                
-                if not user or user['license_status'] != 'active':
-                    return jsonify({"error": "Invalid or inactive license"}), 401
-                
-                # Get experience data from request
-                experience = request.json.get('experience')
-                if not experience:
-                    return jsonify({"error": "Experience data required"}), 400
-                
-                # Store in Azure Blob Storage
-                if STORAGE_CONNECTION_STRING:
-                    try:
-                        blob_service = BlobServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)
-                        container_client = blob_service.get_container_client(CONTAINER_NAME)
-                        
-                        # Ensure container exists
-                        try:
-                            container_client.create_container()
-                        except:
-                            pass  # Container already exists
-                        
-                        blob_client = container_client.get_blob_client(BLOB_NAME)
-                        
-                        # Download existing data
-                        try:
-                            existing_data = json.loads(blob_client.download_blob().readall())
-                        except:
-                            existing_data = {"experiences": []}
-                        
-                        # Append new experience
-                        existing_data["experiences"].append(experience)
-                        
-                        # Upload updated data
-                        blob_client.upload_blob(
-                            json.dumps(existing_data),
-                            overwrite=True
-                        )
-                        
-                        total_count = len(existing_data["experiences"])
-                        logging.info(f"✅ RL experience added. Total: {total_count}")
-                        
-                        return jsonify({
-                            "status": "success",
-                            "total_experiences": total_count,
-                            "message": "Experience added to collective RL brain"
-                        }), 200
-                        
-                    except Exception as e:
-                        logging.error(f"Blob storage error: {e}")
-                        return jsonify({"error": "Storage error"}), 500
-                else:
-                    return jsonify({"error": "RL storage not configured"}), 503
-                    
-        finally:
-            conn.close()
-            
-    except Exception as e:
-        logging.error(f"Submit experience error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/rl/get-brain', methods=['GET'])
-def get_rl_brain():
-    """Bot downloads latest RL brain for inference"""
-    try:
-        # Validate license
-        license_key = request.headers.get('X-License-Key') or request.args.get('license_key')
-        if not license_key:
-            return jsonify({"error": "License key required"}), 401
-        
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({"error": "Database error"}), 500
-        
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                cursor.execute("""
-                    SELECT license_status FROM users WHERE license_key = %s
-                """, (license_key,))
-                user = cursor.fetchone()
-                
-                if not user or user['license_status'] != 'active':
-                    return jsonify({"error": "Invalid or inactive license"}), 401
-                
-                # Download from Azure Blob Storage
-                if STORAGE_CONNECTION_STRING:
-                    try:
-                        blob_service = BlobServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)
-                        blob_client = blob_service.get_blob_client(CONTAINER_NAME, BLOB_NAME)
-                        
-                        data = json.loads(blob_client.download_blob().readall())
-                        
-                        return jsonify({
-                            "status": "success",
-                            "total_experiences": len(data.get("experiences", [])),
-                            "experiences": data.get("experiences", [])
-                        }), 200
-                        
-                    except Exception as e:
-                        logging.error(f"Blob download error: {e}")
-                        return jsonify({"error": "RL brain not found"}), 404
-                else:
-                    return jsonify({"error": "RL storage not configured"}), 503
-                    
-        finally:
-            conn.close()
-            
-    except Exception as e:
-        logging.error(f"Get brain error: {e}")
-        return jsonify({"error": str(e)}), 500
+# Note: RL experiences are now stored in PostgreSQL (rl_experiences table)
+# Bots write experiences directly to the database via the bot SDK
+# Admin endpoints query the database for monitoring and analytics
 
 @app.route('/api/admin/rl-stats', methods=['GET'])
 def admin_rl_stats():
@@ -1904,8 +1772,7 @@ def admin_system_health():
     health_status = {
         "timestamp": datetime.now().isoformat(),
         "database": {"status": "unknown", "response_time_ms": 0, "error": None},
-        "rl_engine": {"status": "unknown", "total_experiences": 0, "response_time_ms": 0, "error": None},
-        "azure_blob": {"status": "unknown", "response_time_ms": 0, "error": None}
+        "rl_engine": {"status": "unknown", "total_experiences": 0, "response_time_ms": 0, "error": None}
     }
     
     # Test PostgreSQL connection
@@ -1954,33 +1821,6 @@ def admin_system_health():
         health_status["rl_engine"] = {
             "status": "unhealthy",
             "total_experiences": 0,
-            "response_time_ms": 0,
-            "error": str(e)
-        }
-    
-    # Test Azure Blob Storage connection
-    blob_start = datetime.now()
-    try:
-        if STORAGE_CONNECTION_STRING:
-            blob_service = BlobServiceClient.from_connection_string(STORAGE_CONNECTION_STRING)
-            container_client = blob_service.get_container_client(CONTAINER_NAME)
-            container_client.get_container_properties()
-            blob_time = (datetime.now() - blob_start).total_seconds() * 1000
-            health_status["azure_blob"] = {
-                "status": "healthy",
-                "response_time_ms": round(blob_time, 2),
-                "error": None
-            }
-        else:
-            health_status["azure_blob"] = {
-                "status": "not_configured",
-                "response_time_ms": 0,
-                "error": "Azure Storage not configured"
-            }
-    except Exception as e:
-        logging.error(f"Azure Blob health check error: {e}")
-        health_status["azure_blob"] = {
-            "status": "unhealthy",
             "response_time_ms": 0,
             "error": str(e)
         }

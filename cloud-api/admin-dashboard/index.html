@@ -1551,6 +1551,42 @@
         document.getElementById('addUserModal').addEventListener('click', function(e) {
             if (e.target === this) closeAddUserModal();
         });
+
+        // ========== PHASE 2: CHARTS & GRAPHS ==========
+        // Chart.js will be loaded from CDN in production
+        // Charts functionality ready for integration
+        
+        // Chart loading functions (stub for Phase 2)
+        async function loadChartData(endpoint) {
+            try {
+                const response = await fetch(`${API_URL}/api/admin/charts/${endpoint}?admin_key=${API_KEY}`);
+                if (!response.ok) throw new Error('Chart data fetch failed');
+                return await response.json();
+            } catch (error) {
+                console.error(`Chart data error for ${endpoint}:`, error);
+                return null;
+            }
+        }
+
+        // Initialize charts when Chart.js is loaded
+        function initializeCharts() {
+            console.log('📊 Chart endpoints ready:');
+            console.log('- /api/admin/charts/user-growth');
+            console.log('- /api/admin/charts/api-usage');
+            console.log('- /api/admin/charts/mrr');
+            console.log('- /api/admin/charts/collective-pnl');
+            console.log('- /api/admin/charts/win-rate-trend');
+            console.log('- /api/admin/charts/top-performers');
+            console.log('- /api/admin/charts/experience-growth');
+            console.log('- /api/admin/charts/confidence-dist');
+            console.log('- /api/admin/charts/confidence-winrate');
+        }
+
+        // Call on page load
+        setTimeout(initializeCharts, 1000);
     </script>
+    
+    <!-- Chart.js Library (Phase 2) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </body>
 </html>

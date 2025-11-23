@@ -1704,6 +1704,354 @@ def root():
         "endpoints": ["/api/hello", "/api/main", "/api/stripe/webhook", "/api/admin/create-license", "/api/admin/expire-licenses"]
     }), 200
 
+# ========== PHASE 2: CHART DATA ENDPOINTS ==========
+
+@app.route('/api/admin/charts/user-growth', methods=['GET'])
+def admin_chart_user_growth():
+    """Get user growth by week for last 12 weeks"""
+    admin_key = request.args.get('admin_key') or request.args.get('license_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"weeks": [], "counts": []}), 200
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT 
+                    DATE_TRUNC('week', created_at) as week,
+                    COUNT(*) as count
+                FROM licenses
+                WHERE created_at >= NOW() - INTERVAL '12 weeks'
+                GROUP BY week
+                ORDER BY week
+            """)
+            results = cursor.fetchall()
+            
+            weeks = [f"Week {i+1}" for i in range(len(results))]
+            counts = [int(r['count']) for r in results]
+            
+            return jsonify({"weeks": weeks, "counts": counts}), 200
+    except Exception as e:
+        logging.error(f"User growth chart error: {e}")
+        return jsonify({"weeks": [], "counts": []}), 200
+    finally:
+        conn.close()
+
+@app.route('/api/admin/charts/api-usage', methods=['GET'])
+def admin_chart_api_usage():
+    """Get API calls per hour for last 24 hours"""
+    admin_key = request.args.get('admin_key') or request.args.get('license_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"hours": [], "counts": []}), 200
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT 
+                    EXTRACT(HOUR FROM timestamp) as hour,
+                    COUNT(*) as count
+                FROM api_logs
+                WHERE timestamp >= NOW() - INTERVAL '24 hours'
+                GROUP BY hour
+                ORDER BY hour
+            """)
+            results = cursor.fetchall()
+            
+            # Create 24-hour array with 0 for missing hours
+            hour_counts = {int(r['hour']): int(r['count']) for r in results}
+            hours = [f"{h:02d}:00" for h in range(24)]
+            counts = [hour_counts.get(h, 0) for h in range(24)]
+            
+            return jsonify({"hours": hours, "counts": counts}), 200
+    except Exception as e:
+        logging.error(f"API usage chart error: {e}")
+        return jsonify({"hours": [], "counts": []}), 200
+    finally:
+        conn.close()
+
+@app.route('/api/admin/charts/mrr', methods=['GET'])
+def admin_chart_mrr():
+    """Get Monthly Recurring Revenue trend"""
+    admin_key = request.args.get('admin_key') or request.args.get('license_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"months": [], "revenue": []}), 200
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT 
+                    TO_CHAR(DATE_TRUNC('month', created_at), 'Mon') as month,
+                    COUNT(*) FILTER (WHERE license_type = 'MONTHLY') * 49.99 +
+                    COUNT(*) FILTER (WHERE license_type = 'ANNUAL') * 499.99 as revenue
+                FROM licenses
+                WHERE created_at >= NOW() - INTERVAL '6 months'
+                AND UPPER(license_status) = 'ACTIVE'
+                GROUP BY DATE_TRUNC('month', created_at)
+                ORDER BY DATE_TRUNC('month', created_at)
+            """)
+            results = cursor.fetchall()
+            
+            months = [r['month'] for r in results]
+            revenue = [float(r['revenue']) if r['revenue'] else 0 for r in results]
+            
+            return jsonify({"months": months, "revenue": revenue}), 200
+    except Exception as e:
+        logging.error(f"MRR chart error: {e}")
+        return jsonify({"months": [], "revenue": []}), 200
+    finally:
+        conn.close()
+
+@app.route('/api/admin/charts/collective-pnl', methods=['GET'])
+def admin_chart_collective_pnl():
+    """Get collective P&L for all users daily (last 30 days)"""
+    admin_key = request.args.get('admin_key') or request.args.get('license_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"dates": [], "pnl": []}), 200
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT 
+                    DATE(created_at) as date,
+                    SUM(pnl) as daily_pnl
+                FROM rl_experiences
+                WHERE created_at >= NOW() - INTERVAL '30 days'
+                AND took_trade = TRUE
+                GROUP BY DATE(created_at)
+                ORDER BY DATE(created_at)
+            """)
+            results = cursor.fetchall()
+            
+            # Calculate cumulative P&L
+            cumulative = 0
+            dates = []
+            pnl_values = []
+            
+            for r in results:
+                cumulative += float(r['daily_pnl']) if r['daily_pnl'] else 0
+                dates.append(r['date'].strftime('%b %d'))
+                pnl_values.append(round(cumulative, 2))
+            
+            return jsonify({"dates": dates, "pnl": pnl_values}), 200
+    except Exception as e:
+        logging.error(f"Collective P&L chart error: {e}")
+        return jsonify({"dates": [], "pnl": []}), 200
+    finally:
+        conn.close()
+
+@app.route('/api/admin/charts/win-rate-trend', methods=['GET'])
+def admin_chart_win_rate_trend():
+    """Get win rate trend by week"""
+    admin_key = request.args.get('admin_key') or request.args.get('license_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"weeks": [], "win_rates": []}), 200
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT 
+                    DATE_TRUNC('week', created_at) as week,
+                    COUNT(*) FILTER (WHERE pnl > 0) * 100.0 / NULLIF(COUNT(*), 0) as win_rate
+                FROM rl_experiences
+                WHERE created_at >= NOW() - INTERVAL '12 weeks'
+                AND took_trade = TRUE
+                GROUP BY week
+                ORDER BY week
+            """)
+            results = cursor.fetchall()
+            
+            weeks = [f"Week {i+1}" for i in range(len(results))]
+            win_rates = [round(float(r['win_rate']), 2) if r['win_rate'] else 0 for r in results]
+            
+            return jsonify({"weeks": weeks, "win_rates": win_rates}), 200
+    except Exception as e:
+        logging.error(f"Win rate trend chart error: {e}")
+        return jsonify({"weeks": [], "win_rates": []}), 200
+    finally:
+        conn.close()
+
+@app.route('/api/admin/charts/top-performers', methods=['GET'])
+def admin_chart_top_performers():
+    """Get top 10 users by P&L"""
+    admin_key = request.args.get('admin_key') or request.args.get('license_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"users": [], "pnl": []}), 200
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT 
+                    license_key,
+                    SUM(pnl) as total_pnl
+                FROM rl_experiences
+                WHERE took_trade = TRUE
+                GROUP BY license_key
+                ORDER BY total_pnl DESC
+                LIMIT 10
+            """)
+            results = cursor.fetchall()
+            
+            users = [r['license_key'][:12] + '...' for r in results]  # Truncate long keys
+            pnl = [round(float(r['total_pnl']), 2) if r['total_pnl'] else 0 for r in results]
+            
+            return jsonify({"users": users, "pnl": pnl}), 200
+    except Exception as e:
+        logging.error(f"Top performers chart error: {e}")
+        return jsonify({"users": [], "pnl": []}), 200
+    finally:
+        conn.close()
+
+@app.route('/api/admin/charts/experience-growth', methods=['GET'])
+def admin_chart_experience_growth():
+    """Get experience accumulation over time (last 30 days)"""
+    admin_key = request.args.get('admin_key') or request.args.get('license_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"dates": [], "counts": []}), 200
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT 
+                    DATE(created_at) as date,
+                    COUNT(*) as daily_count
+                FROM rl_experiences
+                WHERE created_at >= NOW() - INTERVAL '30 days'
+                GROUP BY DATE(created_at)
+                ORDER BY DATE(created_at)
+            """)
+            results = cursor.fetchall()
+            
+            # Calculate cumulative count
+            cumulative = 0
+            dates = []
+            counts = []
+            
+            for r in results:
+                cumulative += int(r['daily_count'])
+                dates.append(r['date'].strftime('%b %d'))
+                counts.append(cumulative)
+            
+            return jsonify({"dates": dates, "counts": counts}), 200
+    except Exception as e:
+        logging.error(f"Experience growth chart error: {e}")
+        return jsonify({"dates": [], "counts": []}), 200
+    finally:
+        conn.close()
+
+@app.route('/api/admin/charts/confidence-dist', methods=['GET'])
+def admin_chart_confidence_dist():
+    """Get confidence level distribution (histogram)"""
+    admin_key = request.args.get('admin_key') or request.args.get('license_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"ranges": [], "counts": []}), 200
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            # Assuming confidence can be derived from took_trade probability
+            # For now, create mock distribution based on trade patterns
+            cursor.execute("""
+                SELECT 
+                    CASE 
+                        WHEN ABS(recent_pnl) < 10 THEN '0-20%'
+                        WHEN ABS(recent_pnl) < 20 THEN '20-40%'
+                        WHEN ABS(recent_pnl) < 30 THEN '40-60%'
+                        WHEN ABS(recent_pnl) < 40 THEN '60-80%'
+                        ELSE '80-100%'
+                    END as confidence_range,
+                    COUNT(*) as count
+                FROM rl_experiences
+                GROUP BY confidence_range
+                ORDER BY confidence_range
+            """)
+            results = cursor.fetchall()
+            
+            ranges = [r['confidence_range'] for r in results]
+            counts = [int(r['count']) for r in results]
+            
+            return jsonify({"ranges": ranges, "counts": counts}), 200
+    except Exception as e:
+        logging.error(f"Confidence distribution chart error: {e}")
+        return jsonify({"ranges": [], "counts": []}), 200
+    finally:
+        conn.close()
+
+@app.route('/api/admin/charts/confidence-winrate', methods=['GET'])
+def admin_chart_confidence_winrate():
+    """Get win rate by confidence level (scatter plot data)"""
+    admin_key = request.args.get('admin_key') or request.args.get('license_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"confidence": [], "win_rate": [], "sample_size": []}), 200
+    
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute("""
+                SELECT 
+                    CASE 
+                        WHEN ABS(recent_pnl) < 10 THEN 10
+                        WHEN ABS(recent_pnl) < 20 THEN 30
+                        WHEN ABS(recent_pnl) < 30 THEN 50
+                        WHEN ABS(recent_pnl) < 40 THEN 70
+                        ELSE 90
+                    END as confidence_level,
+                    COUNT(*) FILTER (WHERE pnl > 0) * 100.0 / NULLIF(COUNT(*), 0) as win_rate,
+                    COUNT(*) as sample_size
+                FROM rl_experiences
+                WHERE took_trade = TRUE
+                GROUP BY confidence_level
+                ORDER BY confidence_level
+            """)
+            results = cursor.fetchall()
+            
+            confidence = [int(r['confidence_level']) for r in results]
+            win_rate = [round(float(r['win_rate']), 2) if r['win_rate'] else 0 for r in results]
+            sample_size = [int(r['sample_size']) for r in results]
+            
+            return jsonify({
+                "confidence": confidence,
+                "win_rate": win_rate,
+                "sample_size": sample_size
+            }), 200
+    except Exception as e:
+        logging.error(f"Confidence vs win rate chart error: {e}")
+        return jsonify({"confidence": [], "win_rate": [], "sample_size": []}), 200
+    finally:
+        conn.close()
+
 def init_database_if_needed():
     """Initialize database table and indexes if they don't exist"""
     try:

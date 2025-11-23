@@ -14,22 +14,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Constants for recommendations
-# List of known prop firms (for reference only - bot is broker-agnostic)
-PROP_FIRM_NAMES = ["topstep", "apex", "earn2trade", "ftmo", "the5ers", "generic_prop"]
-PROP_FIRM_DAILY_LOSS_PERCENT = 0.02  # 2% daily loss rule (common for many brokers)
-
-# Severity thresholds for recommendations
+# Severity thresholds for warnings
 SEVERITY_HIGH = 0.90
 SEVERITY_MODERATE = 0.80
 
 # Confidence thresholds based on severity
 CONFIDENCE_THRESHOLD_HIGH = 85.0
 CONFIDENCE_THRESHOLD_MODERATE = 75.0
-
-# Contract reduction multipliers based on severity
-CONTRACT_MULTIPLIER_CRITICAL = 0.33  # At 95%+ severity
-CONTRACT_MULTIPLIER_HIGH = 0.50  # At 90-95% severity
-CONTRACT_MULTIPLIER_MODERATE = 0.75  # At 80-90% severity
 
 
 class SessionStateManager:
@@ -123,14 +114,8 @@ class SessionStateManager:
         self.save_state()
     
     def _infer_account_type(self, broker: str) -> str:
-        """Infer account type from broker name."""
-        broker_lower = broker.lower()
-        
-        for prop_firm in PROP_FIRM_NAMES:
-            if prop_firm in broker_lower:
-                return "prop_firm"
-        
-        return "live_broker"
+        """Infer account type from broker name - simplified."""
+        return "broker_account"  # Generic account type
     
     def check_warnings_and_recommendations(
         self,
@@ -179,14 +164,7 @@ class SessionStateManager:
                 "message": f"⚠️ WARNING: Approaching daily loss limit ({daily_loss_severity*100:.0f}% of max). Bot will STOP trading."
             })
         
-        if daily_loss_pct > 1.5 and account_type == "prop_firm":
-            loss_dollars = abs(daily_pnl)
-            warnings.append({
-                "level": "warning",
-                "message": f"Daily loss: ${loss_dollars:.0f} of ${daily_loss_limit:.0f}. Prop firm accounts have strict rules."
-            })
-        
-        # Generate recommendations based on account type and state
+        # Generate recommendations based on daily loss severity
         if approaching_failure:
             # Recommend higher confidence based on daily loss severity
             if daily_loss_severity >= SEVERITY_HIGH:
@@ -202,36 +180,6 @@ class SessionStateManager:
                     "message": f"📊 RECOMMEND: Increase confidence threshold to {recommended_confidence:.0f}% (currently {current_confidence:.0f}%)"
                 })
                 smart_settings["confidence_threshold"] = recommended_confidence
-            
-            # Recommend fewer contracts based on daily loss severity
-            if daily_loss_severity >= 0.95:
-                recommended_contracts = max(1, int(max_contracts * CONTRACT_MULTIPLIER_CRITICAL))
-            elif daily_loss_severity >= SEVERITY_HIGH:
-                recommended_contracts = max(1, int(max_contracts * CONTRACT_MULTIPLIER_HIGH))
-            elif daily_loss_severity >= SEVERITY_MODERATE:
-                recommended_contracts = max(1, int(max_contracts * CONTRACT_MULTIPLIER_MODERATE))
-            else:
-                recommended_contracts = max_contracts
-            
-            if recommended_contracts < max_contracts:
-                recommendations.append({
-                    "priority": "high",
-                    "message": f"📉 RECOMMEND: Reduce contracts to {recommended_contracts} (currently {max_contracts})"
-                })
-                smart_settings["max_contracts"] = recommended_contracts
-        
-        # Account-type specific recommendations
-        if account_type == "prop_firm":
-            # Calculate optimal daily loss limit for prop firm
-            if account_size > 0:
-                # Most prop firms have 2% daily loss rule
-                optimal_daily_loss = account_size * PROP_FIRM_DAILY_LOSS_PERCENT
-                if abs(optimal_daily_loss - daily_loss_limit) > 100:
-                    recommendations.append({
-                        "priority": "medium",
-                        "message": f"💡 SUGGEST: Set daily loss limit to ${optimal_daily_loss:.0f} ({PROP_FIRM_DAILY_LOSS_PERCENT*100:.0f}% rule for {broker})"
-                    })
-                    smart_settings["daily_loss_limit"] = optimal_daily_loss
         
         # Show dollar amounts instead of percentages for clarity
         if daily_pnl < 0:

@@ -150,13 +150,17 @@ def get_db_connection():
         return None
 
 def validate_license(license_key: str):
-    """Validate license key against PostgreSQL database"""
+    """Validate license key against PostgreSQL database
+    
+    Returns:
+        Tuple of (is_valid: bool, message: str, expiration_date: datetime or None)
+    """
     if not license_key:
-        return False, "License key required"
+        return False, "License key required", None
     
     conn = get_db_connection()
     if not conn:
-        return False, "Database connection failed"
+        return False, "Database connection failed", None
     
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cursor:
@@ -170,16 +174,16 @@ def validate_license(license_key: str):
             user = cursor.fetchone()
             
             if not user:
-                return False, "Invalid license key"
+                return False, "Invalid license key", None
             
             # Check if license is active (case-insensitive)
             if user['license_status'].lower() != 'active':
-                return False, f"License is {user['license_status']}"
+                return False, f"License is {user['license_status']}", user['license_expiration']
             
             # Check expiration
             if user['license_expiration']:
                 if datetime.now() > user['license_expiration']:
-                    return False, "License expired"
+                    return False, "License expired", user['license_expiration']
             
             # Log successful validation
             cursor.execute("""
@@ -188,11 +192,11 @@ def validate_license(license_key: str):
             """, (license_key, '/api/main', '{"action": "validate"}', 200))
             conn.commit()
             
-            return True, f"Valid {user['license_type']} license"
+            return True, f"Valid {user['license_type']} license", user['license_expiration']
             
     except Exception as e:
         logging.error(f"License validation error: {e}")
-        return False, str(e)
+        return False, str(e), None
     finally:
         conn.close()
 
@@ -337,13 +341,14 @@ def main():
         
         # Validate license
         license_key = data.get('license_key')
-        is_valid, message = validate_license(license_key)
+        is_valid, message, expiration_date = validate_license(license_key)
         
         if not is_valid:
             return jsonify({
                 "status": "error",
                 "message": message,
-                "license_valid": False
+                "license_valid": False,
+                "license_expiration": expiration_date.isoformat() if expiration_date else None
             }), 403
         
         # Process signal with RL brain
@@ -354,10 +359,21 @@ def main():
         experiences = load_experiences()
         confidence = calculate_confidence(signal_type, regime, vix_level, experiences)
         
+        # Calculate days until expiration
+        days_until_expiration = None
+        hours_until_expiration = None
+        if expiration_date:
+            time_until_expiration = expiration_date - datetime.now()
+            days_until_expiration = time_until_expiration.days
+            hours_until_expiration = time_until_expiration.total_seconds() / 3600
+        
         response = {
             "status": "success",
             "license_valid": True,
             "message": message,
+            "license_expiration": expiration_date.isoformat() if expiration_date else None,
+            "days_until_expiration": days_until_expiration,
+            "hours_until_expiration": hours_until_expiration,
             "signal_confidence": confidence,
             "experiences_used": len(experiences),
             "signal_type": signal_type,

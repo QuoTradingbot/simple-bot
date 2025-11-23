@@ -6261,6 +6261,18 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
             reason = bot_status.get("license_expiry_reason", "License expired")
             return False, f"Trading disabled: {reason}"
     
+    # Check if near expiry mode (within 2 hours of expiration)
+    if bot_status.get("near_expiry_mode", False):
+        # Block NEW trades but allow managing existing positions
+        if symbol in state and state[symbol]["position"]["active"]:
+            # Position active - allow management
+            logger.debug(f"Near expiry mode but position active - managing until close")
+            return True, None
+        else:
+            # No position - block new trades
+            hours_left = bot_status.get("hours_until_expiration", 0)
+            return False, f"License expires in {hours_left:.1f} hours - new trades blocked"
+    
     # Check trade limits and emergency stops
     is_safe, reason = check_trade_limits(current_time)
     if not is_safe:
@@ -7439,6 +7451,11 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
         if response.status_code == 200:
             data = response.json()
             
+            # Extract expiration information
+            expiration_iso = data.get("license_expiration")
+            days_until_expiration = data.get("days_until_expiration")
+            hours_until_expiration = data.get("hours_until_expiration")
+            
             # Check if license is valid
             if not data.get("license_valid", False):
                 # License has expired or been revoked
@@ -7552,6 +7569,92 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
             else:
                 # License is still valid
                 logger.debug("✅ License validation successful")
+                
+                # PRE-EXPIRATION WARNINGS
+                # Store expiration info in bot_status
+                if expiration_iso:
+                    bot_status["license_expiration"] = expiration_iso
+                    bot_status["days_until_expiration"] = days_until_expiration
+                    bot_status["hours_until_expiration"] = hours_until_expiration
+                
+                # WARNING: License expiring within 24 hours
+                if hours_until_expiration is not None and hours_until_expiration <= 24 and hours_until_expiration > 0:
+                    # Only warn once per session
+                    if not bot_status.get("expiry_warning_24h_sent", False):
+                        logger.warning("=" * 70)
+                        logger.warning("⚠️ LICENSE EXPIRATION WARNING - 24 HOURS")
+                        logger.warning(f"Your license will expire in {hours_until_expiration:.1f} hours")
+                        logger.warning("Please renew your license to avoid interruption")
+                        logger.warning("Any open trades will be safely closed before expiration")
+                        logger.warning("=" * 70)
+                        
+                        bot_status["expiry_warning_24h_sent"] = True
+                        
+                        # Send notification
+                        try:
+                            notifier = get_notifier()
+                            notifier.send_error_alert(
+                                error_message=f"⚠️ LICENSE EXPIRING SOON\n\n"
+                                             f"Your license will expire in {hours_until_expiration:.1f} hours.\n"
+                                             f"Expiration: {expiration_iso}\n\n"
+                                             f"Please renew to avoid interruption.\n"
+                                             f"Any open trades will be safely closed.",
+                                error_type="License Expiration Warning - 24 Hours"
+                            )
+                        except Exception as e:
+                            logger.debug(f"Failed to send 24h expiry warning: {e}")
+                
+                # WARNING: License expiring within 7 days
+                elif days_until_expiration is not None and days_until_expiration <= 7 and days_until_expiration > 1:
+                    # Only warn once per session
+                    if not bot_status.get("expiry_warning_7d_sent", False):
+                        logger.warning("=" * 70)
+                        logger.warning(f"⚠️ LICENSE EXPIRATION WARNING - {days_until_expiration} DAYS")
+                        logger.warning(f"Your license will expire in {days_until_expiration} days")
+                        logger.warning("Please renew your license to avoid interruption")
+                        logger.warning("=" * 70)
+                        
+                        bot_status["expiry_warning_7d_sent"] = True
+                        
+                        # Send notification (only for 7 days, not every check)
+                        try:
+                            notifier = get_notifier()
+                            notifier.send_error_alert(
+                                error_message=f"⚠️ LICENSE EXPIRING IN {days_until_expiration} DAYS\n\n"
+                                             f"Your license will expire on {expiration_iso}.\n\n"
+                                             f"Please renew to continue trading without interruption.",
+                                error_type=f"License Expiration Warning - {days_until_expiration} Days"
+                            )
+                        except Exception as e:
+                            logger.debug(f"Failed to send 7d expiry warning: {e}")
+                
+                # CRITICAL: Don't enter new trades if expiring within 2 hours
+                if hours_until_expiration is not None and hours_until_expiration <= 2 and hours_until_expiration > 0:
+                    if not bot_status.get("near_expiry_mode", False):
+                        logger.critical("=" * 70)
+                        logger.critical("🚨 NEAR EXPIRY MODE ACTIVATED")
+                        logger.critical(f"License expires in {hours_until_expiration:.1f} hours")
+                        logger.critical("NEW TRADES BLOCKED - Will only manage existing positions")
+                        logger.critical("=" * 70)
+                        
+                        bot_status["near_expiry_mode"] = True
+                        
+                        # Send notification
+                        try:
+                            notifier = get_notifier()
+                            notifier.send_error_alert(
+                                error_message=f"🚨 NEAR EXPIRY MODE\n\n"
+                                             f"License expires in {hours_until_expiration:.1f} hours.\n"
+                                             f"New trades are blocked.\n"
+                                             f"Bot will only manage existing positions.\n\n"
+                                             f"Please renew immediately.",
+                                error_type="License Near Expiry - 2 Hours"
+                            )
+                        except Exception as e:
+                            logger.debug(f"Failed to send near expiry notification: {e}")
+                else:
+                    # Clear near expiry mode if we have more than 2 hours
+                    bot_status["near_expiry_mode"] = False
         
         elif response.status_code == 401 or response.status_code == 403:
             # Unauthorized - license likely expired

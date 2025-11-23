@@ -61,20 +61,22 @@ class CloudRLDecisionEngine:
         """
         Calculate confidence using SIMPLE PATTERN MATCHING (matches running local bot).
         
-        Formula: Find 20 most similar experiences, calculate their win rate directly.
-        Using 20 instead of 10 gives more stable results with less volatility from outliers.
+        Formula: Find 10 most similar experiences, calculate their win rate directly.
+        Using 10 samples provides good balance between statistical significance and relevance.
         
         Returns:
             (confidence, reason)
         """
-        # Need at least 20 experiences before using them for decisions
-        if len(self.experiences) < 20:
+        num_samples = 10  # Number of similar experiences to analyze
+        
+        # Need at least num_samples experiences before using them for decisions
+        if len(self.experiences) < num_samples:
             return 0.65, f"🆕 Limited experience ({len(self.experiences)} trades) - optimistic"
         
-        # Find 20 most similar experiences (regardless of win/loss)
-        similar = self.find_similar_states(current_state, max_results=20)
+        # Find most similar experiences (regardless of win/loss)
+        similar = self.find_similar_states(current_state, max_results=num_samples)
         
-        if not similar or len(similar) < 10:
+        if len(similar) < num_samples:
             return 0.65, f"🆕 Limited similar experience ({len(similar)} trades) - optimistic"
         
         # Calculate win rate and average PNL from similar trades
@@ -95,7 +97,7 @@ class CloudRLDecisionEngine:
         
         return confidence, reason
     
-    def find_similar_states(self, current_state: Dict, max_results: int = 20, 
+    def find_similar_states(self, current_state: Dict, max_results: int = 10, 
                            experiences: Optional[List[Dict]] = None) -> List[Dict]:
         """
         Find past experiences with similar market conditions.

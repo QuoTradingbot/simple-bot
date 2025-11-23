@@ -2618,7 +2618,7 @@ def admin_bulk_extend():
         for key in license_keys:
             try:
                 cur.execute("""
-                    UPDATE licenses 
+                    UPDATE users 
                     SET license_expiration = license_expiration + INTERVAL '%s days'
                     WHERE license_key = %s
                 """, (days, key))
@@ -2665,7 +2665,7 @@ def admin_bulk_suspend():
     
     try:
         cur.execute("""
-            UPDATE licenses 
+            UPDATE users 
             SET license_status = 'SUSPENDED'
             WHERE license_key = ANY(%s)
         """, (license_keys,))
@@ -2699,7 +2699,7 @@ def admin_bulk_activate():
     
     try:
         cur.execute("""
-            UPDATE licenses 
+            UPDATE users 
             SET license_status = 'ACTIVE'
             WHERE license_key = ANY(%s)
         """, (license_keys,))

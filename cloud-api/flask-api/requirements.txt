@@ -2,4 +2,4 @@ Flask==3.0.0
 azure-storage-blob==12.19.0
 psycopg2-binary==2.9.9
 gunicorn==21.2.0
-stripe==7.4.0
+whopsdk-python

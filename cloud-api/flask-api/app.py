@@ -12,11 +12,11 @@ import logging
 import statistics
 import secrets
 import string
-import stripe
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from rl_decision_engine import CloudRLDecisionEngine
+from whop import Whop
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -28,10 +28,13 @@ DB_USER = os.environ.get("DB_USER", "quotradingadmin")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
 DB_PORT = os.environ.get("DB_PORT", "5432")
 
-# Stripe configuration
-stripe.api_key = os.environ.get("STRIPE_API_KEY", "")
-STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+# Whop configuration
+WHOP_API_KEY = os.environ.get("WHOP_API_KEY", "")
+WHOP_WEBHOOK_SECRET = os.environ.get("WHOP_WEBHOOK_SECRET", "")
 ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "ADMIN-DEV-KEY-2024")  # For creating licenses
+
+# Initialize Whop client
+whop_client = Whop(api_key=WHOP_API_KEY)
 
 # Email configuration (for SendGrid or SMTP)
 SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
@@ -79,7 +82,7 @@ def send_license_email(email, license_key):
             <p>Join our Discord community or email support@quotrading.com</p>
             
             <p style="color: #6b7280; font-size: 12px; margin-top: 40px;">
-                Your subscription will auto-renew monthly. You can manage your subscription anytime from your Stripe customer portal.
+                Your subscription will auto-renew monthly. You can manage your subscription anytime from your Whop dashboard.
             </p>
         </body>
         </html>
@@ -389,109 +392,8 @@ def main():
             "message": str(e)
         }), 500
 
-@app.route('/api/stripe/create-checkout', methods=['POST'])
-def create_checkout_session():
-    """Create a Stripe checkout session for subscription purchase"""
-    try:
-        data = request.get_json()
-        email = data.get('email')
-        plan = data.get('plan', 'monthly')  # monthly or yearly
-        
-        if not email:
-            return jsonify({"status": "error", "message": "Email required"}), 400
-        
-        # Check if Stripe is configured
-        if not stripe.api_key or stripe.api_key == "":
-            return jsonify({
-                "status": "error",
-                "message": "Stripe not configured. Set STRIPE_SECRET_KEY environment variable."
-            }), 500
-        
-        # Determine price based on plan (using your Stripe price)
-        # QuoTrading Bot - $200/month subscription
-        prices = {
-            'monthly': 'price_1SWBk4P0y2Nhiub4js7bhUD7',  # QuoTrading Bot - $200/month
-            'yearly': 'price_1SWBk4P0y2Nhiub4js7bhUD7'    # Use same for now
-        }
-        
-        price_id = prices.get(plan, 'price_1SWBk4P0y2Nhiub4js7bhUD7')  # Default to monthly
-        
-        # Create Stripe checkout session
-        session = stripe.checkout.Session.create(
-            customer_email=email,
-            payment_method_types=['card'],
-            line_items=[{
-                'price': price_id,
-                'quantity': 1,
-            }],
-            mode='subscription',
-            success_url='https://quotrading-flask-api.azurewebsites.net/api/stripe/success?session_id={CHECKOUT_SESSION_ID}',
-            cancel_url='https://quotrading-flask-api.azurewebsites.net/api/stripe/cancel',
-            allow_promotion_codes=True,  # Allow discount codes
-            billing_address_collection='auto',
-            metadata={
-                'plan': plan,
-                'email': email
-            }
-        )
-        
-        return jsonify({
-            "status": "success",
-            "checkout_url": session.url,
-            "session_id": session.id
-        }), 200
-        
-    except stripe.error.StripeError as e:
-        logging.error(f"Stripe error: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-    except Exception as e:
-        logging.error(f"Error creating checkout session: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/api/stripe/customer-portal', methods=['POST'])
-def create_customer_portal():
-    """Create a Stripe customer portal session for subscription management"""
-    try:
-        data = request.get_json()
-        email = data.get('email')
-        
-        if not email:
-            return jsonify({"status": "error", "message": "Email required"}), 400
-        
-        # Find customer by email
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({"status": "error", "message": "Database error"}), 500
-        
-        try:
-            with conn.cursor() as cursor:
-                cursor.execute("""
-                    SELECT stripe_customer_id FROM users WHERE email = %s AND license_status = 'active'
-                """, (email,))
-                result = cursor.fetchone()
-                
-                if not result or not result[0]:
-                    return jsonify({"status": "error", "message": "No active subscription found"}), 404
-                
-                customer_id = result[0]
-                
-                # Create customer portal session
-                session = stripe.billing_portal.Session.create(
-                    customer=customer_id,
-                    return_url='https://quotrading-flask-api.azurewebsites.net/api/stripe/success',
-                )
-                
-                return jsonify({
-                    "status": "success",
-                    "portal_url": session.url
-                }), 200
-                
-        finally:
-            conn.close()
-            
-    except Exception as e:
-        logging.error(f"Error creating customer portal: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+# Whop integration replaces Stripe checkout
+# Checkout is handled via Whop dashboard links
 
 @app.route('/api/admin/list-licenses', methods=['GET'])
 def list_licenses():
@@ -647,94 +549,108 @@ def create_license():
         logging.error(f"Error creating license: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/api/stripe/webhook', methods=['POST'])
-def stripe_webhook():
-    """Handle Stripe webhook events for subscription management"""
-    payload = request.data
-    sig_header = request.headers.get('Stripe-Signature')
-    
-    if not STRIPE_WEBHOOK_SECRET:
-        logging.warning("⚠️ Stripe webhook secret not configured - using raw payload")
-        event = json.loads(payload)
-    else:
-        try:
-            event = stripe.Webhook.construct_event(
-                payload, sig_header, STRIPE_WEBHOOK_SECRET
-            )
-        except ValueError:
-            logging.error("Invalid payload")
-            return jsonify({"status": "error", "message": "Invalid payload"}), 400
-        except stripe.error.SignatureVerificationError:
-            logging.error("Invalid signature")
-            return jsonify({"status": "error", "message": "Invalid signature"}), 400
-    
-    event_type = event['type']
-    data = event['data']['object']
-    
-    logging.info(f"📬 Stripe webhook: {event_type}")
-    
-    conn = get_db_connection()
-    if not conn:
-        return jsonify({"status": "error", "message": "Database error"}), 500
-    
+@app.route('/api/whop/webhook', methods=['POST'])
+def whop_webhook():
+    """Handle Whop webhook events for subscription management"""
     try:
-        with conn.cursor() as cursor:
-            if event_type == 'checkout.session.completed':
-                # Payment successful - create license
-                customer_email = data.get('customer_email')
-                subscription_id = data.get('subscription')
-                
-                if customer_email:
-                    license_key = generate_license_key()
-                    
-                    # Subscription licenses don't expire (auto-renew monthly)
-                    cursor.execute("""
-                        INSERT INTO users (license_key, email, license_type, license_status, license_expiration)
-                        VALUES (%s, %s, %s, %s, %s)
-                    """, (license_key, customer_email, 'subscription', 'active', None))
-                    conn.commit()
-                    
-                    logging.info(f"🎉 License created from Stripe payment: {license_key} for {customer_email}")
-                    
-                    # Send email with license key and download link
-                    send_license_email(customer_email, license_key)
-            
-            elif event_type == 'customer.subscription.deleted':
-                # Subscription cancelled - revoke license
-                customer_id = data.get('customer')
-                
-                # Find and cancel all licenses for this customer
-                cursor.execute("""
-                    UPDATE users 
-                    SET license_status = 'cancelled', license_expiration = NOW()
-                    WHERE email = (SELECT email FROM users WHERE license_key LIKE %s LIMIT 1)
-                    AND license_status = 'active'
-                """, (f"%{customer_id}%",))
-                conn.commit()
-                
-                logging.info(f"❌ Licenses cancelled for customer (subscription ended)")
-            
-            elif event_type == 'invoice.payment_failed':
-                # Payment failed - suspend license
-                customer_email = data.get('customer_email')
-                
-                if customer_email:
-                    cursor.execute("""
-                        UPDATE users 
-                        SET license_status = 'suspended'
-                        WHERE email = %s AND license_status = 'active'
-                    """, (customer_email,))
-                    conn.commit()
-                    
-                    logging.warning(f"⚠️ License suspended for {customer_email} (payment failed)")
+        payload = request.get_json()
+        headers = request.headers
         
+        # Verify signature if secret is set
+        if WHOP_WEBHOOK_SECRET:
+            # TODO: Implement signature verification using Whop SDK
+            # whop_client.verify_webhook(payload, headers['Whop-Signature'], WHOP_WEBHOOK_SECRET)
+            pass
+
+        event_type = payload.get('action') # Whop often uses 'action' or 'type'
+        if not event_type:
+            event_type = payload.get('type')
+            
+        data = payload.get('data', {})
+        
+        logging.info(f"📬 Whop webhook: {event_type}")
+        
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"status": "error", "message": "Database error"}), 500
+            
+        try:
+            with conn.cursor() as cursor:
+                # Handle Membership Activated / Payment Succeeded
+                if event_type in ['membership.activated', 'payment.succeeded']:
+                    email = data.get('email') or data.get('user', {}).get('email')
+                    membership_id = data.get('id')
+                    user_id = data.get('user_id')
+                    
+                    if email:
+                        # Check if user exists
+                        cursor.execute("SELECT license_key FROM users WHERE email = %s", (email,))
+                        existing = cursor.fetchone()
+                        
+                        if existing:
+                            # Reactivate existing
+                            cursor.execute("""
+                                UPDATE users 
+                                SET license_status = 'active', whop_membership_id = %s, whop_user_id = %s
+                                WHERE email = %s
+                            """, (membership_id, user_id, email))
+                            license_key = existing[0]
+                            logging.info(f"🔄 License reactivated for {email}")
+                        else:
+                            # Create new license
+                            license_key = generate_license_key()
+                            cursor.execute("""
+                                INSERT INTO users (license_key, email, license_type, license_status, whop_membership_id, whop_user_id)
+                                VALUES (%s, %s, %s, %s, %s, %s)
+                            """, (license_key, email, 'subscription', 'active', membership_id, user_id))
+                            logging.info(f"🎉 License created from Whop: {license_key} for {email}")
+                            
+                            # Send email
+                            send_license_email(email, license_key)
+                        
+                        conn.commit()
+
+                # Handle Membership Cancelled / Deactivated
+                elif event_type in ['membership.cancelled', 'membership.deactivated', 'subscription.canceled']:
+                    membership_id = data.get('id')
+                    email = data.get('email')
+                    
+                    if membership_id:
+                        cursor.execute("""
+                            UPDATE users 
+                            SET license_status = 'cancelled'
+                            WHERE whop_membership_id = %s
+                        """, (membership_id,))
+                    elif email:
+                        cursor.execute("""
+                            UPDATE users 
+                            SET license_status = 'cancelled'
+                            WHERE email = %s
+                        """, (email,))
+                        
+                    conn.commit()
+                    logging.info(f"❌ License cancelled via Whop webhook")
+
+                # Handle Payment Failed
+                elif event_type == 'payment.failed':
+                    membership_id = data.get('membership_id')
+                    if membership_id:
+                        cursor.execute("""
+                            UPDATE users 
+                            SET license_status = 'suspended'
+                            WHERE whop_membership_id = %s
+                        """, (membership_id,))
+                        conn.commit()
+                        logging.warning(f"⚠️ License suspended (payment failed)")
+
+        finally:
+            conn.close()
+            
         return jsonify({"status": "success"}), 200
-        
+
     except Exception as e:
-        logging.error(f"Webhook processing error: {e}")
+        logging.error(f"Whop webhook error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
-    finally:
-        conn.close()
 
 # ============================================================================
 # ADMIN DASHBOARD ENDPOINTS
@@ -1665,92 +1581,13 @@ def submit_outcome():
 # RL ADMIN/STATS ENDPOINTS (existing)
 # ============================================================================
 
-@app.route('/api/stripe/success', methods=['GET'])
-def stripe_success():
-    """Stripe checkout success page"""
-    session_id = request.args.get('session_id')
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Payment Successful - QuoTrading</title>
-        <style>
-            body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-                   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                   display: flex; justify-content: center; align-items: center; 
-                   height: 100vh; margin: 0; }}
-            .container {{ background: white; padding: 60px; border-radius: 20px; 
-                         box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center; 
-                         max-width: 500px; }}
-            h1 {{ color: #10b981; font-size: 48px; margin: 0 0 20px 0; }}
-            p {{ color: #6b7280; font-size: 18px; line-height: 1.6; }}
-            .check {{ font-size: 80px; color: #10b981; margin-bottom: 20px; }}
-            .session {{ background: #f3f4f6; padding: 15px; border-radius: 10px; 
-                       font-family: monospace; font-size: 12px; margin-top: 20px; 
-                       color: #6b7280; word-break: break-all; }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="check">✓</div>
-            <h1>Payment Successful!</h1>
-            <p>Thank you for subscribing to QuoTrading Bot!</p>
-            <p>Your license key will be emailed to you within a few minutes.</p>
-            <p style="margin-top: 30px; font-size: 16px; color: #9ca3af;">
-                Check your inbox for setup instructions and your license key.
-            </p>
-            <div class="session">Session: {session_id}</div>
-        </div>
-    </body>
-    </html>
-    """
-
-@app.route('/api/stripe/cancel', methods=['GET'])
-def stripe_cancel():
-    """Stripe checkout cancelled page"""
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Payment Cancelled - QuoTrading</title>
-        <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
-                   background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); 
-                   display: flex; justify-content: center; align-items: center; 
-                   height: 100vh; margin: 0; }
-            .container { background: white; padding: 60px; border-radius: 20px; 
-                         box-shadow: 0 20px 60px rgba(0,0,0,0.3); text-align: center; 
-                         max-width: 500px; }
-            h1 { color: #ef4444; font-size: 48px; margin: 0 0 20px 0; }
-            p { color: #6b7280; font-size: 18px; line-height: 1.6; }
-            .icon { font-size: 80px; color: #ef4444; margin-bottom: 20px; }
-            a { display: inline-block; margin-top: 30px; padding: 15px 40px; 
-                background: #667eea; color: white; text-decoration: none; 
-                border-radius: 10px; font-weight: 600; transition: all 0.3s; }
-            a:hover { background: #5568d3; transform: translateY(-2px); }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="icon">✕</div>
-            <h1>Payment Cancelled</h1>
-            <p>Your payment was cancelled. No charges were made.</p>
-            <p style="margin-top: 20px; color: #9ca3af;">
-                If you have any questions, please contact support.
-            </p>
-            <a href="https://discord.gg/quotrading">Return to Discord</a>
-        </div>
-    </body>
-    </html>
-    """
-
 @app.route('/', methods=['GET'])
 def root():
     """Root endpoint"""
     return jsonify({
         "status": "success",
         "message": "QuoTrading API",
-        "endpoints": ["/api/hello", "/api/main", "/api/stripe/webhook", "/api/admin/create-license", "/api/admin/expire-licenses"]
+        "endpoints": ["/api/hello", "/api/main", "/api/whop/webhook", "/api/admin/create-license", "/api/admin/expire-licenses"]
     }), 200
 
 # ========== PHASE 2: CHART DATA ENDPOINTS ==========

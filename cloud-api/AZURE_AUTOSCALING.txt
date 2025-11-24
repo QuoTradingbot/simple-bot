@@ -1,0 +1,173 @@
+# Azure Auto-Scaling Configuration for QuoTrading Signal Engine
+# This enables automatic scaling from 1 to 10 instances based on load
+
+# IMPORTANT: Apply these settings in Azure Portal or via Azure CLI
+
+## Method 1: Azure Portal
+# 1. Go to Azure Portal → Your App Service
+# 2. Navigate to "Scale out (App Service Plan)"
+# 3. Enable "Custom autoscale"
+# 4. Configure rules below
+
+## Method 2: Azure CLI
+# Run this command to enable auto-scaling:
+
+# az monitor autoscale create \
+#   --resource-group quotrading-rg \
+#   --resource quotrading-signal-engine \
+#   --resource-type Microsoft.Web/serverfarms \
+#   --name quotrading-autoscale \
+#   --min-count 1 \
+#   --max-count 10 \
+#   --count 2
+
+# Add CPU-based scale-out rule:
+# az monitor autoscale rule create \
+#   --resource-group quotrading-rg \
+#   --autoscale-name quotrading-autoscale \
+#   --condition "Percentage CPU > 70 avg 5m" \
+#   --scale out 2
+
+# Add CPU-based scale-in rule:
+# az monitor autoscale rule create \
+#   --resource-group quotrading-rg \
+#   --autoscale-name quotrading-autoscale \
+#   --condition "Percentage CPU < 30 avg 10m" \
+#   --scale in 1
+
+## Auto-Scaling Rules
+
+### Scale OUT (Add Instances)
+# Trigger: CPU > 70% for 5 minutes
+# Action: Add 2 instances
+# Cooldown: 5 minutes (wait before next scale)
+
+# OR
+
+# Trigger: Active WebSocket Connections > 800
+# Action: Add 1 instance
+# Cooldown: 3 minutes
+
+# OR
+
+# Trigger: Memory > 80% for 5 minutes
+# Action: Add 2 instances
+# Cooldown: 5 minutes
+
+### Scale IN (Remove Instances)
+# Trigger: CPU < 30% for 10 minutes
+# Action: Remove 1 instance
+# Cooldown: 10 minutes (prevent flapping)
+
+# OR
+
+# Trigger: Active WebSocket Connections < 200
+# Action: Remove 1 instance
+# Cooldown: 10 minutes
+
+## Instance Limits
+# Minimum instances: 1 (always on)
+# Maximum instances: 10 (cost limit)
+# Default instances: 2 (normal operation)
+
+## Cost Estimation
+# B1 Basic: $13/month per instance
+# - 1 instance (off-peak): $13/month
+# - 2 instances (normal): $26/month
+# - 10 instances (peak): $130/month
+# Average with auto-scaling: ~$40-60/month
+
+# S1 Standard: $70/month per instance (recommended for production)
+# - 1 instance (off-peak): $70/month
+# - 2 instances (normal): $140/month
+# - 10 instances (peak): $700/month
+# Average with auto-scaling: ~$150-250/month
+
+## Scaling Metrics to Monitor
+# 1. CPU Percentage (primary metric)
+# 2. Memory Percentage
+# 3. Active WebSocket Connections (custom metric)
+# 4. Request Count per Second
+# 5. Response Time (P95)
+
+## Custom Metric: WebSocket Connections
+# You can track this via Application Insights:
+# 1. Enable Application Insights on App Service
+# 2. Log custom metric in code:
+#    from applicationinsights import TelemetryClient
+#    tc = TelemetryClient('YOUR_INSTRUMENTATION_KEY')
+#    tc.track_metric('ActiveWebSockets', connection_count)
+
+## Best Practices
+# 1. Start with 2 instances for redundancy
+# 2. Scale out quickly (5 min), scale in slowly (10 min)
+# 3. Use scheduled scaling for predictable patterns:
+#    - Scale to 3 instances at 9:00 AM ET (market open)
+#    - Scale to 1 instance at 5:00 PM ET (market close)
+# 4. Set up alerts for max instance count reached
+
+## Scheduled Scaling (Optional)
+# Scale up before market open:
+# az monitor autoscale rule create \
+#   --resource-group quotrading-rg \
+#   --autoscale-name quotrading-autoscale \
+#   --condition "time schedule from 13:30 to 21:00 on Mon Tue Wed Thu Fri" \
+#   --count 3
+
+## Redis Cache Configuration for Multi-Instance
+# CRITICAL: When running multiple instances, you MUST use Redis (not in-memory)
+# Set environment variable in Azure App Service:
+# REDIS_URL=redis://quotrading-cache.redis.cache.windows.net:6380?ssl=True&password=YOUR_KEY
+
+## Sticky Sessions (Optional)
+# If using stateful connections, enable ARR affinity:
+# az webapp update --resource-group quotrading-rg --name quotrading-signal-engine --client-affinity-enabled true
+# NOTE: Not recommended for WebSockets - use Redis pub/sub instead
+
+## Health Check Configuration
+# Set health check endpoint: /health
+# Check interval: 30 seconds
+# Unhealthy threshold: 3 failures = restart instance
+
+## Monitoring Dashboard
+# Track these metrics in Azure Monitor:
+# 1. Instance count (target: 2-4 during market hours)
+# 2. CPU usage (target: 40-60%)
+# 3. Memory usage (target: < 70%)
+# 4. WebSocket connections (target: < 800 per instance)
+# 5. Request latency P95 (target: < 100ms)
+# 6. Redis cache hit rate (target: > 90%)
+
+## Testing Auto-Scaling
+# 1. Deploy with min=1, max=3
+# 2. Use load testing tool (k6, JMeter) to simulate 500 concurrent users
+# 3. Watch instances scale up in Azure Portal
+# 4. Stop load test and watch instances scale down
+# 5. Verify Redis pub/sub works across instances
+
+## Load Testing Script (k6)
+# Save as load-test.js and run: k6 run load-test.js
+#
+# import ws from 'k6/ws';
+# import { check } from 'k6';
+#
+# export let options = {
+#   stages: [
+#     { duration: '2m', target: 100 },  // Ramp up to 100 users
+#     { duration: '5m', target: 500 },  // Ramp up to 500 users
+#     { duration: '2m', target: 0 },    // Ramp down
+#   ],
+# };
+#
+# export default function () {
+#   const url = 'wss://quotrading-signal-engine.azurewebsites.net/ws/signals/YOUR_LICENSE_KEY';
+#   const res = ws.connect(url, function (socket) {
+#     socket.on('open', () => console.log('connected'));
+#     socket.on('message', (data) => console.log('Message received: ', data));
+#     socket.on('close', () => console.log('disconnected'));
+#     socket.setTimeout(function () {
+#       socket.close();
+#     }, 60000); // Keep connection for 60 seconds
+#   });
+#   check(res, { 'status is 101': (r) => r && r.status === 101 });
+# }

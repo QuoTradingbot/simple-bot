@@ -1,0 +1,31 @@
+# QuoTrading Signal Engine - Python Dependencies
+# FastAPI + WebSocket + Database + Redis
+
+# Web Framework
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+websockets==14.1
+
+# Database
+psycopg2-binary==2.9.10
+SQLAlchemy==2.0.36
+
+# Redis (caching & rate limiting)
+redis==5.2.1
+
+# Data Processing
+numpy==2.0.2
+pandas==2.2.3
+
+# HTTP Requests
+requests==2.32.3
+
+# Date/Time
+pytz==2024.2
+python-dateutil==2.9.0
+
+# Email (for notifications)
+python-dotenv==1.0.1
+
+# Utilities
+python-multipart==0.0.20

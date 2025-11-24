@@ -122,7 +122,6 @@ from bid_ask_manager import BidAskManager, BidAskQuote
 from notifications import get_notifier
 from signal_confidence import SignalConfidenceRL
 from regime_detection import get_regime_detector, REGIME_DEFINITIONS
-from cloud_api import CloudAPIClient
 
 # Conditionally import broker (only needed for live trading, not backtesting)
 try:
@@ -190,8 +189,15 @@ except Exception as e:
 MSG_LIVE_TRADING_NOT_IMPLEMENTED = "Live trading not implemented - SDK integration required"
 SEPARATOR_LINE = "=" * 60
 
-# Daily Loss Limit Threshold
-DAILY_LOSS_APPROACHING_THRESHOLD = 0.80  # Stop trading at 80% of daily loss limit
+# Recovery Mode Constants - Dynamic Risk Management
+RECOVERY_APPROACHING_THRESHOLD = 0.80  # Trigger recovery mode at 80% of limits
+RECOVERY_DEFAULT_SEVERITY = 0.80  # Default severity if not set
+RECOVERY_SIZE_CRITICAL = 0.95  # At 95%+ of limits
+RECOVERY_SIZE_HIGH = 0.90  # At 90-95% of limits
+RECOVERY_SIZE_MODERATE = 0.80  # At 80-90% of limits
+RECOVERY_MULTIPLIER_CRITICAL = 0.20  # Reduce to 20% of position at critical (was 33%)
+RECOVERY_MULTIPLIER_HIGH = 0.40  # Reduce to 40% of position at high severity (was 50%)
+RECOVERY_MULTIPLIER_MODERATE = 0.65  # Reduce to 65% of position at moderate severity (was 75%)
 
 # Regime Detection Constants
 DEFAULT_FALLBACK_ATR = 5.0  # Default ATR when calculation not possible (ES futures typical value)
@@ -208,11 +214,8 @@ recovery_manager: Optional[ErrorRecoveryManager] = None
 # Global timer manager
 timer_manager: Optional[TimerManager] = None
 
-# Global RL brain for signal confidence learning (ONLY for backtesting - NOT used in live)
+# Global RL brain for signal confidence learning
 rl_brain: Optional[SignalConfidenceRL] = None
-
-# Global cloud API client for live trading decisions
-cloud_api_client: Optional[CloudAPIClient] = None
 
 # Global bid/ask manager
 bid_ask_manager: Optional[BidAskManager] = None
@@ -242,6 +245,10 @@ bot_status: Dict[str, Any] = {
     # PRODUCTION: Track trading costs
     "total_slippage_cost": 0.0,  # Total slippage costs across all trades
     "total_commission": 0.0,  # Total commissions across all trades
+    # Recovery Mode: Dynamic risk management when approaching limits
+    "recovery_confidence_threshold": None,  # Set when in recovery mode (higher confidence required)
+    "recovery_severity": None,  # Severity level (0.8-1.0) indicating proximity to failure
+    "aggressive_exit_mode": False,  # Set when at critical severity to aggressively manage positions
 }
 
 
@@ -265,7 +272,7 @@ logger = setup_logging()
 # ============================================================================
 
 # Cloud ML API configuration
-CLOUD_ML_API_URL = os.getenv("CLOUD_ML_API_URL", "https://quotrading-api-v2.azurewebsites.net")
+CLOUD_ML_API_URL = os.getenv("CLOUD_ML_API_URL", "https://quotrading-flask-api.azurewebsites.net")
 USE_CLOUD_SIGNALS = os.getenv("USE_CLOUD_SIGNALS", "true").lower() == "true"
 
 # Generate privacy-preserving user ID
@@ -279,50 +286,80 @@ USER_ID = get_user_id()
 
 async def get_ml_confidence_async(rl_state: Dict[str, Any], side: str) -> Tuple[bool, float, str]:
     """
-    Get RL decision from cloud API or local RL brain (backtest mode).
-    
-    LIVE MODE: Uses cloud_api_client to ask cloud RL brain for decision
-    BACKTEST MODE: Uses local rl_brain for learning and testing
-    
+    Get ML confidence from cloud API (shared RL learning pool) with automatic retry.
     Returns: (take_signal, confidence, reason)
     """
-    global cloud_api_client, rl_brain
-    
-    # BACKTEST MODE: Use local RL brain
-    if is_backtest_mode() or CONFIG.get("backtest_mode", False):
+    if not USE_CLOUD_SIGNALS:
+        # Fallback to local RL brain if cloud disabled
         if rl_brain is not None:
             return rl_brain.should_take_signal(rl_state)
-        return True, 0.65, "Backtest mode - no RL brain initialized"
+        return True, 0.5, "Cloud API disabled, no local RL"
     
-    # LIVE MODE: Use cloud API client
-    if cloud_api_client is None:
-        logger.error("Cloud API client not initialized - cannot trade safely")
-        return False, 0.0, "Cloud API not initialized"
+    # Retry up to 3 times with exponential backoff
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            # Prepare payload for cloud API
+            payload = {
+                "user_id": USER_ID,
+                "symbol": CONFIG["instrument"],
+                "side": side,
+                "rsi": rl_state.get("rsi", 50),
+                "vwap_distance": rl_state.get("vwap_distance", 0),
+                "volume_ratio": rl_state.get("volume_ratio", 1.0),
+                "streak": rl_state.get("streak", 0),
+                "time_of_day_score": rl_state.get("time_of_day_score", 0.5),
+                "volatility": rl_state.get("volatility", 1.0)
+            }
+            
+            # Increase timeout slightly on retries
+            timeout_seconds = 3.0 + (attempt * 1.0)  # 3s, 4s, 5s
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{CLOUD_ML_API_URL}/api/main",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=timeout_seconds)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        confidence = data.get("confidence", 0.5)
+                        take_signal = data.get("should_trade", False)
+                        reason = data.get("reason", "Cloud RL evaluation")
+                        
+                        if attempt > 0:
+                            logger.info(f"[CLOUD RL] ✅ Success on retry {attempt + 1}")
+                        
+                        logger.debug(f"[CLOUD RL] {side.upper()} signal: {take_signal} (confidence: {confidence:.1%}) - {reason}")
+                        logger.debug(f"   Shared pool: {data.get('total_trades', 0)} trades, WR: {data.get('win_rate', 0):.1%}")
+                        
+                        return take_signal, confidence, reason
+                    else:
+                        logger.warning(f"Cloud ML API returned status {response.status} (attempt {attempt + 1}/{max_retries})")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(0.5 * (attempt + 1))  # 0.5s, 1s, 1.5s backoff
+                            continue
+                        logger.error("Cloud API failed after all retries - REJECTING TRADE for safety")
+                        return False, 0.0, "Cloud API error - rejecting trade for safety"
+                        
+        except asyncio.TimeoutError:
+            logger.warning(f"Cloud ML API timeout (attempt {attempt + 1}/{max_retries})")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(0.5 * (attempt + 1))
+                continue
+            logger.error("Cloud API timeout after all retries - REJECTING TRADE for safety")
+            return False, 0.0, "API timeout - rejecting trade for safety"
+        except Exception as e:
+            logger.warning(f"Cloud ML API error: {e} (attempt {attempt + 1}/{max_retries})")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(0.5 * (attempt + 1))
+                continue
+            logger.error(f"Cloud API error after all retries - REJECTING TRADE for safety: {e}")
+            return False, 0.0, f"API error - rejecting trade for safety"
     
-    # Add side and price to state for cloud decision
-    rl_state_with_context = rl_state.copy()
-    rl_state_with_context['side'] = side.lower()
-    
-    # Get current price from state
-    current_price = state.get("current_price", 0)
-    rl_state_with_context['price'] = current_price
-    
-    # Ask cloud RL brain for decision (synchronous call with timeout)
-    try:
-        # Run in thread pool to avoid blocking async event loop
-        loop = asyncio.get_event_loop()
-        take_trade, confidence, reason = await loop.run_in_executor(
-            None, 
-            cloud_api_client.ask_should_take_trade,
-            rl_state_with_context
-        )
-        
-        logger.info(f"☁️ Cloud RL Decision: {reason}")
-        return take_trade, confidence, reason
-        
-    except Exception as e:
-        logger.error(f"Cloud API error: {e}")
-        return False, 0.0, f"Cloud API error: {e}"
+    # Should never reach here, but just in case
+    logger.error("Unknown error in RL API call - REJECTING TRADE for safety")
+    return False, 0.0, "Unknown error - rejecting trade for safety"
 
 
 def get_ml_confidence(rl_state: Dict[str, Any], side: str) -> Tuple[bool, float, str]:
@@ -343,46 +380,66 @@ async def save_trade_experience_async(
     execution_data: Dict[str, Any]
 ) -> None:
     """
-    Report trade outcome to cloud RL brain (live mode) or local RL brain (backtest mode).
-    Cloud brain learns from all users' experiences collectively.
+    Save trade result to cloud API (shared RL learning pool) with automatic retry.
+    All users contribute to and learn from the same experience pool.
     """
-    global cloud_api_client, rl_brain
-    
-    # BACKTEST MODE: Use local RL brain
-    if is_backtest_mode() or CONFIG.get("backtest_mode", False):
+    if not USE_CLOUD_SIGNALS:
+        # Save to local RL brain if cloud disabled
         if rl_brain is not None:
             rl_brain.record_outcome(rl_state, True, pnl, duration_minutes, execution_data)
         return
     
-    # LIVE MODE: Report to cloud
-    if cloud_api_client is None:
-        logger.warning("Cloud API client not initialized - cannot report trade outcome")
-        return
-    
-    try:
-        # Add side and price to state
-        state_with_context = rl_state.copy()
-        state_with_context['side'] = side.lower()
-        state_with_context['price'] = state.get("current_price", 0)
-        
-        # Convert duration to seconds
-        duration_seconds = duration_minutes * 60.0
-        
-        # Report to cloud in background (non-blocking)
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(
-            None,
-            cloud_api_client.report_trade_outcome,
-            state_with_context,
-            True,  # took_trade
-            pnl,
-            duration_seconds
-        )
-        
-        logger.info(f"✅ Outcome reported to cloud: ${pnl:+.2f} in {duration_minutes:.1f}min")
-        
-    except Exception as e:
-        logger.debug(f"Non-critical: Could not report outcome to cloud: {e}")
+    # Retry up to 2 times for saves (less critical than getting confidence)
+    max_retries = 2
+    for attempt in range(max_retries):
+        try:
+            # Prepare trade experience payload
+            payload = {
+                "user_id": USER_ID,
+                "symbol": CONFIG["instrument"],
+                "side": side,
+                "signal": f"{side}_bounce",  # "long_bounce" or "short_bounce"
+                "rsi": rl_state.get("rsi", 50),
+                "vwap_distance": rl_state.get("vwap_distance", 0),
+                "volume_ratio": rl_state.get("volume_ratio", 1.0),
+                "streak": rl_state.get("streak", 0),
+                "time_of_day_score": rl_state.get("time_of_day_score", 0.5),
+                "volatility": rl_state.get("volatility", 1.0),
+                "pnl": pnl,
+                "duration_minutes": duration_minutes,
+                "exit_reason": execution_data.get("exit_reason", "unknown")
+            }
+            
+            # Increase timeout on retries
+            timeout_seconds = 5.0 + (attempt * 2.0)  # 5s, 7s
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{CLOUD_ML_API_URL}/api/main",
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=timeout_seconds)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if attempt > 0:
+                            logger.info(f"[CLOUD RL] ✅ Trade saved on retry {attempt + 1}")
+                        else:
+                            logger.info(f"[CLOUD RL] ✅ Trade saved to hive mind: ${pnl:+.2f}")
+                        logger.info(f"   🧠 Shared pool: {data.get('total_shared_trades', 0):,} total trades, WR: {data.get('shared_win_rate', 0):.1%}")
+                        return  # Success!
+                    else:
+                        logger.warning(f"Failed to save trade (status {response.status}, attempt {attempt + 1}/{max_retries})")
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(1.0 * (attempt + 1))  # 1s, 2s backoff
+                            continue
+                        logger.error(f"❌ Trade NOT saved to cloud after {max_retries} attempts - data point lost")
+                        
+        except Exception as e:
+            logger.warning(f"Error saving trade: {e} (attempt {attempt + 1}/{max_retries})")
+            if attempt < max_retries - 1:
+                await asyncio.sleep(1.0 * (attempt + 1))
+                continue
+            logger.error(f"❌ Trade NOT saved to cloud after {max_retries} attempts - data point lost")
 
 
 async def save_rejected_signal_async(
@@ -497,7 +554,7 @@ def initialize_broker() -> None:
         logger.info("🔐 Validating license...")
         try:
             import requests
-            api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-api-v2.azurewebsites.net")
+            api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
             response = requests.post(
                 f"{api_url}/api/main",
                 json={"license_key": license_key},
@@ -707,7 +764,7 @@ def check_azure_time_service() -> str:
     try:
         import requests
         
-        cloud_api_url = CONFIG.get("cloud_api_url", "https://quotrading-api-v2.azurewebsites.net")
+        cloud_api_url = CONFIG.get("cloud_api_url", "https://quotrading-flask-api.azurewebsites.net")
         
         response = requests.get(
             f"{cloud_api_url}/api/main",
@@ -2673,7 +2730,6 @@ def capture_rl_state(symbol: str, side: str, current_price: float) -> Dict[str, 
     regime = state[symbol].get("current_regime", "NORMAL")
     
     rl_state = {
-        "symbol": symbol,  # CRITICAL: Symbol for multi-instrument RL brains
         "rsi": rsi if rsi is not None else 50,
         "vwap_distance": vwap_distance,
         "atr": atr,
@@ -2739,6 +2795,21 @@ def check_for_signals(symbol: str) -> None:
         # Ask cloud RL API for decision (or local RL as fallback)
         take_signal, confidence, reason = get_ml_confidence(rl_state, "long")
         
+        # Check if in recovery mode and need higher confidence
+        if take_signal and bot_status.get("recovery_confidence_threshold"):
+            recovery_threshold = bot_status["recovery_confidence_threshold"]
+            if confidence < recovery_threshold:
+                logger.info(f" RECOVERY MODE REJECTED LONG signal: confidence {confidence:.1%} below recovery threshold {recovery_threshold:.1%}")
+                logger.info(f"   Bot is in recovery mode - only taking high-confidence signals")
+                state[symbol]["last_rejected_signal"] = {
+                    "time": get_current_time(),
+                    "state": rl_state,
+                    "side": "long",
+                    "confidence": confidence,
+                    "reason": f"Recovery mode: {confidence:.1%} < {recovery_threshold:.1%}"
+                }
+                return
+        
         if not take_signal:
             logger.info(f"❌ RL REJECTED LONG: {reason} (conf: {confidence:.0%})")
             if not is_backtest_mode():
@@ -2778,6 +2849,21 @@ def check_for_signals(symbol: str) -> None:
         
         # Ask cloud RL API for decision (or local RL as fallback)
         take_signal, confidence, reason = get_ml_confidence(rl_state, "short")
+        
+        # Check if in recovery mode and need higher confidence
+        if take_signal and bot_status.get("recovery_confidence_threshold"):
+            recovery_threshold = bot_status["recovery_confidence_threshold"]
+            if confidence < recovery_threshold:
+                logger.info(f" RECOVERY MODE REJECTED SHORT signal: confidence {confidence:.1%} below recovery threshold {recovery_threshold:.1%}")
+                logger.info(f"   Bot is in recovery mode - only taking high-confidence signals")
+                state[symbol]["last_rejected_signal"] = {
+                    "time": get_current_time(),
+                    "state": rl_state,
+                    "side": "short",
+                    "confidence": confidence,
+                    "reason": f"Recovery mode: {confidence:.1%} < {recovery_threshold:.1%}"
+                }
+                return
         
         if not take_signal:
             logger.info(f"❌ RL REJECTED SHORT: {reason} (conf: {confidence:.0%})")
@@ -2819,16 +2905,16 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
     """
     Calculate position size based on risk management rules.
     
-    FIXED CONTRACTS: User's max_contracts setting determines position size.
+    USER SETS MAX LIMIT → RL Confidence dynamically chooses contracts within that limit!
     - User configures max_contracts (e.g., 3 contracts)
-    - Position size is ALWAYS fixed at this value (no dynamic scaling)
-    - Risk-based calculation ensures we don't exceed risk tolerance
+    - RL confidence scales: LOW = 1 contract, MEDIUM = 2 contracts, HIGH = 3 contracts
+    - User with max_contracts=10 gets: LOW = 3, MEDIUM = 6, HIGH = 10
     
     Args:
         symbol: Instrument symbol
         side: 'long' or 'short'
         entry_price: Expected entry price
-        rl_confidence: Optional RL confidence (not used for position sizing)
+        rl_confidence: Optional RL confidence (0-1) to adjust position size
     
     Returns:
         Tuple of (contracts, stop_price, target_price)
@@ -2897,11 +2983,88 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
     else:
         contracts = 0
     
-    # Get user's max contracts limit and apply it (FIXED - no dynamic scaling)
+    # Get user's max contracts limit
     user_max_contracts = CONFIG["max_contracts"]
-    contracts = min(contracts, user_max_contracts)
     
-    logger.info(f"[FIXED CONTRACTS] Using fixed max of {user_max_contracts} contracts")
+    # Apply RL confidence to dynamically scale WITHIN user's limit
+    # Check if dynamic contracts feature is enabled (GUI setting)
+    dynamic_contracts_enabled = CONFIG.get("dynamic_contracts", False)
+    
+    if rl_confidence is not None and dynamic_contracts_enabled:
+        global rl_brain
+        if rl_brain is not None:
+            size_multiplier = rl_brain.get_position_size_multiplier(rl_confidence)
+        else:
+            size_multiplier = 1.0
+            
+        # Calculate RL-scaled max contracts
+        # DYNAMIC SCALING: Works with ANY max_contracts setting (1-25)
+        # Examples:
+        #   max=3, conf=50%  -> 2 contracts
+        #   max=10, conf=50% -> 5 contracts  
+        #   max=25, conf=50% -> 13 contracts
+        #   max=25, conf=90% -> 23 contracts
+        rl_scaled_max = max(1, int(round(user_max_contracts * size_multiplier)))
+        
+        # Use MINIMUM of risk-based calculation and RL-scaled max
+        # This ensures we respect BOTH the risk management AND user's max limit
+        contracts = min(contracts, rl_scaled_max)
+        
+        # Detailed confidence level logging
+        if rl_confidence < 0.3:
+            confidence_level = "VERY LOW"
+        elif rl_confidence < 0.5:
+            confidence_level = "LOW"
+        elif rl_confidence < 0.7:
+            confidence_level = "MEDIUM"
+        elif rl_confidence < 0.85:
+            confidence_level = "HIGH"
+        else:
+            confidence_level = "VERY HIGH"
+            
+        logger.info(f"[DYNAMIC CONTRACTS] {confidence_level} confidence ({rl_confidence:.1%}) × Max {user_max_contracts} = {rl_scaled_max} contracts (capped at {contracts} by risk)")
+    else:
+        # No RL confidence or dynamic contracts disabled - use fixed max
+        contracts = min(contracts, user_max_contracts)
+        # Only log once when dynamic contracts are first disabled (avoid spamming logs)
+        if not dynamic_contracts_enabled and rl_confidence is not None:
+            if not hasattr(calculate_position_size, '_logged_fixed_mode'):
+                logger.info(f"[FIXED CONTRACTS] Using fixed max of {user_max_contracts} contracts (dynamic contracts disabled)")
+                calculate_position_size._logged_fixed_mode = True
+    
+    # RECOVERY MODE: Further reduce position size when approaching limits
+    if bot_status.get("recovery_confidence_threshold") is not None:
+        severity = bot_status.get("recovery_severity", RECOVERY_DEFAULT_SEVERITY)
+        # Dynamically scale position size based on proximity to failure
+        # CONSERVATIVE SCALING - more aggressive reductions at higher severity
+        # As bot gets FURTHER from failure, INCREASE contracts back to original
+        # At 95%+ severity: 20% of normal size (was 33%)
+        # At 90% severity: 40% of normal size (was 50%)
+        # At 80% severity: 65% of normal size (was 75%)
+        # At 70% severity: 80% of normal size (scaling back up)
+        # At 60% severity: 90% of normal size (almost back to normal)
+        # Below 50% severity: 100% of normal size (fully restored)
+        if severity >= RECOVERY_SIZE_CRITICAL:
+            recovery_multiplier = RECOVERY_MULTIPLIER_CRITICAL  # 20%
+        elif severity >= RECOVERY_SIZE_HIGH:
+            recovery_multiplier = RECOVERY_MULTIPLIER_HIGH  # 40%
+        elif severity >= RECOVERY_SIZE_MODERATE:
+            recovery_multiplier = RECOVERY_MULTIPLIER_MODERATE  # 65%
+        elif severity >= 0.70:
+            recovery_multiplier = 0.80  # Scaling back up - 80%
+        elif severity >= 0.60:
+            recovery_multiplier = 0.90  # Almost back to normal - 90%
+        else:
+            recovery_multiplier = 1.0  # Fully restored - 100%
+        
+        original_contracts = contracts
+        contracts = max(1, int(round(contracts * recovery_multiplier)))
+        
+        if contracts != original_contracts:
+            if recovery_multiplier < 1.0:
+                logger.warning(f"[RECOVERY MODE] Position size adjusted: {original_contracts} → {contracts} contracts (severity: {severity*100:.0f}%, multiplier: {recovery_multiplier*100:.0f}%)")
+            else:
+                logger.info(f"[RECOVERY MODE] Position size restored: {original_contracts} → {contracts} contracts (severity: {severity*100:.0f}%, safe zone)")
     
     if contracts == 0:
         logger.warning(f"Position size too small: risk=${risk_per_contract:.2f}, allowance=${risk_dollars:.2f}")
@@ -5716,7 +5879,7 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
         }
         
         # Write to file
-        summary_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'trade_summary.json')
+        summary_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'trade_summary.json')
         with open(summary_file, 'w') as f:
             json.dump(trade_summary, f, indent=2)
         
@@ -5778,37 +5941,6 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
     
     # CRITICAL: IMMEDIATELY save state to disk - position is now FLAT
     save_position_state(symbol)
-    
-    # Check if we're in license grace period and position just closed
-    if bot_status.get("license_grace_period", False):
-        logger.warning("=" * 70)
-        logger.warning("⏰ GRACE PERIOD ENDED - Position Closed")
-        logger.warning("License expired and position has now closed safely")
-        logger.warning("Stopping trading as license is no longer valid")
-        logger.warning("=" * 70)
-        
-        # End grace period
-        bot_status["license_grace_period"] = False
-        bot_status["trading_enabled"] = False
-        bot_status["emergency_stop"] = True
-        bot_status["stop_reason"] = "License expired - grace period ended after position close"
-        
-        # Send notification
-        try:
-            notifier = get_notifier()
-            notifier.send_error_alert(
-                error_message=f"🔒 TRADING STOPPED - Grace Period Ended\n\n"
-                             f"Your license expired and the active position has now closed safely.\n"
-                             f"Final P&L: ${pnl:+.2f}\n"
-                             f"Exit Reason: {reason}\n\n"
-                             f"Trading is now stopped. Please renew your license to continue.",
-                error_type="License Expired - Grace Period Ended"
-            )
-        except Exception as e:
-            logger.debug(f"Failed to send grace period end notification: {e}")
-        
-        logger.critical("🔒 Trading disabled - license renewal required")
-        logger.critical("Contact support@quotrading.com to renew your license")
     logger.info("  ✓ Position state saved to disk (FLAT)")
 
 
@@ -6122,18 +6254,19 @@ def check_daily_loss_limit(symbol: str) -> Tuple[bool, Optional[str]]:
 def check_approaching_failure(symbol: str) -> Tuple[bool, Optional[str], Optional[float]]:
     """
     Check if bot is approaching daily loss limit.
+    Used for Recovery Mode and Confidence Trading.
     
     Args:
         symbol: Instrument symbol
     
     Returns:
         Tuple of (is_approaching, reason, severity_level)
-        - is_approaching: True if at DAILY_LOSS_APPROACHING_THRESHOLD (80%) or more of daily loss limit
+        - is_approaching: True if at RECOVERY_APPROACHING_THRESHOLD (80%) or more of daily loss limit
         - reason: Description of what limit is being approached
         - severity_level: 0.0-1.0 indicating how close to failure (0.8 = at 80%, 1.0 = at 100%)
     """
     daily_loss_limit = CONFIG.get("daily_loss_limit", 1000.0)
-    if daily_loss_limit > 0 and state[symbol]["daily_pnl"] <= -daily_loss_limit * DAILY_LOSS_APPROACHING_THRESHOLD:
+    if daily_loss_limit > 0 and state[symbol]["daily_pnl"] <= -daily_loss_limit * RECOVERY_APPROACHING_THRESHOLD:
         daily_loss_severity = abs(state[symbol]["daily_pnl"]) / daily_loss_limit
         reason = f"Daily loss at {daily_loss_severity*100:.1f}% of limit (${state[symbol]['daily_pnl']:.2f}/${-daily_loss_limit:.2f})"
         
@@ -6150,6 +6283,51 @@ def check_approaching_failure(symbol: str) -> Tuple[bool, Optional[str], Optiona
         return True, reason, daily_loss_severity
     
     return False, None, 0.0
+
+
+def get_recovery_confidence_threshold(severity_level: float) -> float:
+    """
+    Calculate required confidence threshold for recovery mode.
+    Higher severity = higher confidence requirement.
+    Confidence NEVER goes below user's initial threshold - it only increases.
+    
+    Uses percentage-based scaling to work with any user setting (50%-90%).
+    CONSERVATIVE: At critical levels (95%+), uses nearly all headroom for maximum selectivity.
+    
+    Args:
+        severity_level: How close to failure (0.8 = at 80%, 1.0 = at 100%)
+    
+    Returns:
+        Required confidence threshold (0.0-1.0), never below user's initial setting
+    """
+    # Base threshold is user's setting - this is the MINIMUM
+    base_threshold = CONFIG.get("rl_confidence_threshold", 0.65)
+    
+    # Calculate how much headroom we have to increase (distance to 100%)
+    headroom = 1.0 - base_threshold
+    
+    # Scale confidence based on severity using percentage of headroom
+    # CONSERVATIVE SCALING - uses more headroom as danger increases
+    # At 80% severity: use 30% of headroom (moderate increase)
+    # At 90% severity: use 60% of headroom (significant increase)
+    # At 95% severity: use 85% of headroom (very selective)
+    # At 98%+ severity: use 95% of headroom (maximum selectivity - only absolute best signals)
+    if severity_level >= 0.98:
+        increase_multiplier = 0.95  # Use 95% of headroom - extremely selective
+    elif severity_level >= 0.95:
+        increase_multiplier = 0.85  # Use 85% of headroom - very selective
+    elif severity_level >= 0.90:
+        increase_multiplier = 0.60  # Use 60% of headroom - selective
+    elif severity_level >= 0.80:
+        increase_multiplier = 0.30  # Use 30% of headroom - moderately selective
+    else:
+        increase_multiplier = 0.0  # Normal operation - no increase
+    
+    # Calculate new threshold: base + (percentage of available headroom)
+    dynamic_threshold = base_threshold + (headroom * increase_multiplier)
+    
+    # Cap at 0.98 (never require 100% - impossible to achieve)
+    return min(0.98, dynamic_threshold)
 
 
 def check_tick_timeout(current_time: datetime) -> Tuple[bool, Optional[str]]:
@@ -6246,33 +6424,6 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
     """
     current_time = get_current_time()
     
-    # Check if license has expired
-    if bot_status.get("license_expired", False):
-        # SAFETY: Grace period for active positions
-        # If position is active, allow bot to manage it until closed
-        # Only block NEW trades, not position management
-        if symbol in state and state[symbol]["position"]["active"]:
-            # Position active - allow management during grace period
-            logger.debug(f"License expired but position active - managing until close")
-            # Don't block - let position management continue
-            return True, None
-        else:
-            # No position - block new trades
-            reason = bot_status.get("license_expiry_reason", "License expired")
-            return False, f"Trading disabled: {reason}"
-    
-    # Check if near expiry mode (within 2 hours of expiration)
-    if bot_status.get("near_expiry_mode", False):
-        # Block NEW trades but allow managing existing positions
-        if symbol in state and state[symbol]["position"]["active"]:
-            # Position active - allow management
-            logger.debug(f"Near expiry mode but position active - managing until close")
-            return True, None
-        else:
-            # No position - block new trades
-            hours_left = bot_status.get("hours_until_expiration", 0)
-            return False, f"License expires in {hours_left:.1f} hours - new trades blocked"
-    
     # Check trade limits and emergency stops
     is_safe, reason = check_trade_limits(current_time)
     if not is_safe:
@@ -6283,74 +6434,186 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
     # if not is_safe:
     #     return False, reason
     
-    # Check if approaching daily loss limit (SIMPLIFIED - no recovery mode or dynamic scaling)
+    # Check if approaching failure (Confidence Trading & Recovery Mode)
     is_approaching, approach_reason, severity = check_approaching_failure(symbol)
     if is_approaching:
-        # SIMPLIFIED: Just stop trading when approaching limit
-        # No dynamic scaling, no recovery mode
+        # Check which safety mode is enabled
+        confidence_trading_enabled = CONFIG.get("confidence_trading", False)
+        recovery_mode_enabled = CONFIG.get("recovery_mode", False)
         
-        if bot_status.get("stop_reason") != "daily_limits_reached":
+        # BOTH MODES USE SAME SCALING LOGIC (higher confidence + fewer contracts as approaching limit)
+        # DIFFERENCE: Confidence Trading STOPS at limit, Recovery Mode CONTINUES
+        
+        if confidence_trading_enabled or recovery_mode_enabled:
+            # AUTO-SCALE confidence based on severity (same for both modes)
+            required_confidence = get_recovery_confidence_threshold(severity)
+            
+            # Determine which mode is active for logging
+            mode_name = "RECOVERY MODE" if recovery_mode_enabled else "CONFIDENCE TRADING"
+            stop_reason = "recovery_mode" if recovery_mode_enabled else "confidence_trading"
+            
+            if bot_status.get("stop_reason") != stop_reason:
+                logger.warning("=" * 80)
+                logger.warning(f"{mode_name}: APPROACHING LIMITS - SCALING DOWN")
+                logger.warning(f"Reason: {approach_reason}")
+                logger.warning(f"Severity: {severity*100:.1f}%")
+                logger.warning(f"Required confidence DYNAMICALLY increased to {required_confidence*100:.1f}%")
+                logger.warning("Bot will ONLY take highest-confidence signals")
+                logger.warning("Position size will be dynamically reduced")
+                if recovery_mode_enabled:
+                    logger.warning("⚠️ RECOVERY MODE: Will continue trading even if limit hit")
+                else:
+                    logger.warning("⚠️ CONFIDENCE TRADING: Will STOP trading if limit hit")
+                logger.warning("=" * 80)
+                bot_status["stop_reason"] = stop_reason
+                
+                # Send recovery/confidence mode activation alert
+                try:
+                    notifier = get_notifier()
+                    notifier.send_error_alert(
+                        error_message=f"{mode_name} ACTIVATED. Severity: {severity*100:.1f}%. {approach_reason}. Trading scaled down to highest-confidence signals only.",
+                        error_type=mode_name
+                    )
+                except Exception as e:
+                    logger.debug(f"Failed to send {mode_name} alert: {e}")
+            
+            # Store threshold and severity for use in signal evaluation and position sizing
+            bot_status["recovery_confidence_threshold"] = required_confidence
+            bot_status["recovery_severity"] = severity
+            
+            # CRITICAL: Check if daily limit actually HIT (severity >= 1.0)
+            # Confidence Trading STOPS, Recovery Mode CONTINUES
+            if severity >= 1.0 and confidence_trading_enabled and not recovery_mode_enabled:
+                logger.error("=" * 80)
+                logger.error("🛑 CONFIDENCE TRADING: DAILY LIMIT HIT - STOPPING TRADING")
+                logger.error(f"Daily Loss: ${state[symbol]['daily_pnl']:.2f}")
+                logger.error(f"Daily Limit: ${-CONFIG.get('daily_loss_limit', 1000):.2f}")
+                logger.error("Bot will STOP making new trades until daily reset at 6 PM ET")
+                logger.error("Bot continues running and monitoring - will resume after maintenance hour")
+                logger.error("=" * 80)
+                bot_status["trading_enabled"] = False
+                bot_status["stop_reason"] = "confidence_trading_limit_hit"
+                
+                # Close any active position when limit hit
+                if state[symbol]["position"]["active"]:
+                    position = state[symbol]["position"]
+                    entry_price = position.get("entry_price", 0)
+                    side = position.get("side", "long")
+                    current_price = state[symbol]["bars"][-1]["close"] if state[symbol]["bars"] else entry_price
+                    
+                    logger.error("=" * 80)
+                    logger.error("CONFIDENCE TRADING: Closing active position due to daily limit")
+                    logger.error(f"Position: {side.upper()} {position['quantity']} @ ${entry_price:.2f}")
+                    logger.error(f"Current Price: ${current_price:.2f}")
+                    logger.error("=" * 80)
+                    
+                    # Get smart flatten price
+                    flatten_price = get_flatten_price(symbol, side, current_price)
+                    
+                    # Close the position
+                    handle_exit_orders(symbol, position, flatten_price, "confidence_trading_limit_protection")
+                    
+                    logger.info(f"Position closed at ${flatten_price:.2f} - Confidence Trading limit hit")
+                
+                return False, "Confidence Trading: Daily limit hit - trading stopped until next session (6 PM ET reset)"
+            
+            # SMART POSITION MANAGEMENT: If severity is critical (95%+), consider closing losing positions
+            if severity >= 0.95 and state[symbol]["position"]["active"]:
+                position = state[symbol]["position"]
+                entry_price = position.get("entry_price", 0)
+                current_price = state[symbol]["bars"][-1]["close"] if state[symbol]["bars"] else entry_price
+                
+                # Check if position is losing
+                is_losing = (
+                    (position["side"] == "long" and current_price < entry_price) or
+                    (position["side"] == "short" and current_price > entry_price)
+                )
+                
+                if is_losing:
+                    # Calculate how much the position is losing
+                    side = position.get("side", "long")
+                    if side == "long":
+                        position_pnl = (current_price - entry_price) * position["quantity"]
+                    else:
+                        position_pnl = (entry_price - current_price) * position["quantity"]
+                    
+                    logger.warning("=" * 80)
+                    logger.warning("SMART POSITION MANAGEMENT: Critical severity (95%+) with losing position")
+                    logger.warning(f"Position: {side.upper()} {position['quantity']} @ ${entry_price:.2f}")
+                    logger.warning(f"Current Price: ${current_price:.2f}")
+                    logger.warning(f"Position Loss: ${position_pnl:.2f}")
+                    logger.warning("Closing position to prevent account failure")
+                    logger.warning("=" * 80)
+                    
+                    # Get smart flatten price
+                    flatten_price = get_flatten_price(symbol, side, current_price)
+                    
+                    # Close the losing position immediately
+                    handle_exit_orders(symbol, position, flatten_price, "critical_loss_protection")
+                    
+                    logger.info(f"Losing position closed at ${flatten_price:.2f} in safety mode")
+                else:
+                    # Position is winning, just flag for aggressive management
+                    logger.info("Position is profitable - maintaining with aggressive exit management")
+                    bot_status["aggressive_exit_mode"] = True
+            
+            # Don't stop trading - both modes continue with scaled-down logic
+        else:
+            # NEITHER MODE ENABLED: STOP trading until next session (after maintenance)
+            # Bot stays running but doesn't execute new trades until daily reset at 6 PM ET
             logger.warning("=" * 80)
-            logger.warning("⚠️ APPROACHING DAILY LOSS LIMIT - STOPPING TRADING")
+            logger.warning("⚠️ LIMITS REACHED - STOPPING TRADING UNTIL NEXT SESSION")
             logger.warning(f"Reason: {approach_reason}")
             logger.warning(f"Severity: {severity*100:.1f}%")
             logger.warning("Bot will STOP making new trades until daily reset at 6 PM ET")
             logger.warning("Bot continues running and monitoring - will resume after maintenance hour")
+            logger.warning("To scale down when approaching limits, enable Confidence Trading or Recovery Mode")
             logger.warning("=" * 80)
+            bot_status["trading_enabled"] = False
             bot_status["stop_reason"] = "daily_limits_reached"
             
-            # Send limit warning alert
-            try:
-                notifier = get_notifier()
-                notifier.send_error_alert(
-                    error_message=f"Daily loss limit reached. Severity: {severity*100:.1f}%. {approach_reason}. Trading stopped.",
-                    error_type="DAILY_LIMIT_REACHED"
-                )
-            except Exception as e:
-                logger.debug(f"Failed to send daily limit alert: {e}")
-        
-        bot_status["trading_enabled"] = False
-        
-        # Close any active position when limit reached
-        if state[symbol]["position"]["active"]:
-            position = state[symbol]["position"]
-            entry_price = position.get("entry_price", 0)
-            side = position.get("side", "long")
-            current_price = state[symbol]["bars"][-1]["close"] if state[symbol]["bars"] else entry_price
+            # SMART POSITION CLOSING: Close any active position when daily limit reached
+            if state[symbol]["position"]["active"]:
+                position = state[symbol]["position"]
+                entry_price = position.get("entry_price", 0)
+                side = position.get("side", "long")
+                current_price = state[symbol]["bars"][-1]["close"] if state[symbol]["bars"] else entry_price
+                
+                # Calculate current P&L for the position
+                if side == "long":
+                    position_pnl = (current_price - entry_price) * position["quantity"]
+                else:
+                    position_pnl = (entry_price - current_price) * position["quantity"]
+                
+                logger.warning("=" * 80)
+                logger.warning("SMART POSITION MANAGEMENT: Closing active position due to daily limit")
+                logger.warning(f"Position: {side.upper()} {position['quantity']} @ ${entry_price:.2f}")
+                logger.warning(f"Current Price: ${current_price:.2f}")
+                logger.warning(f"Position P&L: ${position_pnl:.2f}")
+                logger.warning("Executing smart exit to minimize additional losses")
+                logger.warning("=" * 80)
+                
+                # Get smart flatten price (includes buffer to ensure fill)
+                flatten_price = get_flatten_price(symbol, side, current_price)
+                
+                # Close the position
+                handle_exit_orders(symbol, position, flatten_price, "daily_limit_protection")
+                
+                logger.info(f"Position closed at ${flatten_price:.2f} to protect from further losses")
             
-            # Calculate current P&L for the position
-            if side == "long":
-                position_pnl = (current_price - entry_price) * position["quantity"]
-            else:
-                position_pnl = (entry_price - current_price) * position["quantity"]
-            
-            logger.warning("=" * 80)
-            logger.warning("POSITION MANAGEMENT: Closing active position due to daily limit")
-            logger.warning(f"Position: {side.upper()} {position['quantity']} @ ${entry_price:.2f}")
-            logger.warning(f"Current Price: ${current_price:.2f}")
-            logger.warning(f"Position P&L: ${position_pnl:.2f}")
-            logger.warning("Executing exit to protect account")
-            logger.warning("=" * 80)
-            
-            # Get smart flatten price (includes buffer to ensure fill)
-            flatten_price = get_flatten_price(symbol, side, current_price)
-            
-            # Close the position
-            handle_exit_orders(symbol, position, flatten_price, "daily_limit_protection")
-            
-            logger.info(f"Position closed at ${flatten_price:.2f} to protect from further losses")
-        
-        return False, "Daily limits reached - trading stopped until next session (6 PM ET reset)"
+            return False, "Daily limits reached - trading stopped until next session (6 PM ET reset)"
     else:
         # Not approaching failure - clear any safety mode that was set
-        if bot_status.get("stop_reason") == "daily_limits_reached":
+        if bot_status.get("stop_reason") in ["daily_limits_reached", "recovery_mode", "confidence_trading", "confidence_trading_limit_hit"]:
             logger.info("=" * 80)
             logger.info("SAFE ZONE: Back to normal operation")
             logger.info("Bot has moved away from failure thresholds")
-            logger.info("Resuming normal trading")
+            logger.info("Returning to user's initial settings")
             logger.info("=" * 80)
             bot_status["trading_enabled"] = True
             bot_status["stop_reason"] = None
+            bot_status["recovery_confidence_threshold"] = None
+            bot_status["recovery_severity"] = None
     
     # Check tick timeout
     is_safe, reason = check_tick_timeout(current_time)
@@ -7014,7 +7277,7 @@ def main(symbol_override: str = None) -> None:
         symbol_override: Optional symbol to trade (overrides CONFIG["instrument"])
                         Used for multi-symbol bot instances
     """
-    global event_loop, timer_manager, bid_ask_manager, cloud_api_client, rl_brain
+    global event_loop, timer_manager, bid_ask_manager
     
     # Use symbol override if provided (for multi-symbol support)
     trading_symbol = symbol_override if symbol_override else CONFIG["instrument"]
@@ -7022,27 +7285,6 @@ def main(symbol_override: str = None) -> None:
     logger.info(SEPARATOR_LINE)
     logger.info(f"QuoTrading AI Bot Starting [{trading_symbol}]")
     logger.info(SEPARATOR_LINE)
-    
-    # Initialize Cloud API Client for LIVE mode, RL Brain for BACKTEST mode
-    if is_backtest_mode() or CONFIG.get("backtest_mode", False):
-        logger.info(f"[{trading_symbol}] BACKTEST MODE: Using local RL brain")
-        # RL brain will be initialized by backtest code
-    else:
-        logger.info(f"[{trading_symbol}] LIVE MODE: Initializing cloud API client...")
-        license_key = CONFIG.get("quotrading_license") or CONFIG.get("user_api_key")
-        
-        if not license_key:
-            logger.error(f"[{trading_symbol}] No license key found in config - cannot connect to cloud RL")
-            logger.error(f"[{trading_symbol}] Add 'quotrading_license' to config.json")
-            return
-        
-        cloud_api_url = "https://quotrading-flask-api.azurewebsites.net"
-        cloud_api_client = CloudAPIClient(
-            api_url=cloud_api_url,
-            license_key=license_key,
-            timeout=10
-        )
-        logger.info(f"[{trading_symbol}] ✅ Cloud API client initialized")
     
     # Log symbol specifications if loaded
     if SYMBOL_SPEC:
@@ -7109,7 +7351,6 @@ def main(symbol_override: str = None) -> None:
     event_loop.register_handler(EventType.FLATTEN_MODE, handle_flatten_mode_event)
     event_loop.register_handler(EventType.POSITION_RECONCILIATION, handle_position_reconciliation_event)
     event_loop.register_handler(EventType.CONNECTION_HEALTH, handle_connection_health_event)
-    event_loop.register_handler(EventType.LICENSE_CHECK, handle_license_check_event)
     event_loop.register_handler(EventType.SHUTDOWN, handle_shutdown_event)
     
     # Register shutdown handlers for cleanup
@@ -7222,72 +7463,10 @@ def handle_time_check_event(data: Dict[str, Any]) -> None:
     symbol = CONFIG["instrument"]
     if symbol in state:
         tz = pytz.timezone(CONFIG["timezone"])
-        current_time = datetime.now(tz)
-        current_time_only = current_time.time()
+        current_time = datetime.now(tz).time()
         
         # Check for daily reset
-        check_daily_reset(symbol, current_time)
-        
-        # Check for delayed license expiration stop conditions
-        # If license expired and we're waiting for market close (Friday)
-        if bot_status.get("stop_at_market_close", False):
-            maintenance_start = CONFIG.get("forced_flatten_time", datetime_time(17, 0))  # 5:00 PM ET
-            if current_time_only >= maintenance_start:
-                logger.critical("🛑 Market closed - stopping trading due to expired license")
-                
-                # Flatten any open positions
-                if state[symbol]["position"]["active"]:
-                    logger.critical(f"🔒 Closing position at market close")
-                    position = state[symbol]["position"]
-                    current_price = state[symbol]["bars"][-1]["close"] if state[symbol]["bars"] else None
-                    
-                    if current_price:
-                        side = position["side"]
-                        exit_side = "SELL" if side == "long" else "BUY"
-                        quantity = position["quantity"]
-                        
-                        try:
-                            order = broker.place_market_order(symbol, exit_side, quantity)
-                            if order:
-                                logger.info(f"✅ Position closed at market close")
-                        except Exception as e:
-                            logger.error(f"Failed to close position: {e}")
-                
-                # Disable trading
-                bot_status["trading_enabled"] = False
-                bot_status["emergency_stop"] = True
-                bot_status["stop_reason"] = "License expired - stopped at Friday market close"
-                bot_status["stop_at_market_close"] = False
-        
-        # If license expired and we're waiting for maintenance window
-        elif bot_status.get("stop_at_maintenance", False):
-            maintenance_start = CONFIG.get("forced_flatten_time", datetime_time(17, 0))  # 5:00 PM ET
-            if current_time_only >= maintenance_start:
-                logger.critical("🛑 Maintenance window reached - stopping trading due to expired license")
-                
-                # Flatten any open positions
-                if state[symbol]["position"]["active"]:
-                    logger.critical(f"🔒 Closing position at maintenance window")
-                    position = state[symbol]["position"]
-                    current_price = state[symbol]["bars"][-1]["close"] if state[symbol]["bars"] else None
-                    
-                    if current_price:
-                        side = position["side"]
-                        exit_side = "SELL" if side == "long" else "BUY"
-                        quantity = position["quantity"]
-                        
-                        try:
-                            order = broker.place_market_order(symbol, exit_side, quantity)
-                            if order:
-                                logger.info(f"✅ Position closed at maintenance window")
-                        except Exception as e:
-                            logger.error(f"Failed to close position: {e}")
-                
-                # Disable trading
-                bot_status["trading_enabled"] = False
-                bot_status["emergency_stop"] = True
-                bot_status["stop_reason"] = "License expired - stopped at maintenance window"
-                bot_status["stop_at_maintenance"] = False
+        check_daily_reset(symbol, datetime.now(tz))
         
         # Critical safety check - NO positions past 5 PM
         check_no_overnight_positions(symbol)
@@ -7407,274 +7586,6 @@ def handle_connection_health_event(data: Dict[str, Any]) -> None:
     Runs every 30 seconds.
     """
     check_broker_connection()
-
-
-def handle_license_check_event(data: Dict[str, Any]) -> None:
-    """
-    Handle periodic license validation check event.
-    Validates license with cloud API and gracefully stops trading if expired.
-    Runs every 5 minutes.
-    
-    Expiration Handling Strategy:
-    - If expires during maintenance window (5:00-6:00 PM ET): Stop when maintenance begins
-    - If expires on Friday after hours: Stop when market closes (5:00 PM ET)  
-    - If expires on weekend: Stop on Friday at close
-    - Otherwise: Stop immediately and flatten positions
-    """
-    global cloud_api_client
-    
-    # Skip if in backtest mode or no cloud client
-    if is_backtest_mode() or cloud_api_client is None:
-        return
-    
-    # Skip if already stopped for expiration
-    if bot_status.get("license_expired", False):
-        return
-    
-    try:
-        # Get license key from config
-        license_key = CONFIG.get("quotrading_license") or CONFIG.get("user_api_key")
-        if not license_key:
-            logger.warning("No license key configured - cannot validate")
-            return
-        
-        # Validate license via API
-        import requests
-        api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-api-v2.azurewebsites.net")
-        
-        response = requests.post(
-            f"{api_url}/api/main",
-            json={"license_key": license_key},
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            
-            # Extract expiration information
-            expiration_iso = data.get("license_expiration")
-            days_until_expiration = data.get("days_until_expiration")
-            hours_until_expiration = data.get("hours_until_expiration")
-            
-            # Check if license is valid
-            if not data.get("license_valid", False):
-                # License has expired or been revoked
-                reason = data.get("message", "License invalid")
-                logger.critical(f"🚨 LICENSE EXPIRED: {reason}")
-                bot_status["license_expired"] = True
-                bot_status["license_expiry_reason"] = reason
-                
-                # Determine when to stop trading based on current time
-                current_time = get_current_time()
-                trading_state = get_trading_state(current_time)
-                
-                eastern_tz = pytz.timezone('US/Eastern')
-                eastern_time = current_time.astimezone(eastern_tz)
-                weekday = eastern_time.weekday()  # 0=Monday, 6=Sunday
-                current_time_only = eastern_time.time()
-                
-                # Check if we're approaching maintenance or end of week
-                flatten_time = CONFIG.get("flatten_time", datetime_time(16, 45))  # 4:45 PM ET
-                maintenance_start = CONFIG.get("forced_flatten_time", datetime_time(17, 0))  # 5:00 PM ET
-                
-                should_stop_now = True
-                stop_reason = "License expired - stopping trading immediately"
-                
-                # If Friday and before close, wait until market closes
-                if weekday == 4 and current_time_only < maintenance_start:
-                    logger.warning(f"⏰ License expired on Friday - will stop at market close (5:00 PM ET)")
-                    should_stop_now = False
-                    stop_reason = "License expired - will stop at Friday market close"
-                    # Set flag to stop at market close
-                    bot_status["stop_at_market_close"] = True
-                
-                # If weekday and close to maintenance, wait until maintenance
-                elif weekday < 4 and flatten_time <= current_time_only < maintenance_start:
-                    logger.warning(f"⏰ License expired during flatten window - will stop at maintenance (5:00 PM ET)")
-                    should_stop_now = False
-                    stop_reason = "License expired - will stop at maintenance window"
-                    bot_status["stop_at_maintenance"] = True
-                
-                # If weekend, should have already stopped on Friday
-                elif weekday in [5, 6]:  # Saturday or Sunday
-                    logger.critical("⏰ License expired over weekend - stopping immediately")
-                    should_stop_now = True
-                    stop_reason = "License expired over weekend"
-                
-                if should_stop_now:
-                    logger.critical(f"🛑 {stop_reason}")
-                    
-                    # Check if there's an active position
-                    symbol = CONFIG["instrument"]
-                    has_active_position = symbol in state and state[symbol]["position"]["active"]
-                    
-                    if has_active_position:
-                        # GRACE PERIOD: License expired but position is active
-                        # Allow bot to manage position until it closes naturally
-                        logger.warning("=" * 70)
-                        logger.warning("⏰ LICENSE GRACE PERIOD ACTIVATED")
-                        logger.warning("License expired but position is active")
-                        logger.warning("Bot will continue managing position until it closes")
-                        logger.warning("Position will close via normal exit rules (target/stop/time)")
-                        logger.warning("No new trades will be allowed")
-                        logger.warning("=" * 70)
-                        
-                        # Set grace period flag
-                        bot_status["license_grace_period"] = True
-                        bot_status["grace_period_reason"] = "Active position - managing until close"
-                        
-                        # Block new trades but allow position management
-                        # Note: check_safety_conditions will allow position management
-                        # but block new entries when license_expired=True and position is active
-                        
-                        # Send notification about grace period
-                        try:
-                            notifier = get_notifier()
-                            position = state[symbol]["position"]
-                            notifier.send_error_alert(
-                                error_message=f"🚨 LICENSE EXPIRED (Grace Period Active)\n\n"
-                                             f"Your license has expired but you have an active {position['side']} position.\n"
-                                             f"Bot will continue managing the position until it closes.\n"
-                                             f"Position: {position['quantity']} contracts @ ${position['entry_price']:.2f}\n\n"
-                                             f"No new trades will be allowed.\n"
-                                             f"Please renew your license.",
-                                error_type="License Expired - Grace Period"
-                            )
-                        except Exception as e:
-                            logger.debug(f"Failed to send grace period notification: {e}")
-                        
-                    else:
-                        # No active position - stop immediately
-                        logger.critical("No active position - stopping trading immediately")
-                        
-                        # Disable trading
-                        bot_status["trading_enabled"] = False
-                        bot_status["emergency_stop"] = True
-                        bot_status["stop_reason"] = stop_reason
-                        
-                        # Send notification
-                        try:
-                            notifier = get_notifier()
-                            notifier.send_error_alert(
-                                error_message=f"🚨 TRADING STOPPED: {reason}\n\nPlease renew your license to continue trading.",
-                                error_type="License Expired"
-                            )
-                        except Exception as e:
-                            logger.debug(f"Failed to send license expiry notification: {e}")
-                        
-                        logger.critical("🔒 Trading disabled - license renewal required")
-                        logger.critical("Contact support@quotrading.com to renew your license")
-                else:
-                    logger.warning(f"⚠️ {stop_reason}")
-            else:
-                # License is still valid
-                logger.debug("✅ License validation successful")
-                
-                # PRE-EXPIRATION WARNINGS
-                # Store expiration info in bot_status
-                if expiration_iso:
-                    bot_status["license_expiration"] = expiration_iso
-                    bot_status["days_until_expiration"] = days_until_expiration
-                    bot_status["hours_until_expiration"] = hours_until_expiration
-                
-                # WARNING: License expiring within 24 hours
-                if hours_until_expiration is not None and hours_until_expiration <= 24 and hours_until_expiration > 0:
-                    # Only warn once per session
-                    if not bot_status.get("expiry_warning_24h_sent", False):
-                        logger.warning("=" * 70)
-                        logger.warning("⚠️ LICENSE EXPIRATION WARNING - 24 HOURS")
-                        logger.warning(f"Your license will expire in {hours_until_expiration:.1f} hours")
-                        logger.warning("Please renew your license to avoid interruption")
-                        logger.warning("Any open trades will be safely closed before expiration")
-                        logger.warning("=" * 70)
-                        
-                        bot_status["expiry_warning_24h_sent"] = True
-                        
-                        # Send notification
-                        try:
-                            notifier = get_notifier()
-                            notifier.send_error_alert(
-                                error_message=f"⚠️ LICENSE EXPIRING SOON\n\n"
-                                             f"Your license will expire in {hours_until_expiration:.1f} hours.\n"
-                                             f"Expiration: {expiration_iso}\n\n"
-                                             f"Please renew to avoid interruption.\n"
-                                             f"Any open trades will be safely closed.",
-                                error_type="License Expiration Warning - 24 Hours"
-                            )
-                        except Exception as e:
-                            logger.debug(f"Failed to send 24h expiry warning: {e}")
-                
-                # WARNING: License expiring within 7 days
-                elif days_until_expiration is not None and days_until_expiration <= 7 and days_until_expiration > 1:
-                    # Only warn once per session
-                    if not bot_status.get("expiry_warning_7d_sent", False):
-                        logger.warning("=" * 70)
-                        logger.warning(f"⚠️ LICENSE EXPIRATION WARNING - {days_until_expiration} DAYS")
-                        logger.warning(f"Your license will expire in {days_until_expiration} days")
-                        logger.warning("Please renew your license to avoid interruption")
-                        logger.warning("=" * 70)
-                        
-                        bot_status["expiry_warning_7d_sent"] = True
-                        
-                        # Send notification (only for 7 days, not every check)
-                        try:
-                            notifier = get_notifier()
-                            notifier.send_error_alert(
-                                error_message=f"⚠️ LICENSE EXPIRING IN {days_until_expiration} DAYS\n\n"
-                                             f"Your license will expire on {expiration_iso}.\n\n"
-                                             f"Please renew to continue trading without interruption.",
-                                error_type=f"License Expiration Warning - {days_until_expiration} Days"
-                            )
-                        except Exception as e:
-                            logger.debug(f"Failed to send 7d expiry warning: {e}")
-                
-                # CRITICAL: Don't enter new trades if expiring within 2 hours
-                if hours_until_expiration is not None and hours_until_expiration <= 2 and hours_until_expiration > 0:
-                    if not bot_status.get("near_expiry_mode", False):
-                        logger.critical("=" * 70)
-                        logger.critical("🚨 NEAR EXPIRY MODE ACTIVATED")
-                        logger.critical(f"License expires in {hours_until_expiration:.1f} hours")
-                        logger.critical("NEW TRADES BLOCKED - Will only manage existing positions")
-                        logger.critical("=" * 70)
-                        
-                        bot_status["near_expiry_mode"] = True
-                        
-                        # Send notification
-                        try:
-                            notifier = get_notifier()
-                            notifier.send_error_alert(
-                                error_message=f"🚨 NEAR EXPIRY MODE\n\n"
-                                             f"License expires in {hours_until_expiration:.1f} hours.\n"
-                                             f"New trades are blocked.\n"
-                                             f"Bot will only manage existing positions.\n\n"
-                                             f"Please renew immediately.",
-                                error_type="License Near Expiry - 2 Hours"
-                            )
-                        except Exception as e:
-                            logger.debug(f"Failed to send near expiry notification: {e}")
-                else:
-                    # Clear near expiry mode if we have more than 2 hours
-                    bot_status["near_expiry_mode"] = False
-        
-        elif response.status_code == 401 or response.status_code == 403:
-            # Unauthorized - license likely expired
-            logger.critical("🚨 LICENSE VALIDATION FAILED - Unauthorized")
-            bot_status["license_expired"] = True
-            bot_status["trading_enabled"] = False
-            bot_status["emergency_stop"] = True
-            bot_status["stop_reason"] = "License validation failed - unauthorized"
-        
-        else:
-            # Other error - log but don't stop trading (could be temporary API issue)
-            logger.warning(f"⚠️ License validation returned HTTP {response.status_code} - continuing for now")
-    
-    except requests.Timeout:
-        # Timeout - don't stop trading, could be temporary network issue
-        logger.warning("⏱️ License validation timeout - will retry in 5 minutes")
-    
-    except Exception as e:
-        # Other error - log but continue trading
-        logger.warning(f"License validation error: {e} - will retry in 5 minutes")
 
 
 def handle_shutdown_event(data: Dict[str, Any]) -> None:

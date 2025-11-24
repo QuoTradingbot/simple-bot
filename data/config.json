@@ -1,13 +1,17 @@
 {
-  "quotrading_license": "QUOTRADING_ADMIN_MASTER_2025",
+  "quotrading_license": "ADMIN-DEV-KEY-2024",
   "market_type": "Futures",
-  "broker": "",
-  "broker_token": "",
-  "broker_username": "",
-  "symbols": ["ES"],
+  "broker": "TopStep",
+  "api_token": "hvqtoX/W1JStFx2eobnkWPCxxaLsHEU7JX9a1wdoKCI=",
+  "username": "Farruu2420@gmail.com",
+  "broker_token": "hvqtoX/W1JStFx2eobnkWPCxxaLsHEU7JX9a1wdoKCI=",
+  "broker_username": "Farruu2420@gmail.com",
+  "symbols": [
+    "ES"
+  ],
   "account_size": 50000.0,
-  "max_contracts": 2,
-  "max_trades_per_day": 9999,
+  "max_contracts": 1,
+  "max_trades_per_day": 9,
   "risk_per_trade": 0.012,
   "daily_loss_limit": 1000.0,
   "auto_calculate_limits": true,
@@ -15,7 +19,6 @@
   "rl_exploration_rate": 0.0,
   "rl_min_exploration_rate": 0.0,
   "rl_exploration_decay": 0.995,
-  "username": "",
   "quotrading_email": "",
   "quotrading_api_key": "",
   "quotrading_validated": false,
@@ -59,5 +62,5 @@
   "selected_account_id": "",
   "avoid_news_days": false,
   "alerts_enabled": false,
-  "cloud_api_url": "https://quotrading-signals.icymeadow-86b2969e.eastus.azurecontainerapps.io"
+  "cloud_api_url": "https://quotrading-flask-api.azurewebsites.net"
 }

@@ -23,7 +23,7 @@ except ImportError:
 
 # Import WebSocket streamer
 try:
-    from broker_websocket import BrokerWebSocketStreamer
+    from broker_websocket import TopStepWebSocketStreamer
     BROKER_WEBSOCKET_AVAILABLE = True
 except ImportError:
     BROKER_WEBSOCKET_AVAILABLE = False
@@ -215,7 +215,7 @@ class BrokerSDKImplementation(BrokerInterface):
         self._balance_change_threshold: float = 0.05  # Reconfigure if balance changes by 5%
         self.config: Optional[Any] = None  # Store reference to config for dynamic updates
         
-        if not TOPSTEP_SDK_AVAILABLE:
+        if not BROKER_SDK_AVAILABLE:
             logger.error("TopStep SDK (project-x-py) not installed!")
             logger.error("Install with: pip install project-x-py")
             raise RuntimeError("TopStep SDK not available")
@@ -472,11 +472,6 @@ class BrokerSDKImplementation(BrokerInterface):
                         self._last_configured_balance = current_balance
                     return current_balance
                 
-                # Validate TopStep compliance (safety check every balance check)
-                if not self.config.validate_topstep_compliance(current_balance):
-                    logger.warning("[WARNING] Compliance violation detected - forcing reconfiguration")
-                    if self.config.auto_configure_for_account(current_balance, logger, force=True):
-                        self._last_configured_balance = current_balance
                 
                 # Check if balance changed significantly (5% threshold for reconfiguration)
                 if self._last_configured_balance > 0:

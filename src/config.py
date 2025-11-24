@@ -28,6 +28,9 @@ class BotConfiguration:
     api_token: str = ""
     username: str = ""  # Broker username/email
     
+    # QuoTrading License
+    quotrading_license: str = ""  # QuoTrading license key for cloud RL access
+    
     # Trading Parameters
     risk_per_trade: float = 0.012  # 1.2% of account per trade (increased for more profit)
     max_contracts: int = 3  # USER CONFIGURABLE - maximum contracts allowed (user sets their own limit)
@@ -399,6 +402,7 @@ class BotConfiguration:
         """Convert configuration to dictionary (legacy format)."""
         return {
             "broker": self.broker,
+            "quotrading_license": self.quotrading_license,
             "instrument": self.instrument,
             "timezone": self.timezone,
             "risk_per_trade": self.risk_per_trade,

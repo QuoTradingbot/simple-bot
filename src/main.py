@@ -120,7 +120,7 @@ def run_single_symbol_bot(args, bot_config, symbol):
     logger = logging.getLogger('main')
     
     # Import bot modules
-    from vwap_bounce_bot import main as bot_main, bot_status, CONFIG
+    from quotrading_engine import main as bot_main, bot_status, CONFIG
     
     # Setup monitoring components
     config_dict = bot_config.to_dict()
@@ -165,7 +165,7 @@ def run_single_symbol_bot(args, bot_config, symbol):
 def _run_symbol_process(symbol):
     """Process target function for each symbol (must be at module level for Windows)"""
     # Re-import in subprocess
-    from vwap_bounce_bot import main as bot_main
+    from quotrading_engine import main as bot_main
     import logging
     import multiprocessing
     

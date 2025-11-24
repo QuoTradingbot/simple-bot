@@ -7,6 +7,8 @@ NO RL LOGIC - just communicates with cloud.
 
 import logging
 import requests
+import aiohttp
+import asyncio
 from typing import Dict, Tuple, Optional
 
 logger = logging.getLogger(__name__)
@@ -36,8 +38,20 @@ class CloudAPIClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.license_valid = True  # Set to False only on 401 license errors
+        self.session: Optional[aiohttp.ClientSession] = None
         
         logger.info(f"🌐 Cloud API client initialized: {self.api_url} (retries: {max_retries})")
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """Get or create the shared ClientSession"""
+        if self.session is None or self.session.closed:
+            self.session = aiohttp.ClientSession()
+        return self.session
+
+    async def close(self):
+        """Close the session"""
+        if self.session and not self.session.closed:
+            await self.session.close()
     
     def ask_should_take_trade(self, state: Dict) -> Tuple[bool, float, str]:
         """
@@ -133,6 +147,78 @@ class CloudAPIClient:
         
         # Should never reach here, but just in case
         return self._fallback_decision(state)
+
+    async def ask_should_take_trade_async(self, state: Dict) -> Tuple[bool, float, str]:
+        """
+        Async version of ask_should_take_trade using aiohttp.
+        Non-blocking call for high-performance trading.
+        """
+        # Only skip if license is permanently invalid
+        if not self.license_valid:
+            logger.error("❌ License invalid - trading disabled")
+            return False, 0.0, "License invalid - trading disabled"
+        
+        # Try with retries on EVERY call (always tries to reconnect)
+        last_error = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                if attempt > 0:
+                    logger.info(f"🔄 Retry attempt {attempt}/{self.max_retries}...")
+                
+                session = await self._get_session()
+                async with session.post(
+                    f"{self.api_url}/api/rl/analyze-signal",
+                    json={
+                        "license_key": self.license_key,
+                        "state": state
+                    },
+                    timeout=self.timeout
+                ) as response:
+                        
+                        if response.status == 200:
+                            data = await response.json()
+                            take_trade = data.get('take_trade', False)
+                            confidence = data.get('confidence', 0.5)
+                            reason = data.get('reason', 'Cloud decision')
+                            
+                            logger.info(f"☁️ Cloud decision: {reason}")
+                            return take_trade, confidence, reason
+                        
+                        elif response.status == 401:
+                            logger.error("❌ License validation failed - check license key")
+                            self.license_valid = False
+                            return False, 0.0, "License invalid - trading disabled"
+                        
+                        else:
+                            # Server error - retry if we have attempts left
+                            if attempt < self.max_retries:
+                                logger.warning(f"⚠️ Cloud API error {response.status} - will retry")
+                                last_error = f"HTTP {response.status}"
+                                continue
+                            else:
+                                logger.warning(f"⚠️ Cloud API error {response.status} after {self.max_retries} retries - using fallback")
+                                return self._fallback_decision(state)
+                    
+            except asyncio.TimeoutError:
+                if attempt < self.max_retries:
+                    logger.warning(f"⏱️ Cloud API timeout after {self.timeout}s - will retry")
+                    last_error = "Timeout"
+                    continue
+                else:
+                    logger.warning(f"⏱️ Cloud API timeout after {self.max_retries} retries - using fallback")
+                    return self._fallback_decision(state)
+                
+            except Exception as e:
+                if attempt < self.max_retries:
+                    logger.warning(f"⚠️ Cloud API error: {e} - will retry")
+                    last_error = str(e)
+                    continue
+                else:
+                    logger.warning(f"⚠️ Cloud API error after {self.max_retries} retries: {e} - using fallback")
+                    return self._fallback_decision(state)
+        
+        # Should never reach here, but just in case
+        return self._fallback_decision(state)
     
     def report_trade_outcome(self, state: Dict, took_trade: bool, pnl: float, duration: float) -> bool:
         """
@@ -182,6 +268,43 @@ class CloudAPIClient:
             else:
                 logger.warning(f"⚠️ Failed to report outcome: HTTP {response.status_code}")
                 return False
+                
+        except Exception as e:
+            logger.debug(f"Non-critical: Could not report outcome to cloud: {e}")
+            return False
+
+    async def report_trade_outcome_async(self, state: Dict, took_trade: bool, pnl: float, duration: float) -> bool:
+        """
+        Async version of report_trade_outcome using aiohttp.
+        """
+        # Skip reporting if license is invalid
+        if not self.license_valid:
+            logger.debug("License invalid - skipping outcome report")
+            return False
+        
+        try:
+            session = await self._get_session()
+            async with session.post(
+                f"{self.api_url}/api/rl/submit-outcome",
+                json={
+                    "license_key": self.license_key,
+                    "state": state,
+                    "took_trade": took_trade,
+                    "pnl": pnl,
+                    "duration": duration
+                },
+                timeout=self.timeout
+            ) as response:
+                    
+                    if response.status == 200:
+                        data = await response.json()
+                        total_exp = data.get('total_experiences', '?')
+                        win_rate = data.get('win_rate', 0) * 100
+                        logger.info(f"✅ Outcome reported to cloud ({total_exp} experiences, {win_rate:.0f}% WR)")
+                        return True
+                    else:
+                        logger.warning(f"⚠️ Failed to report outcome: HTTP {response.status}")
+                        return False
                 
         except Exception as e:
             logger.debug(f"Non-critical: Could not report outcome to cloud: {e}")

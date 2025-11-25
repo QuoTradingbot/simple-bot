@@ -165204,6 +165204,99 @@
         "exit_reason": "tightened_target",
         "held_full_duration": false
       }
+    },
+    {
+      "timestamp": "2025-11-25T11:25:56.602546",
+      "state": {
+        "symbol": "ES",
+        "rsi": 50,
+        "vwap_distance": 0.6785836905051321,
+        "atr": 2.0,
+        "volume_ratio": 1.0,
+        "hour": 20,
+        "day_of_week": 6,
+        "recent_pnl": 0,
+        "streak": 0,
+        "side": "long",
+        "price": 6543.5,
+        "regime": "NORMAL"
+      },
+      "action": {
+        "took_trade": true,
+        "exploration_rate": 0.3
+      },
+      "reward": 10.0,
+      "duration": 1.0,
+      "execution": {
+        "order_type_used": "market",
+        "entry_slippage_ticks": 0.0,
+        "partial_fill": false,
+        "fill_ratio": 1.0,
+        "exit_reason": "tightened_target",
+        "held_full_duration": false
+      }
+    },
+    {
+      "timestamp": "2025-11-25T11:25:56.625320",
+      "state": {
+        "symbol": "ES",
+        "rsi": 50,
+        "vwap_distance": 0.8353718656060124,
+        "atr": 1.25,
+        "volume_ratio": 1.0,
+        "hour": 21,
+        "day_of_week": 6,
+        "recent_pnl": 0,
+        "streak": 0,
+        "side": "long",
+        "price": 6540.25,
+        "regime": "HIGH_VOL_TRENDING"
+      },
+      "action": {
+        "took_trade": true,
+        "exploration_rate": 0.3
+      },
+      "reward": -27.5,
+      "duration": 3.0,
+      "execution": {
+        "order_type_used": "market",
+        "entry_slippage_ticks": 0.0,
+        "partial_fill": false,
+        "fill_ratio": 1.0,
+        "exit_reason": "stop_loss",
+        "held_full_duration": false
+      }
+    },
+    {
+      "timestamp": "2025-11-25T11:28:19.230244",
+      "state": {
+        "symbol": "ES",
+        "rsi": 33.192324924391855,
+        "vwap_distance": 0.8128376103341756,
+        "atr": 3.0,
+        "volume_ratio": 1.0,
+        "hour": 22,
+        "day_of_week": 6,
+        "recent_pnl": 0,
+        "streak": 0,
+        "side": "long",
+        "price": 6883.25,
+        "regime": "HIGH_VOL_TRENDING"
+      },
+      "action": {
+        "took_trade": true,
+        "exploration_rate": 0.3
+      },
+      "reward": 35.0,
+      "duration": 3.0,
+      "execution": {
+        "order_type_used": "market",
+        "entry_slippage_ticks": 0.0,
+        "partial_fill": false,
+        "fill_ratio": 1.0,
+        "exit_reason": "tightened_target",
+        "held_full_duration": false
+      }
     }
   ],
   "stats": {

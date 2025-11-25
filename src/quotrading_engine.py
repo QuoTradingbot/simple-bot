@@ -2345,11 +2345,11 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
     if datetime_time(16, 0) <= current_time_only < datetime_time(18, 0):  # 4:00 PM - 6:00 PM ET
         log_time_based_action(
             "daily_entry_blocked",
-            f"After 4:00 PM ET, no new trades (can hold positions until 4:45 PM flatten)",
+            f"Between 4:00-6:00 PM ET, no new trades (flatten/maintenance window)",
             {"time": current_time.strftime('%H:%M:%S')}
         )
-        logger.debug(f"After 4:00 PM ET - no new entries (existing positions can be held until 4:45 PM)")
-        return False, "Daily entry cutoff (4:00 PM ET)"
+        logger.debug(f"4:00-6:00 PM ET window - no new entries (flatten at 4:45 PM, maintenance at 5:00 PM, reopens at 6:00 PM)")
+        return False, "Daily entry cutoff (4:00-6:00 PM ET)"
     
     # Check if already have position
     if state[symbol]["position"]["active"]:

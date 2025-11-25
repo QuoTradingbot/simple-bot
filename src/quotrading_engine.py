@@ -1414,7 +1414,7 @@ def initialize_state(symbol: str) -> None:
             "quantity": 0,
             "entry_price": None,
             "stop_price": None,
-            "target_price": None,
+            # NO target_price - using trailing stop only (pure tick-based management)
             "entry_time": None,
             # Regime Information - For dynamic exit management
             "entry_regime": None,  # Regime at entry
@@ -1530,7 +1530,7 @@ def save_position_state(symbol: str) -> None:
             "quantity": position["quantity"],
             "entry_price": position["entry_price"],
             "stop_price": position["stop_price"],
-            "target_price": position["target_price"],
+            # NO target_price - trailing stop only
             "entry_time": position["entry_time"].isoformat() if position.get("entry_time") else None,
             "order_id": position.get("order_id"),
             "stop_order_id": position.get("stop_order_id"),
@@ -1621,7 +1621,7 @@ def load_position_state(symbol: str) -> bool:
         state[symbol]["position"]["quantity"] = saved_state["quantity"]
         state[symbol]["position"]["entry_price"] = saved_state["entry_price"]
         state[symbol]["position"]["stop_price"] = saved_state["stop_price"]
-        state[symbol]["position"]["target_price"] = saved_state["target_price"]
+        # NO target_price - trailing stop only (skip if in saved_state for backward compat)
         state[symbol]["position"]["order_id"] = saved_state.get("order_id")
         state[symbol]["position"]["stop_order_id"] = saved_state.get("stop_order_id")
         
@@ -3282,7 +3282,7 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
                 side=side,
                 entry_price=entry_price,
                 stop_price=suggested_stop,
-                target_price=suggested_target,
+                target_price=None,  # No fixed target - trailing stop only
                 mode="SIGNAL_ONLY"
             )
         except Exception as e:
@@ -3754,78 +3754,8 @@ def check_stop_hit(symbol: str, current_bar: Dict[str, Any], position: Dict[str,
     return False, None
 
 
-def check_target_reached(symbol: str, current_bar: Dict[str, Any], position: Dict[str, Any], 
-                        bar_time: datetime) -> Tuple[bool, Optional[float]]:
-    """
-    Check if profit target has been reached, including time-based adjustments.
-    
-    Args:
-        symbol: Instrument symbol
-        current_bar: Current 1-minute bar
-        position: Position dictionary
-        bar_time: Current bar timestamp
-    
-    Returns:
-        Tuple of (target_reached, target_price)
-    """
-    side = position["side"]
-    target_price = position["target_price"]
-    entry_price = position["entry_price"]
-    stop_price = position["stop_price"]
-    
-    # Check regular target
-    if side == "long":
-        if current_bar["high"] >= target_price:
-            # ===== CRITICAL FIX #4: Target Order Validation =====
-            # Price reached target - verify we can actually fill at this price
-            # In backtesting, assume fill. In live, would check if limit order filled.
-            
-            # Check if price is still near target (within CONFIG threshold)
-            tick_size = CONFIG["tick_size"]
-            target_validation_ticks = CONFIG.get("target_fill_validation_ticks", 2)
-            price_distance = abs(current_bar["close"] - target_price) / tick_size
-            
-            if price_distance <= target_validation_ticks:
-                # Price still near target - good fill likely
-                return True, target_price
-            else:
-                # Price ran past target and reversed - might not fill at target
-                logger.warning(f"[WARN] Target Validation: Price hit ${target_price:.2f} but reversed to ${current_bar['close']:.2f}")
-                logger.warning(f"  Distance: {price_distance:.1f} ticks (>{target_validation_ticks} tick threshold)")
-                logger.warning(f"  Using current price for guaranteed fill instead")
-                # Use current price (more conservative, guaranteed fill)
-                return True, current_bar["close"]
-    else:  # short
-        if current_bar["low"] <= target_price:
-            # ===== CRITICAL FIX #4: Target Order Validation =====
-            tick_size = CONFIG["tick_size"]
-            target_validation_ticks = CONFIG.get("target_fill_validation_ticks", 2)
-            price_distance = abs(current_bar["close"] - target_price) / tick_size
-            
-            if price_distance <= target_validation_ticks:
-                return True, target_price
-            else:
-                logger.warning(f"[WARN] Target Validation: Price hit ${target_price:.2f} but reversed to ${current_bar['close']:.2f}")
-                logger.warning(f"  Distance: {price_distance:.1f} ticks (>{target_validation_ticks} tick threshold)")
-                logger.warning(f"  Using current price for guaranteed fill instead")
-                return True, current_bar["close"]
-    
-    # Phase Five: Time-based exit tightening after 3 PM
-    if bar_time.time() >= datetime_time(15, 0) and not bot_status["flatten_mode"]:
-        # After 3 PM - tighten profit taking to 1:1 R/R
-        stop_distance = abs(entry_price - stop_price)
-        tightened_target_distance = stop_distance  # 1:1 instead of 1.5:1
-        
-        if side == "long":
-            tightened_target = entry_price + tightened_target_distance
-            if current_bar["high"] >= tightened_target:
-                return True, tightened_target
-        else:  # short
-            tightened_target = entry_price - tightened_target_distance
-            if current_bar["low"] <= tightened_target:
-                return True, tightened_target
-    
-    return False, None
+# NO check_target_reached function - using pure trailing stop management
+# All exits handled by: stop loss, trailing stop, timeouts, daily limits, flatten mode
 
 
 def check_reversal_signal(symbol: str, current_bar: Dict[str, Any], position: Dict[str, Any]) -> Tuple[bool, Optional[float]]:
@@ -5185,19 +5115,8 @@ def check_exit_conditions(symbol: str) -> None:
         execute_exit(symbol, price, reason)
         return
     
-    # SECOND - VWAP target hit check
-    target_hit, price = check_target_reached(symbol, current_bar, position, bar_time)
-    if target_hit:
-        if price == position["target_price"]:
-            execute_exit(symbol, price, "target_reached")
-            # Track successful target wait
-            if bot_status["flatten_mode"]:
-                bot_status["target_wait_wins"] += 1
-        else:
-            # Tightened target
-            logger.info("Time-based tightened profit target reached (1:1 R/R after 3 PM)")
-            execute_exit(symbol, price, "tightened_target")
-        return
+    # NO TARGET CHECK - Pure tick-based management with trailing stops only
+    # All profit-taking handled by trailing stop logic below
     
     # THIRD - VWAP stop hit check
     stop_hit, price = check_stop_hit(symbol, current_bar, position)
@@ -5725,7 +5644,7 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
                     "partial_fill": position.get("quantity", 0) < position.get("original_quantity", 0),
                     "fill_ratio": position.get("quantity", 0) / position.get("original_quantity", 1) if position.get("original_quantity") else 1.0,
                     "exit_reason": reason,
-                    "held_full_duration": reason in ["target_hit", "stop_hit"]
+                    "held_full_duration": reason in ["stop_hit", "trailing_stop"]  # No target_hit - using trailing only
                 }
             )
             
@@ -5847,7 +5766,7 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
         "quantity": 0,
         "entry_price": None,
         "stop_price": None,
-        "target_price": None,
+        # NO target_price - trailing stop only
         "entry_time": None,
         # Advanced Exit Management - Breakeven State
         "breakeven_active": False,

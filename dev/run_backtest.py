@@ -41,6 +41,7 @@ from backtest_reporter import reset_reporter, get_reporter
 from config import load_config
 from monitoring import setup_logging
 from signal_confidence import SignalConfidenceRL
+from regime_detection import MIN_BARS_FOR_REGIME_DETECTION
 
 
 def parse_arguments():
@@ -181,6 +182,8 @@ def initialize_rl_brains_for_backtest(bot_config) -> Tuple[Any, ModuleType]:
     
     # CRITICAL: Set the global rl_brain variable in the bot module
     # This is what get_ml_confidence() checks when deciding signals
+    # Previously had hasattr check, but we always want to set this for backtest mode
+    # The rl_brain was just created above, so it's guaranteed to exist
     bot_module.rl_brain = rl_brain
     
     return rl_brain, bot_module
@@ -344,10 +347,9 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
         print(f"Pre-loading {len(bars_15min)} 15-minute bars for indicators...")
         
         # CRITICAL: Verify we have enough 15-min bars for regime detection
-        # Need 114 bars minimum (100 for baseline + 14 for current ATR)
-        if len(bars_15min) < 114:
-            print(f"⚠️  WARNING: Only {len(bars_15min)} 15-min bars loaded (need 114 for regime detection)")
-            print(f"   Regime detection will use fallback 'NORMAL' until 114 bars accumulated")
+        if len(bars_15min) < MIN_BARS_FOR_REGIME_DETECTION:
+            print(f"⚠️  WARNING: Only {len(bars_15min)} 15-min bars loaded (need {MIN_BARS_FOR_REGIME_DETECTION} for regime detection)")
+            print(f"   Regime detection will use fallback 'NORMAL' until {MIN_BARS_FOR_REGIME_DETECTION} bars accumulated")
             print(f"   This may affect accuracy of early trades")
             print(f"   Consider extending backtest date range to get more historical data")
         

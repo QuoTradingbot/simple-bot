@@ -121,7 +121,7 @@ from error_recovery import ErrorRecoveryManager, ErrorType as RecoveryErrorType
 from bid_ask_manager import BidAskManager, BidAskQuote
 from notifications import get_notifier
 from signal_confidence import SignalConfidenceRL
-from regime_detection import get_regime_detector, REGIME_DEFINITIONS
+from regime_detection import get_regime_detector, REGIME_DEFINITIONS, MIN_BARS_FOR_REGIME_DETECTION
 from cloud_api import CloudAPIClient
 
 # Conditionally import broker (only needed for live trading, not backtesting)
@@ -4838,11 +4838,10 @@ def update_current_regime(symbol: str) -> None:
     # Use 15-minute bars for regime detection (less noise, more accurate)
     bars_15min = state[symbol]["bars_15min"]
     
-    # Need enough 15-min bars for regime detection (114 = 100 baseline + 14 current)
-    # This translates to ~28.5 hours of data (114 * 15 min = 1710 minutes)
-    if len(bars_15min) < 114:
+    # Need enough 15-min bars for regime detection
+    if len(bars_15min) < MIN_BARS_FOR_REGIME_DETECTION:
         state[symbol]["current_regime"] = "NORMAL"
-        logger.debug(f"[REGIME] Insufficient 15-min bars ({len(bars_15min)}/114) - using NORMAL")
+        logger.debug(f"[REGIME] Insufficient 15-min bars ({len(bars_15min)}/{MIN_BARS_FOR_REGIME_DETECTION}) - using NORMAL")
         return
     
     # Calculate ATR from 15-minute bars (smoother, less noise)
@@ -6436,7 +6435,7 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
     if not is_safe:
         return False, reason
     
-    # Check daily loss limit (CRITICAL for realistic backtesting)
+    # Check daily loss limit (enforced for both live and backtest for realistic trading)
     is_safe, reason = check_daily_loss_limit(symbol)
     if not is_safe:
         return False, reason

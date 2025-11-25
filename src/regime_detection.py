@@ -21,6 +21,12 @@ from collections import deque
 
 logger = logging.getLogger(__name__)
 
+# Constants for regime detection
+MIN_BARS_FOR_REGIME_DETECTION = 114  # 100 for baseline + 14 for current ATR
+BASELINE_BARS_START = 114  # Start of baseline window
+BASELINE_BARS_END = 14     # End of baseline window (from end)
+PRICE_ACTION_LOOKBACK = 20  # Bars to analyze for price action classification
+
 
 class RegimeParameters:
     """Parameters for a specific market regime."""
@@ -121,23 +127,22 @@ class RegimeDetector:
         calculated from 15-minute bars using quotrading_engine.calculate_atr().
         
         Args:
-            bars: Recent 15-minute price bars (OHLCV data) - need 114 bars minimum
-                  (100 for baseline + 14 for current ATR)
+            bars: Recent 15-minute price bars (OHLCV data)
             current_atr: Current ATR value from 15-minute bars (last 14 bars)
             atr_period: Period for ATR calculation (default 14)
         
         Returns:
             RegimeParameters for the detected regime
         """
-        if len(bars) < 114:
-            # Not enough data - need 100 bars for baseline + 14 for current
-            logger.debug(f"Insufficient bars ({len(bars)}) for regime detection, using NORMAL")
+        if len(bars) < MIN_BARS_FOR_REGIME_DETECTION:
+            # Not enough data - need minimum bars for baseline + current
+            logger.debug(f"Insufficient bars ({len(bars)}/{MIN_BARS_FOR_REGIME_DETECTION}) for regime detection, using NORMAL")
             return REGIME_DEFINITIONS["NORMAL"]
         
-        # Get bars: use 15-114 for baseline (100 bars), last 20 for price action
+        # Get bars: use baseline window for average, recent for price action
         all_bars = list(bars)
-        baseline_bars = all_bars[-114:-14]  # Bars 15-114 from end (100 bars)
-        recent_bars = all_bars[-20:]  # Last 20 for price action analysis
+        baseline_bars = all_bars[-BASELINE_BARS_START:-BASELINE_BARS_END]  # 100 bars for baseline
+        recent_bars = all_bars[-PRICE_ACTION_LOOKBACK:]  # Last 20 for price action
         
         # Calculate baseline ATR from earlier period (NOT including current 14 bars)
         avg_atr = self._calculate_average_atr(baseline_bars, atr_period)

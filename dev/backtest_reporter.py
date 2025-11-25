@@ -46,7 +46,7 @@ class BacktestReporter:
         
         # Print trade result
         pnl = trade.get('pnl', 0)
-        symbol = "✓" if pnl > 0 else "✗"
+        symbol = "Γ£ô" if pnl > 0 else "Γ£ù"
         print(f"{symbol} Trade #{len(self.trades)}: {trade.get('side', 'N/A').upper()} | "
               f"P&L: ${pnl:+,.2f} | Balance: ${self.current_balance:,.2f}")
         

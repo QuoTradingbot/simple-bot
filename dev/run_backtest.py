@@ -41,7 +41,6 @@ from backtest_reporter import reset_reporter, get_reporter
 from config import load_config
 from monitoring import setup_logging
 from signal_confidence import SignalConfidenceRL
-from regime_detection import MIN_BARS_FOR_REGIME_DETECTION
 
 
 def parse_arguments():
@@ -153,41 +152,18 @@ def initialize_rl_brains_for_backtest(bot_config) -> Tuple[Any, ModuleType]:
     
     # Initialize RL brain with experience file and config values
     signal_exp_file = os.path.join(PROJECT_ROOT, "data/signal_experience.json")
-    
-    # BACKTEST MODE: Force exploration to enable learning
-    # In live mode, exploration=0 means pure exploitation of learned patterns
-    # In backtest mode, we want to explore to build experience
-    backtest_exploration_rate = max(bot_config.rl_exploration_rate, 0.15)  # Minimum 15% exploration
-    
     rl_brain = SignalConfidenceRL(
         experience_file=signal_exp_file,
         backtest_mode=True,
-        exploration_rate=backtest_exploration_rate,
-        min_exploration=0.10,  # Keep some exploration throughout backtest
+        confidence_threshold=bot_config.rl_confidence_threshold,
+        exploration_rate=bot_config.rl_exploration_rate,
+        min_exploration=bot_config.rl_min_exploration_rate,
         exploration_decay=bot_config.rl_exploration_decay
     )
     
-    # Log how many experiences were loaded
-    experience_count = len(rl_brain.experiences) if rl_brain else 0
-    logger.info("=" * 60)
-    logger.info("RL BRAIN INITIALIZATION")
-    logger.info("=" * 60)
-    logger.info(f"Experience file: {signal_exp_file}")
-    logger.info(f"Experiences loaded: {experience_count:,}")
-    logger.info(f"Exploration rate: {backtest_exploration_rate*100:.1f}%")
-    if experience_count < 100:
-        logger.warning("⚠️  Low experience count! For best results, use 1000+ experiences")
-        logger.warning("   Make sure your local data/signal_experience.json has your full experience database")
-    logger.info("=" * 60)
-    
-    # CRITICAL: Set the global rl_brain variable in the bot module
-    # This is what get_ml_confidence() checks when deciding signals in backtest mode.
-    # The hasattr check was removed because:
-    # 1. We just created rl_brain above, so it's guaranteed to exist
-    # 2. The module might not have rl_brain as an attribute initially (fresh import)
-    # 3. We need to unconditionally set it to ensure backtest uses local RL brain
-    # instead of trying to call cloud API which would fail in backtest mode
-    bot_module.rl_brain = rl_brain
+    # Set it on the bot module if it has rl_brain attribute
+    if hasattr(bot_module, 'rl_brain'):
+        bot_module.rl_brain = rl_brain
     
     return rl_brain, bot_module
 
@@ -232,8 +208,6 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
     if args.start and args.end:
         start_date = datetime.strptime(args.start, '%Y-%m-%d')
         end_date = datetime.strptime(args.end, '%Y-%m-%d')
-        # Extend end_date to include the full day (23:59:59)
-        end_date = end_date.replace(hour=23, minute=59, second=59)
     elif args.days:
         end_date = datetime.now(tz)
         start_date = end_date - timedelta(days=args.days)
@@ -293,8 +267,6 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
     # Import bot functions from the loaded module
     initialize_state = bot_module.initialize_state
     on_tick = bot_module.on_tick
-    inject_complete_bar = bot_module.inject_complete_bar  # For historical bar replay
-    inject_complete_bar_15min = bot_module.inject_complete_bar_15min  # For 15min bars
     check_for_signals = bot_module.check_for_signals
     check_exit_conditions = bot_module.check_exit_conditions
     check_daily_reset = bot_module.check_daily_reset
@@ -334,32 +306,12 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
         This executes:
         - Signal RL for confidence scoring
         - Pattern matching for signal detection
-        - Regime detection for market adaptation (uses ATR from OHLC bars)
+        - Regime detection for market adaptation
         - All trade management (stops, targets, breakeven, trailing)
         - UTC maintenance and flatten rules
         """
         nonlocal prev_position_active, bars_processed, total_bars, last_exit_reason
         total_bars = len(bars_1min)
-        
-        if len(bars_1min) == 0:
-            print("WARNING: No 1-minute bars loaded!")
-            return
-        
-        # Pre-load all 15-minute bars before processing 1-minute bars
-        # This ensures indicators (RSI, MACD, trend) are ready
-        print(f"Pre-loading {len(bars_15min)} 15-minute bars for indicators...")
-        
-        # CRITICAL: Verify we have enough 15-min bars for regime detection
-        if len(bars_15min) < MIN_BARS_FOR_REGIME_DETECTION:
-            print(f"⚠️  WARNING: Only {len(bars_15min)} 15-min bars loaded (need {MIN_BARS_FOR_REGIME_DETECTION} for regime detection)")
-            print(f"   Regime detection will use fallback 'NORMAL' until {MIN_BARS_FOR_REGIME_DETECTION} bars accumulated")
-            print(f"   This may affect accuracy of early trades")
-            print(f"   Consider extending backtest date range to get more historical data")
-        
-        for bar_15min in bars_15min:
-            inject_complete_bar_15min(symbol, bar_15min)
-        print(f"15-minute bars loaded, indicators ready")
-        print(f"Processing {len(bars_1min)} 1-minute bars...")
         
         for bar_idx, bar in enumerate(bars_1min):
             bars_processed = bar_idx + 1
@@ -370,19 +322,69 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
             
             # Extract bar data
             timestamp = bar['timestamp']
-            
-            # CRITICAL: Set backtest simulation time before processing bar
-            # This ensures all time-based logic (trading hours, flatten mode, etc.) uses historical time
-            bot_module.backtest_current_time = timestamp
+            price = bar['close']
+            volume = bar['volume']
+            timestamp_ms = int(timestamp.timestamp() * 1000)
             
             # Check for new trading day (resets daily counters following production rules)
             timestamp_eastern = timestamp.astimezone(eastern_tz)
             check_daily_reset(symbol, timestamp_eastern)
             
-            # CRITICAL FIX: Inject complete OHLC bar instead of using on_tick
-            # This preserves high/low data for accurate ATR calculation
-            # inject_complete_bar handles regime detection, VWAP, signals, and exits
-            inject_complete_bar(symbol, bar)
+            # Process tick through actual bot logic
+            # This includes all signal detection, pattern matching, regime handling
+            on_tick(symbol, price, volume, timestamp_ms)
+            
+            # Check for entry signals after each bar
+            # Uses RL confidence, pattern matching, and regime-aware logic
+            check_for_signals(symbol)
+            
+            # Check for exit signals
+            # Handles stops, targets, breakeven, trailing, time decay
+            check_exit_conditions(symbol)
+            
+            # Track previous position state
+            if symbol in state and 'position' in state[symbol]:
+                pos = state[symbol]['position']
+                current_active = pos.get('active', False)
+                
+                # Capture exit reason while position is still active or just closed
+                if current_active or (not current_active and prev_position_active):
+                    # Check state for last_exit_reason (persists after position reset)
+                    if 'last_exit_reason' in state[symbol]:
+                        last_exit_reason = state[symbol]['last_exit_reason']
+                
+                # Capture confidence when position opens
+                if current_active and not prev_position_active:
+                    # Position just opened - save the confidence
+                    entry_time = pos.get('entry_time', timestamp)
+                    entry_time_key = str(entry_time)
+                    confidence = state[symbol].get('entry_rl_confidence', 0.5)
+                    # Convert to percentage
+                    if confidence <= 1.0:
+                        confidence = confidence * 100
+                    trade_confidences[entry_time_key] = confidence
+                
+                prev_position_active = current_active
+                
+                # Update backtest engine with current position from bot state
+                if pos.get('active') and engine.current_position is None:
+                    engine.current_position = {
+                        'symbol': symbol,
+                        'side': pos['side'],
+                        'quantity': pos.get('quantity', 1),
+                        'entry_price': pos['entry_price'],
+                        'entry_time': pos.get('entry_time', timestamp),
+                        'stop_price': pos.get('stop_price'),
+                        'target_price': pos.get('target_price')
+                    }
+                    
+                # If bot closed position (active=False), close it in backtest engine too
+                elif not pos.get('active') and engine.current_position is not None:
+                    exit_price = price
+                    exit_time = timestamp
+                    # Use the last captured exit reason
+                    engine._close_position(exit_time, exit_price, last_exit_reason)
+                    last_exit_reason = 'bot_exit'  # Reset for next trade
         
         # Ensure final progress is shown
         print()  # New line after progress
@@ -390,60 +392,30 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
     # Run backtest with integrated strategy
     results = engine.run_with_strategy(vwap_strategy_backtest)
     
-    # IMPORTANT: Get trades from bot's session_stats instead of engine metrics
-    # The bot tracks all trades internally even if they complete quickly
-    if symbol in state and 'session_stats' in state[symbol]:
-        stats = state[symbol]['session_stats']
-        win_count = stats.get('win_count', 0)
-        loss_count = stats.get('loss_count', 0)
-        total_pnl = stats.get('total_pnl', 0.0)
-        
-        print(f"\nBot Internal Stats:")
-        print(f"  Trades: {win_count + loss_count} ({win_count}W/{loss_count}L)")
-        print(f"  Total P&L: ${total_pnl:.2f}")
-        print(f"  Daily trade count: {state[symbol].get('daily_trade_count', 0)}")
-        
-        # Update reporter with bot's stats
-        # Note: Bot doesn't store individual trade details in session_stats['trades']
-        # So we'll use the aggregate stats
+    # Get trades from engine metrics and add to reporter
+    if hasattr(engine, 'metrics') and hasattr(engine.metrics, 'trades'):
+        for trade in engine.metrics.trades:
+            # Get RL confidence from tracked confidences
+            entry_time_key = str(trade.entry_time)
+            confidence = trade_confidences.get(entry_time_key, 50)  # Default to 50% if not found
+            
+            # Convert Trade dataclass to dict for reporter
+            trade_dict = {
+                'side': trade.side,
+                'quantity': trade.quantity,
+                'entry_price': trade.entry_price,
+                'exit_price': trade.exit_price,
+                'pnl': trade.pnl,
+                'exit_reason': trade.exit_reason,  # This comes from the engine
+                'exit_time': trade.exit_time,
+                'duration_minutes': trade.duration_minutes,
+                'confidence': confidence
+            }
+            reporter.record_trade(trade_dict)
+    
+    # Update reporter totals from results
+    if results:
         reporter.total_bars = total_bars
-        
-        # Create summary results from bot stats
-        results = {
-            'total_trades': win_count + loss_count,
-            'total_pnl': total_pnl,
-            'win_rate': (win_count / (win_count + loss_count) * 100) if (win_count + loss_count) > 0 else 0.0,
-            'average_win': stats.get('largest_win', 0.0),  # Approximate
-            'average_loss': stats.get('largest_loss', 0.0),  # Approximate
-            'final_equity': bot_config.account_size + total_pnl,
-            'total_return': (total_pnl / bot_config.account_size) * 100
-        }
-    else:
-        # Fallback to engine results if bot stats not available
-        # Get trades from engine metrics and add to reporter
-        if hasattr(engine, 'metrics') and hasattr(engine.metrics, 'trades'):
-            for trade in engine.metrics.trades:
-                # Get RL confidence from tracked confidences
-                entry_time_key = str(trade.entry_time)
-                confidence = trade_confidences.get(entry_time_key, 50)  # Default to 50% if not found
-                
-                # Convert Trade dataclass to dict for reporter
-                trade_dict = {
-                    'side': trade.side,
-                    'quantity': trade.quantity,
-                    'entry_price': trade.entry_price,
-                    'exit_price': trade.exit_price,
-                    'pnl': trade.pnl,
-                    'exit_reason': trade.exit_reason,  # This comes from the engine
-                    'exit_time': trade.exit_time,
-                    'duration_minutes': trade.duration_minutes,
-                    'confidence': confidence
-                }
-                reporter.record_trade(trade_dict)
-        
-        # Update reporter totals from results
-        if results:
-            reporter.total_bars = total_bars
     
     # Print clean summary
     reporter.print_summary()
@@ -458,7 +430,7 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
         print(f"   Total experiences: {final_experience_count}")
         print(f"   New experiences this backtest: {new_experiences}")
     else:
-        print("⚠️  No RL brain to save")
+        print("ΓÜá∩╕Å  No RL brain to save")
     
     # Return results
     return results
@@ -515,7 +487,7 @@ def main():
                 return True
             elif 'RL REJECTED' in msg:
                 reporter.record_signal(approved=False)
-                return False  # Don't show rejections (too much spam)
+                return True  # Show rejections for debugging
             # Allow WARNING and above
             return record.levelno >= logging.WARNING
     

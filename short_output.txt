@@ -1,0 +1,40 @@
+
+================================================================================
+BACKTEST STARTING
+================================================================================
+Symbol: ES
+Period: 2025-11-24 to 2025-11-25
+Starting Balance: $50,000.00
+================================================================================
+
+Backtest Configuration (from data/config.json):
+   Account Size: $50,000.00
+   Max Contracts: 1
+   RL Exploration Rate: 0.0%
+   RL Min Exploration: 0.0%
+
+Symbol specs not loaded (using defaults): 'charmap' codec can't encode character '\u2713' in position 0: character maps to <undefined>
+
+Bot Internal Stats:
+  Trades: 0 (0W/0L)
+  Total P&L: $0.00
+  Daily trade count: 0
+
+================================================================================
+BACKTEST COMPLETE
+================================================================================
+Trades: 0 (Wins: 0, Losses: 0)
+Win Rate: 0.0%
+Starting Balance: $50,000.00
+Ending Balance: $50,000.00
+Total P&L: $+0.00 (+0.00%)
+Avg Win: $0.00
+Avg Loss: $0.00
+Signals: 0 approved, 0 rejected
+Execution Time: 4.6s
+================================================================================
+
+Saving RL experiences...
+[OK] Signal RL experiences saved to data/signal_experience.json
+   Total experiences: 7861
+   New experiences this backtest: 0

@@ -67,17 +67,16 @@ class HistoricalDataLoader:
     
     def _normalize_timestamp(self, timestamp: datetime) -> datetime:
         """
-        Normalize timestamp to be timezone-aware in UTC.
-        
-        Args:
-            timestamp: Datetime to normalize
-            
-        Returns:
-            Timezone-aware datetime in UTC
+        Normalize timestamp to be timezone-aware in US/Eastern.
+        CSV timestamps are in UTC and need to be converted to Eastern.
         """
+        eastern = pytz.timezone('US/Eastern')
         if timestamp.tzinfo is None:
-            return pytz.UTC.localize(timestamp)
-        return timestamp.astimezone(pytz.UTC)
+            # Naive timestamp – assume UTC, then convert to Eastern
+            timestamp_utc = pytz.UTC.localize(timestamp)
+            return timestamp_utc.astimezone(eastern)
+        # Convert any other timezone to Eastern
+        return timestamp.astimezone(eastern)
     
     def _normalize_date_range(self) -> Tuple[datetime, datetime]:
         """
@@ -193,7 +192,11 @@ class HistoricalDataLoader:
                             'volume': int(row['volume'])
                         })
                         
-            self.logger.info(f"Loaded {len(bars)} {timeframe} bars for {symbol}")
+            self.logger.info(f"Loaded {len(bars)} {timeframe} bars for {symbol} (from {filepath})")
+            if len(bars) == 0:
+                self.logger.warning(f"NO BARS loaded for date range {start_date} to {end_date}")
+            else:
+                self.logger.info(f"  Date range in loaded bars: {bars[0]['timestamp']} to {bars[-1]['timestamp']}")
             
         except Exception as e:
             self.logger.error(f"Error loading bar data: {e}")

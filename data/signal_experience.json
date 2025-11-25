@@ -165081,5 +165081,13 @@
       "symbol": "ES",
       "timestamp": "2025-11-22 18:33:58.984191"
     }
-  ]
+  ],
+  "stats": {
+    "total_signals": 0,
+    "taken": 0,
+    "skipped": 0,
+    "take_rate": 0,
+    "recent_pnl": 0,
+    "recent_win_rate": 0
+  }
 }

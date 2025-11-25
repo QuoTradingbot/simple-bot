@@ -217,101 +217,54 @@ class SignalConfidenceRL:
     
     def calculate_confidence(self, current_state: Dict) -> Tuple[float, str]:
         """
-        Calculate confidence using DUAL PATTERN MATCHING (EXACT MATCH TO CLOUD API).
-        
-        Formula: confidence = winner_confidence - loser_penalty
-        
-        This allows the AI to:
-        - Learn from ALL experiences (not just winners)
-        - Actively AVOID patterns that lost money
-        - Be much smarter than just "match winners"
+        Calculate confidence based on similar past experiences.
         
         Returns:
             (confidence, reason)
         """
-        # Need at least 20 experiences before using them for decisions
-        if len(self.experiences) < 20:
-            return 0.65, f"🆕 Limited experience ({len(self.experiences)} trades) - optimistic"
+        # Need at least 10 experiences before using them for decisions
+        # Otherwise, a few early losses will make Brain 2 reject everything!
+        if len(self.experiences) < 10:
+            return 0.65, f"≡ƒåò Limited experience ({len(self.experiences)} trades) - optimistic"
         
-        # Separate into winners and losers
-        winners = [exp for exp in self.experiences if exp['reward'] > 0]
-        losers = [exp for exp in self.experiences if exp['reward'] < 0]
+        # Find similar past situations
+        similar = self.find_similar_states(current_state, max_results=10)
         
-        if len(winners) < 10:
-            return 0.65, f"🆕 Limited winning experience ({len(winners)} wins) - optimistic"
+        if not similar:
+            return 0.5, " No similar situations - neutral confidence"
         
-        # Find similar WINNING patterns (20 samples)
-        similar_winners = self.find_similar_states(current_state, max_results=20, experiences=winners)
+        # Calculate win rate from similar situations
+        wins = sum(1 for exp in similar if exp['reward'] > 0)
+        win_rate = wins / len(similar)
         
-        # Find similar LOSING patterns (20 samples)
-        similar_losers = self.find_similar_states(current_state, max_results=20, experiences=losers) if len(losers) >= 10 else []
+        # Average profit from similar situations
+        avg_profit = sum(exp['reward'] for exp in similar) / len(similar)
         
-        # Calculate winner confidence
-        if similar_winners:
-            winner_wins = sum(1 for exp in similar_winners if exp['reward'] > 0)
-            winner_win_rate = winner_wins / len(similar_winners)
-            winner_avg_profit = sum(exp['reward'] for exp in similar_winners) / len(similar_winners)
-            
-            # Winner confidence (same formula as cloud API)
-            winner_confidence = (winner_win_rate * 0.9) + (min(winner_avg_profit / 300, 1.0) * 0.1)
-            winner_confidence = max(0.0, min(1.0, winner_confidence))
-        else:
-            winner_confidence = 0.5
-            winner_win_rate = 0.5
-            winner_avg_profit = 0
+        # SAFETY CHECK: Reject signals with negative expected value
+        if avg_profit < 0:
+            reason = f" {len(similar)} similar: {win_rate*100:.0f}% WR, ${avg_profit:.0f} avg (NEGATIVE EV - REJECTED)"
+            return 0.0, reason
         
-        # Calculate loser penalty
-        if similar_losers:
-            loser_losses = sum(1 for exp in similar_losers if exp['reward'] < 0)
-            loser_loss_rate = loser_losses / len(similar_losers)
-            loser_avg_loss = sum(exp['reward'] for exp in similar_losers) / len(similar_losers)
-            
-            # Penalty is HIGH if very similar to losers
-            # Scale: 0.0 (not similar to losers) to 0.5 (very similar to losers)
-            loser_penalty = (loser_loss_rate * 0.4) + (min(abs(loser_avg_loss) / 300, 1.0) * 0.1)
-            loser_penalty = max(0.0, min(0.5, loser_penalty))
-        else:
-            loser_penalty = 0.0
-            loser_loss_rate = 0.0
-            loser_avg_loss = 0
+        # MORE AGGRESSIVE confidence formula to match best-run quality
+        # Win rate is king (90% weight), profit is secondary (10% weight)
+        # Examples: 80% WR + $100 avg = 73% confidence
+        #          100% WR + $150 avg = 93% confidence
+        #           50% WR + $45 avg = 45% confidence (was 37.7% - now higher bar)
+        confidence = (win_rate * 0.9) + (min(avg_profit / 300, 1.0) * 0.1)
+        confidence = max(0.0, min(1.0, confidence))
         
-        # DUAL PATTERN MATCHING: Confidence = Winners - Losers
-        final_confidence = winner_confidence - loser_penalty
-        final_confidence = max(0.0, min(1.0, final_confidence))
+        reason = f" {len(similar)} similar: {win_rate*100:.0f}% WR, ${avg_profit:.0f} avg"
         
-        # Build detailed reason
-        reason = f" {len(similar_winners)}W/{len(similar_losers)}L similar"
-        reason += f" | Winners: {winner_win_rate*100:.0f}% WR, ${winner_avg_profit:.0f} avg"
-        
-        if similar_losers:
-            reason += f" | Losers: {loser_loss_rate*100:.0f}% LR, ${loser_avg_loss:.0f} avg"
-            reason += f" | Penalty: -{loser_penalty:.1%}"
-        
-        reason += f" | Final: {final_confidence:.1%}"
-        
-        return final_confidence, reason
+        return confidence, reason
     
-    def find_similar_states(self, current: Dict, max_results: int = 10, experiences: list = None) -> list:
-        """
-        Find past experiences with similar market states.
-        
-        Args:
-            current: Current market state
-            max_results: Max number of similar experiences to return
-            experiences: Optional subset of experiences to search (for winner/loser filtering)
-        
-        Returns:
-            List of similar experiences, sorted by similarity (most similar first)
-        """
-        # Use provided experiences or default to all experiences
-        search_pool = experiences if experiences is not None else self.experiences
-        
-        if not search_pool:
+    def find_similar_states(self, current: Dict, max_results: int = 10) -> list:
+        """Find past experiences with similar market states."""
+        if not self.experiences:
             return []
         
         # Calculate similarity score for each past experience
         scored = []
-        for exp in search_pool:
+        for exp in self.experiences:
             past = exp['state']
             
             # Calculate distance in each dimension (with safety checks for missing keys)
@@ -360,7 +313,7 @@ class SignalConfidenceRL:
         threshold_results = {}
         
         # OPTIMIZATION: Pre-calculate confidences once instead of for each threshold
-        # This avoids O(n²) complexity by doing the expensive work upfront
+        # This avoids O(n┬▓) complexity by doing the expensive work upfront
         experience_confidences = []
         for exp in self.experiences:
             if not exp.get('action', {}).get('took_trade', False):
@@ -478,7 +431,7 @@ class SignalConfidenceRL:
         # Minimum 20% (even at 0% confidence, take at least something)
         # Maximum 100% (full confidence = full position)
         
-        # Linear interpolation: 0% conf → 20% size, 100% conf → 100% size
+        # Linear interpolation: 0% conf ΓåÆ 20% size, 100% conf ΓåÆ 100% size
         multiplier = 0.2 + (confidence * 0.8)
         
         # Cap between 0.2 and 1.0
@@ -597,7 +550,7 @@ class SignalConfidenceRL:
                     data = json.load(f)
                     logger.debug(f"[DEBUG] JSON loaded successfully. Keys: {list(data.keys())}")
                     self.experiences = data.get('experiences', [])
-                    logger.debug(f"✓ Loaded {len(self.experiences)} past signal experiences")
+                    logger.debug(f"Γ£ô Loaded {len(self.experiences)} past signal experiences")
             except Exception as e:
                 logger.error(f"Failed to load experiences: {e}")
                 import traceback

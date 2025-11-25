@@ -1,11 +1,11 @@
 {
   "symbol": "ES",
-  "direction": "SHORT",
-  "entry_price": 6636.0,
-  "exit_price": 6644.0,
+  "direction": "LONG",
+  "entry_price": 6883.25,
+  "exit_price": 6884.0,
   "contracts": 1,
-  "pnl": -402.5,
-  "pnl_percent": -0.4852320675105486,
-  "timestamp": "2025-11-21T11:45:00+00:00",
-  "reason": "underwater_timeout"
+  "pnl": 35.0,
+  "pnl_percent": 0.04067845857698035,
+  "timestamp": "2025-11-02T22:32:00-05:00",
+  "reason": "tightened_target"
 }

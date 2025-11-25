@@ -2338,8 +2338,11 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
     # Trading state is "entry_window" - market is open, proceed with checks
     
     # Daily entry cutoff - no new positions after 4:00 PM ET (can hold until 4:45 PM flatten)
-    # Bot can hold existing positions past 4 PM until flatten at 4:45 PM, but cannot open new ones
-    if current_time.time() >= datetime_time(16, 0):  # 4:00 PM ET
+    # CRITICAL: This only applies BEFORE the market reopens at 6:00 PM
+    # Market schedule: 6:00 PM (today) → 4:00 PM (next day) with maintenance 5:00-6:00 PM
+    # Entry window: 6:00 PM → 4:00 PM next day (no new entries in the 4:00-6:00 PM window)
+    current_time_only = current_time.time()
+    if datetime_time(16, 0) <= current_time_only < datetime_time(18, 0):  # 4:00 PM - 6:00 PM ET
         log_time_based_action(
             "daily_entry_blocked",
             f"After 4:00 PM ET, no new trades (can hold positions until 4:45 PM flatten)",

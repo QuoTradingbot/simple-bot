@@ -399,9 +399,10 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
                 'quantity': trade.quantity,
                 'entry_price': trade.entry_price,
                 'exit_price': trade.exit_price,
+                'entry_time': trade.entry_time,  # Add entry time
+                'exit_time': trade.exit_time,
                 'pnl': trade.pnl,
                 'exit_reason': trade.exit_reason,  # This comes from the engine
-                'exit_time': trade.exit_time,
                 'duration_minutes': trade.duration_minutes,
                 'confidence': confidence
             }

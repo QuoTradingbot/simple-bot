@@ -2817,15 +2817,15 @@ def check_for_signals(symbol: str) -> None:
 # PHASE EIGHT: Position Sizing
 # ============================================================================
 
-def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confidence: Optional[float] = None) -> Tuple[int, float, float]:
+def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confidence: Optional[float] = None) -> Tuple[int, float]:
     """
     Calculate position size based on tick-based risk management.
     
     TICK-BASED RISK MANAGEMENT:
     - Position size is FIXED at max_contracts (user setting)
     - Stop loss is regime-based (ATR * stop_multiplier)
-    - Target is ATR-based (ATR * target_multiplier)
-    - NO capital-based risk limits - all risk management is through stops/targets/trailing
+    - NO FIXED TARGETS - uses trailing stop only
+    - NO capital-based risk limits - all risk management is through stops and trailing
     
     Args:
         symbol: Instrument symbol
@@ -2834,14 +2834,12 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
         rl_confidence: Optional RL confidence (not used for position sizing)
     
     Returns:
-        Tuple of (contracts, stop_price, target_price)
+        Tuple of (contracts, stop_price)
     """
     # FIXED POSITION SIZE: Always use user's max_contracts setting
     contracts = CONFIG["max_contracts"]
     
     # Determine stop price using regime-based approach
-    vwap_bands = state[symbol]["vwap_bands"]
-    vwap = state[symbol]["vwap"]
     tick_size = CONFIG["tick_size"]
     
     # Detect current regime for entry using 15-minute bars (less noise)
@@ -2857,12 +2855,9 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
         max_stop_ticks = 11
         if side == "long":
             stop_price = entry_price - (max_stop_ticks * tick_size)
-            target_price = vwap_bands["upper_3"]
         else:
             stop_price = entry_price + (max_stop_ticks * tick_size)
-            target_price = vwap_bands["lower_3"]
         stop_price = round_to_tick(stop_price)
-        target_price = round_to_tick(target_price)
     else:
         # Use regime-based stop loss calculation with 15-minute bars
         entry_regime = regime_detector.detect_regime(bars_15min, atr, CONFIG.get("atr_period", 14))
@@ -2871,18 +2866,12 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
         stop_multiplier = entry_regime.stop_mult
         logger.info(f"Regime-based stop: {entry_regime.name}, multiplier {stop_multiplier:.2f}x, ATR from 15-min: {atr:.2f}")
         
-        # Use fixed target multiplier (can be made regime-based in future)
-        target_multiplier = CONFIG.get("profit_target_atr_multiplier", 4.75)
-        
         if side == "long":
             stop_price = entry_price - (atr * stop_multiplier)
-            target_price = entry_price + (atr * target_multiplier)
         else:  # short
             stop_price = entry_price + (atr * stop_multiplier)
-            target_price = entry_price - (atr * target_multiplier)
         
         stop_price = round_to_tick(stop_price)
-        target_price = round_to_tick(target_price)
     
     # Calculate stop distance in ticks for logging
     stop_distance = abs(entry_price - stop_price)
@@ -2892,16 +2881,11 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
     tick_value = CONFIG["tick_value"]
     risk_per_contract = ticks_at_risk * tick_value
     
-    # Calculate target distance for logging
-    target_distance = abs(target_price - entry_price)
-    
     logger.info(f"[TICK-BASED] Position sizing: {contracts} contract(s) (fixed)")
-    logger.info(f"  Entry: ${entry_price:.2f}, Stop: ${stop_price:.2f}, Target: ${target_price:.2f}")
+    logger.info(f"  Entry: ${entry_price:.2f}, Stop: ${stop_price:.2f} (No fixed target - uses trailing stop)")
     logger.info(f"  Risk: {ticks_at_risk:.1f} ticks (${risk_per_contract:.2f} per contract)")
-    logger.info(f"  Reward: {target_distance/tick_size:.1f} ticks ({target_distance/stop_distance:.1f}:1 R/R)")
-    logger.info(f"  VWAP: ${vwap:.2f} (mean reversion target)")
     
-    return contracts, stop_price, target_price
+    return contracts, stop_price
 
 
 # ============================================================================
@@ -3376,7 +3360,7 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
     rl_confidence = state[symbol].get("entry_rl_confidence")
     
     # Calculate position size (with RL adjustment if confidence available)
-    contracts, stop_price, target_price = calculate_position_size(symbol, side, entry_price, rl_confidence)
+    contracts, stop_price = calculate_position_size(symbol, side, entry_price, rl_confidence)
     
     if contracts == 0:
         logger.warning("Cannot enter trade - position size is zero")
@@ -3409,9 +3393,8 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
     original_contracts = contracts
     if bid_ask_manager is not None:
         try:
-            expected_profit_ticks = abs(target_price - entry_price) / CONFIG["tick_size"]
             adjusted_contracts, cost_breakdown = bid_ask_manager.calculate_spread_aware_position_size(
-                symbol, contracts, expected_profit_ticks
+                symbol, contracts, 20  # Expected ticks (approximate)
             )
             if adjusted_contracts != original_contracts:
                 logger.warning(f"  Position size adjusted: {original_contracts} -> {adjusted_contracts} contracts")
@@ -3422,7 +3405,7 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
     
     logger.info(f"  Contracts: {contracts}")
     logger.info(f"  Stop Loss: ${stop_price:.2f}")
-    logger.info(f"  Target: ${target_price:.2f}")
+    logger.info(f"  Exit Strategy: Trailing stop only (no fixed target)")
     
     # Track order execution details for post-trade analysis
     fill_start_time = datetime.now()
@@ -3634,7 +3617,7 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
         "quantity": contracts,
         "entry_price": actual_fill_price,
         "stop_price": stop_price,
-        "target_price": target_price,
+        "target_price": None,  # No fixed target - uses trailing stop only
         "entry_time": entry_time,
         "order_id": order.get("order_id"),
         "order_type_used": order_type_used,  # Track for exit optimization
@@ -3712,7 +3695,7 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
             state[symbol]["position"]["side"] = None
             state[symbol]["position"]["entry_price"] = None
             state[symbol]["position"]["stop_price"] = None
-            state[symbol]["position"]["target_price"] = None
+            # target_price removed - using trailing stop only
             
             # CRITICAL: Save state to disk immediately
             save_position_state(symbol)
@@ -7185,7 +7168,6 @@ def main(symbol_override: str = None) -> None:
     logger.info(f"[{trading_symbol}] Shutdown: {CONFIG['shutdown_time']} ET")
     logger.info(f"[{trading_symbol}] Max Contracts: {CONFIG['max_contracts']}")
     logger.info(f"[{trading_symbol}] Max Trades/Day: {CONFIG['max_trades_per_day']}")
-    logger.info(f"[{trading_symbol}] Risk Per Trade: {CONFIG['risk_per_trade'] * 100:.1f}%")
     logger.info(f"[{trading_symbol}] Daily Loss Limit: ${CONFIG['daily_loss_limit']}")
     logger.info(SEPARATOR_LINE)
     

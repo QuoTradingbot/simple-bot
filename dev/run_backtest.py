@@ -469,8 +469,11 @@ def main():
     logging.getLogger('regime_detection').setLevel(logging.WARNING)  # Suppress regime change spam
     logging.getLogger('signal_confidence').setLevel(logging.WARNING)  # Only show warnings and errors
     
-    # Initialize clean reporter with account_size from config
-    reporter = reset_reporter(starting_balance=bot_config.account_size)
+    # Initialize clean reporter with account_size and max_contracts from config
+    reporter = reset_reporter(
+        starting_balance=bot_config.account_size,
+        max_contracts=bot_config.get('max_contracts', 1)
+    )
     
     # Create a custom filter to allow only specific INFO messages through AND track signals
     class BacktestMessageFilter(logging.Filter):

@@ -9,7 +9,7 @@ from typing import Optional, Dict, Any
 class BacktestReporter:
     """Reports backtest progress and results in real-time"""
     
-    def __init__(self, starting_balance: float = 50000.0):
+    def __init__(self, starting_balance: float = 50000.0, max_contracts: int = 1):
         self.starting_balance = starting_balance
         self.current_balance = starting_balance
         self.trades = []
@@ -17,6 +17,7 @@ class BacktestReporter:
         self.signals_rejected = 0
         self.total_bars = 0
         self.start_time = time.time()
+        self.max_contracts = max_contracts  # Store max contracts from config
         
     def print_header(self, start_date=None, end_date=None, config=None, symbol="ES"):
         """Print backtest header"""
@@ -82,9 +83,10 @@ class BacktestReporter:
         
         confidence = trade.get('confidence', 0)
         exit_reason = trade.get('exit_reason', 'unknown')
-        qty = trade.get('quantity', 1)
+        # Always use max_contracts from config, not from trade data which might be wrong
+        qty = self.max_contracts
         
-        # Print in format: [OK] WIN: LONG 3x | Tue 09/02 01:56 | Entry: $6524.25 -> Exit: $6527.53 | P&L: $+468.20 | stop_loss | 89min | Conf: 100%
+        # Print in format: [OK] WIN: LONG 1x | Tue 09/02 01:56 | Entry: $6524.25 -> Exit: $6527.53 | P&L: $+468.20 | stop_loss | 89min | Conf: 100%
         print(f"{symbol}: {side} {qty}x | {entry_str} | Entry: ${entry_price:.2f} -> Exit: ${exit_price:.2f} | "
               f"P&L: ${pnl:+.2f} | {exit_reason} | {duration:.0f}min | Conf: {confidence:.0f}%")
         
@@ -134,12 +136,12 @@ def get_reporter() -> BacktestReporter:
     """Get or create reporter instance"""
     global _reporter
     if _reporter is None:
-        _reporter = BacktestReporter()
+        _reporter = BacktestReporter(max_contracts=1)  # Default to 1 contract
     return _reporter
 
 
-def reset_reporter(starting_balance: float = 50000.0) -> BacktestReporter:
+def reset_reporter(starting_balance: float = 50000.0, max_contracts: int = 1) -> BacktestReporter:
     """Reset reporter for new backtest"""
     global _reporter
-    _reporter = BacktestReporter(starting_balance)
+    _reporter = BacktestReporter(starting_balance, max_contracts)
     return _reporter

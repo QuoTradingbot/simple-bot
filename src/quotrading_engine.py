@@ -1621,7 +1621,8 @@ def load_position_state(symbol: str) -> bool:
         state[symbol]["position"]["quantity"] = saved_state["quantity"]
         state[symbol]["position"]["entry_price"] = saved_state["entry_price"]
         state[symbol]["position"]["stop_price"] = saved_state["stop_price"]
-        # NO target_price - trailing stop only (skip if in saved_state for backward compat)
+        # Backward compat: Skip target_price from old saved states (no longer used)
+        # Old states may have target_price field, but we ignore it in pure trailing stop system
         state[symbol]["position"]["order_id"] = saved_state.get("order_id")
         state[symbol]["position"]["stop_order_id"] = saved_state.get("stop_order_id")
         
@@ -5644,7 +5645,9 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
                     "partial_fill": position.get("quantity", 0) < position.get("original_quantity", 0),
                     "fill_ratio": position.get("quantity", 0) / position.get("original_quantity", 1) if position.get("original_quantity") else 1.0,
                     "exit_reason": reason,
-                    "held_full_duration": reason in ["stop_hit", "trailing_stop"]  # No target_hit - using trailing only
+                    # held_full_duration: True if position hit stop or trailing (natural exits)
+                    # False for early exits: timeouts, flatten, manual, reversal
+                    "held_full_duration": reason in ["stop_hit", "trailing_stop"]
                 }
             )
             

@@ -4931,6 +4931,11 @@ def check_regime_change(symbol: str, current_price: float) -> None:
             # Get old regime parameters for comparison
             old_regime = REGIME_DEFINITIONS[entry_regime_name]
             
+            # Calculate initial stop distance for logging
+            entry_price = position["entry_price"]
+            original_stop = position.get("original_stop_price", position["stop_price"])
+            initial_stop_distance_ticks = abs(entry_price - original_stop) / tick_size
+            
             logger.info("=" * 60)
             logger.info(f"REGIME CHANGE - PARAMETERS UPDATED")
             logger.info("=" * 60)

@@ -1,0 +1,11 @@
+{
+  "symbol": "ES",
+  "direction": "SHORT",
+  "entry_price": 6558.5,
+  "exit_price": 6555.5,
+  "contracts": 1,
+  "pnl": 147.5,
+  "pnl_percent": 0.17991918883891134,
+  "timestamp": "2025-09-08T04:54:00-04:00",
+  "reason": "target_reached"
+}

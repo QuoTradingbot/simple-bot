@@ -1774,6 +1774,30 @@ def inject_complete_bar(symbol: str, bar: Dict[str, Any]) -> None:
     check_for_signals(symbol)
 
 
+def inject_complete_bar_15min(symbol: str, bar: Dict[str, Any]) -> None:
+    """
+    Inject a complete 15-minute OHLCV bar directly (historical data replay).
+    This ensures 15-minute indicators (RSI, MACD, trend) are calculated correctly.
+    
+    Args:
+        symbol: Instrument symbol
+        bar: Complete bar dict with timestamp, open, high, low, close, volume
+    """
+    # Finalize any pending 15min bar first
+    if state[symbol]["current_15min_bar"] is not None:
+        state[symbol]["bars_15min"].append(state[symbol]["current_15min_bar"])
+        state[symbol]["current_15min_bar"] = None
+    
+    # Add the complete 15min bar
+    state[symbol]["bars_15min"].append(bar)
+    
+    # Update all 15min indicators
+    update_trend_filter(symbol)
+    update_rsi(symbol)
+    update_macd(symbol)
+    update_volume_average(symbol)
+
+
 
 def update_15min_bar(symbol: str, price: float, volume: int, dt: datetime) -> None:
     """

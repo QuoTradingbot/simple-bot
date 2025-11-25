@@ -2840,12 +2840,13 @@ def check_for_signals(symbol: str) -> None:
 
 def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confidence: Optional[float] = None) -> Tuple[int, float, float]:
     """
-    Calculate position size based on risk management rules.
+    Calculate position size based on tick-based risk management.
     
-    FIXED CONTRACTS: User's max_contracts setting determines position size.
-    - User configures max_contracts (e.g., 3 contracts)
-    - Position size is ALWAYS fixed at this value (no dynamic scaling)
-    - Risk-based calculation ensures we don't exceed risk tolerance
+    TICK-BASED RISK MANAGEMENT:
+    - Position size is FIXED at max_contracts (user setting)
+    - Stop loss is regime-based (ATR * stop_multiplier)
+    - Target is ATR-based (ATR * target_multiplier)
+    - NO capital-based risk limits - all risk management is through stops/targets/trailing
     
     Args:
         symbol: Instrument symbol
@@ -2856,12 +2857,8 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
     Returns:
         Tuple of (contracts, stop_price, target_price)
     """
-    # Get account equity
-    equity = get_account_equity()
-    
-    # Calculate risk allowance (1.2% of equity)
-    risk_dollars = equity * CONFIG["risk_per_trade"]
-    logger.info(f"Account equity: ${equity:.2f}, Risk allowance: ${risk_dollars:.2f}")
+    # FIXED POSITION SIZE: Always use user's max_contracts setting
+    contracts = CONFIG["max_contracts"]
     
     # Determine stop price using regime-based approach
     vwap_bands = state[symbol]["vwap_bands"]
@@ -2908,36 +2905,20 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
         stop_price = round_to_tick(stop_price)
         target_price = round_to_tick(target_price)
     
-    # Calculate stop distance in ticks
+    # Calculate stop distance in ticks for logging
     stop_distance = abs(entry_price - stop_price)
     ticks_at_risk = stop_distance / tick_size
     
-    # Calculate risk per contract
+    # Calculate risk per contract for logging
     tick_value = CONFIG["tick_value"]
     risk_per_contract = ticks_at_risk * tick_value
-    
-    # Calculate number of contracts based on risk (baseline calculation)
-    if risk_per_contract > 0:
-        contracts = int(risk_dollars / risk_per_contract)
-    else:
-        contracts = 0
-    
-    # Get user's max contracts limit and apply it (FIXED - no dynamic scaling)
-    user_max_contracts = CONFIG["max_contracts"]
-    contracts = min(contracts, user_max_contracts)
-    
-    logger.info(f"[FIXED CONTRACTS] Using fixed max of {user_max_contracts} contracts")
-    
-    if contracts == 0:
-        logger.warning(f"Position size too small: risk=${risk_per_contract:.2f}, allowance=${risk_dollars:.2f}")
-        return 0, stop_price, None
     
     # Calculate target distance for logging
     target_distance = abs(target_price - entry_price)
     
-    logger.info(f"Position sizing: {contracts} contract(s)")
+    logger.info(f"[TICK-BASED] Position sizing: {contracts} contract(s) (fixed)")
     logger.info(f"  Entry: ${entry_price:.2f}, Stop: ${stop_price:.2f}, Target: ${target_price:.2f}")
-    logger.info(f"  Risk: {ticks_at_risk:.1f} ticks (${risk_per_contract:.2f})")
+    logger.info(f"  Risk: {ticks_at_risk:.1f} ticks (${risk_per_contract:.2f} per contract)")
     logger.info(f"  Reward: {target_distance/tick_size:.1f} ticks ({target_distance/stop_distance:.1f}:1 R/R)")
     logger.info(f"  VWAP: ${vwap:.2f} (mean reversion target)")
     

@@ -338,6 +338,10 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
             # Extract bar data
             timestamp = bar['timestamp']
             
+            # CRITICAL: Set backtest simulation time before processing bar
+            # This ensures all time-based logic (trading hours, flatten mode, etc.) uses historical time
+            bot_module.backtest_current_time = timestamp
+            
             # Check for new trading day (resets daily counters following production rules)
             timestamp_eastern = timestamp.astimezone(eastern_tz)
             check_daily_reset(symbol, timestamp_eastern)

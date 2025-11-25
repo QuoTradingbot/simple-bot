@@ -181,9 +181,12 @@ def initialize_rl_brains_for_backtest(bot_config) -> Tuple[Any, ModuleType]:
     logger.info("=" * 60)
     
     # CRITICAL: Set the global rl_brain variable in the bot module
-    # This is what get_ml_confidence() checks when deciding signals
-    # Previously had hasattr check, but we always want to set this for backtest mode
-    # The rl_brain was just created above, so it's guaranteed to exist
+    # This is what get_ml_confidence() checks when deciding signals in backtest mode.
+    # The hasattr check was removed because:
+    # 1. We just created rl_brain above, so it's guaranteed to exist
+    # 2. The module might not have rl_brain as an attribute initially (fresh import)
+    # 3. We need to unconditionally set it to ensure backtest uses local RL brain
+    # instead of trying to call cloud API which would fail in backtest mode
     bot_module.rl_brain = rl_brain
     
     return rl_brain, bot_module

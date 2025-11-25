@@ -6395,6 +6395,9 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
     Check all safety conditions before allowing trading.
     Coordinates various safety checks through helper functions.
     
+    Daily loss limits are enforced in both live and backtest modes to ensure
+    realistic trading behavior and prevent runaway losses.
+    
     Args:
         symbol: Instrument symbol
     

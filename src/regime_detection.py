@@ -139,10 +139,12 @@ class RegimeDetector:
             logger.debug(f"Insufficient bars ({len(bars)}/{MIN_BARS_FOR_REGIME_DETECTION}) for regime detection, using NORMAL")
             return REGIME_DEFINITIONS["NORMAL"]
         
-        # Get bars: use baseline window for average, recent for price action
+        # Get bars for analysis
+        # - Baseline: bars 15-114 from end (100 bars) for average ATR
+        # - Recent: last 20 bars for price action (trending/choppy/ranging)
         all_bars = list(bars)
-        baseline_bars = all_bars[-BASELINE_BARS_START:-BASELINE_BARS_END]  # 100 bars for baseline
-        recent_bars = all_bars[-PRICE_ACTION_LOOKBACK:]  # Last 20 for price action
+        baseline_bars = all_bars[-MIN_BARS_FOR_REGIME_DETECTION:-BASELINE_BARS_END]  # Last 114 to 14 bars
+        recent_bars = all_bars[-PRICE_ACTION_LOOKBACK:]  # Last 20 bars
         
         # Calculate baseline ATR from earlier period (NOT including current 14 bars)
         avg_atr = self._calculate_average_atr(baseline_bars, atr_period)

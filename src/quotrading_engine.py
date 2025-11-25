@@ -743,10 +743,10 @@ def check_azure_time_service() -> str:
                     time_hour = time_obj.hour
                     time_minute = time_obj.minute
                     
-                    # Flatten mode: 21:45-5:00 PM ET (15 min before maintenance)
-                    if time_hour == 21 and time_minute >= 45:
+                    # Flatten mode: 4:30-4:45 PM ET (15 min before forced close)
+                    if time_hour == 21 and time_minute >= 30:  # 4:30 PM+ in 24h
                         state = "flatten_mode"
-                    elif time_hour == 22 and time_minute == 0:
+                    elif time_hour == 22 and time_minute < 45:  # Before 4:45 PM in 24h
                         state = "flatten_mode"
                     else:
                         state = "entry_window"
@@ -2338,7 +2338,7 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
         return False, f"Market closed"
     
     if trading_state == "flatten_mode":
-        logger.debug(f"Flatten mode active (21:45-5:00 PM ET), no new entries")
+        logger.debug(f"Flatten mode active (4:30-4:45 PM ET), no new entries")
         return False, f"Flatten mode - close positions only"
     
     # Trading state is "entry_window" - market is open, proceed with checks
@@ -2354,7 +2354,7 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
             f"Between 4:00-6:00 PM ET, no new trades (flatten/maintenance window)",
             {"time": current_time.strftime('%H:%M:%S')}
         )
-        logger.debug(f"4:00-6:00 PM ET window - no new entries (flatten at 4:45 PM, maintenance at 5:00 PM, reopens at 6:00 PM)")
+        logger.debug(f"4:00-6:00 PM ET window - no new entries (flatten at 4:45 PM, maintenance starts at 4:45 PM, reopens at 6:00 PM)")
         return False, "Daily entry cutoff (4:00-6:00 PM ET)"
     
     # Check if already have position
@@ -5134,7 +5134,7 @@ def check_exit_conditions(symbol: str) -> None:
                 recap_msg += f"\nOpen Position: {position['side'].upper()} {position['quantity']} @ ${position['entry_price']:.2f}\n"
                 recap_msg += f"Unrealized P&L: ${unrealized_pnl:+.2f}\n"
             
-            recap_msg += f"\nBot entering flatten mode. All positions will close before 5:00 PM maintenance window."
+            recap_msg += f"\nBot entering flatten mode. All positions will close before 4:45 PM forced flatten."
             
             notifier.send_error_alert(
                 error_message=recap_msg,
@@ -6445,7 +6445,7 @@ def check_safety_conditions(symbol: str) -> Tuple[bool, Optional[str]]:
 
 def check_no_overnight_positions(symbol: str) -> None:
     """
-    Critical safety check - ensure NO positions past 5:00 PM ET (maintenance start).
+    Critical safety check - ensure NO positions past 4:45 PM ET (forced flatten time).
     This prevents gap risk and prop firm evaluation issues.
     
     Args:
@@ -6457,10 +6457,10 @@ def check_no_overnight_positions(symbol: str) -> None:
     eastern_tz = pytz.timezone('US/Eastern')
     current_time = datetime.now(eastern_tz)
     
-    # Critical: If it's past 5:00 PM ET and we still have a position, this is a SERIOUS ERROR
+    # Critical: If it's past 4:45 PM ET and we still have a position, this is a SERIOUS ERROR
     if current_time.time() >= CONFIG["shutdown_time"]:
         logger.critical("=" * 70)
-        logger.critical("CRITICAL ERROR: POSITION DETECTED PAST 5:00 PM ET")
+        logger.critical("CRITICAL ERROR: POSITION DETECTED PAST 4:45 PM ET")
         logger.critical("OVERNIGHT POSITION RISK - IMMEDIATE EMERGENCY CLOSE REQUIRED")
         logger.critical("=" * 70)
         logger.critical(f"Position: {state[symbol]['position']['side']} "
@@ -6792,14 +6792,15 @@ def get_trading_state(dt: datetime = None) -> str:
     Returns:
         Trading state:
         - 'entry_window': Market open, ready to trade (6:00 PM - 4:45 PM next day)
-        - 'flatten_mode': 4:45-5:00 PM ET, close positions before maintenance  
+        - 'flatten_mode': 4:30-4:45 PM ET, close positions before forced flatten
         - 'closed': Market closed (flatten all positions immediately)
     
     CME Futures Schedule (US Eastern Wall-Clock - NEVER changes with DST):
     - Market opens: 6:00 PM Eastern (Sunday-Thursday)
-    - Flatten time: 4:45 PM Eastern daily (Mon-Fri) - 15 min before maintenance
-    - Maintenance: 5:00-6:00 PM Eastern (60-min daily break)
-    - Friday close: 5:00 PM Eastern (market closes at maintenance start)
+    - Flatten mode: 4:30 PM Eastern daily (Mon-Fri) - start aggressive exits
+    - Forced flatten: 4:45 PM Eastern daily (Mon-Fri) - close all positions
+    - Maintenance: 4:45-6:00 PM Eastern (1hr 15min daily break)
+    - Friday close: 4:45 PM Eastern (market closes for weekend maintenance)
     - Sunday open: 6:00 PM Eastern Sunday (weekly start)
     """
     # AZURE-FIRST: Try cloud time service (unless in backtest mode)
@@ -7567,17 +7568,17 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
                 
                 # If Friday and before close, wait until market closes
                 if weekday == 4 and current_time_only < maintenance_start:
-                    logger.warning(f"ΓÅ░ License expired on Friday - will stop at market close (5:00 PM ET)")
+                    logger.warning(f"ΓÅ░ License expired on Friday - will stop at market close (4:45 PM ET)")
                     should_stop_now = False
                     stop_reason = "License expired - will stop at Friday market close"
                     # Set flag to stop at market close
                     bot_status["stop_at_market_close"] = True
                 
-                # If weekday and close to maintenance, wait until maintenance
+                # If weekday and close to forced flatten, wait until maintenance
                 elif weekday < 4 and flatten_time <= current_time_only < maintenance_start:
-                    logger.warning(f"ΓÅ░ License expired during flatten window - will stop at maintenance (5:00 PM ET)")
+                    logger.warning(f"ΓÅ░ License expired during flatten window - will stop at forced flatten (4:45 PM ET)")
                     should_stop_now = False
-                    stop_reason = "License expired - will stop at maintenance window"
+                    stop_reason = "License expired - will stop at forced flatten time"
                     bot_status["stop_at_maintenance"] = True
                 
                 # If weekend, should have already stopped on Friday

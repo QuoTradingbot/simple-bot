@@ -321,22 +321,20 @@ async def save_trade_experience_async(
     execution_data: Dict[str, Any]
 ) -> None:
     """
-    Save trade outcome to local RL brain and report to cloud for data collection.
+    Save trade outcome based on mode.
     
-    LIVE MODE: Saves to local RL brain + reports to cloud for data collection
+    LIVE MODE: Saves to cloud ONLY (reads local for pattern matching, but doesn't save local)
     BACKTEST MODE: Saves to local RL brain only
     """
     global cloud_api_client, rl_brain
     
-    # Save to local RL brain for both live and backtest modes
-    if rl_brain is not None:
-        rl_brain.record_outcome(rl_state, True, pnl, duration_minutes, execution_data)
-    
-    # BACKTEST MODE: Local only, no cloud reporting
+    # BACKTEST MODE: Save to local RL brain only
     if is_backtest_mode() or CONFIG.get("backtest_mode", False):
+        if rl_brain is not None:
+            rl_brain.record_outcome(rl_state, True, pnl, duration_minutes, execution_data)
         return
     
-    # LIVE MODE: Also report to cloud for data collection
+    # LIVE MODE: Report to cloud ONLY (don't save locally)
     if cloud_api_client is None:
         logger.debug("Cloud API client not initialized - skipping cloud reporting")
         return
@@ -7134,22 +7132,25 @@ def main(symbol_override: str = None) -> None:
     logger.info(SEPARATOR_LINE)
     
     # Initialize local RL brain for both LIVE and BACKTEST modes
-    # LIVE MODE: Uses local RL for confidence decisions (no cloud dependency)
-    # BACKTEST MODE: Uses local RL for learning and testing
+    # LIVE MODE: Reads from local symbol-specific folder for pattern matching, saves to cloud only
+    # BACKTEST MODE: Reads and saves to local symbol-specific folder
     if is_backtest_mode() or CONFIG.get("backtest_mode", False):
         logger.info(f"[{trading_symbol}] BACKTEST MODE: Local RL brain will be initialized by backtest code")
     else:
         logger.info(f"[{trading_symbol}] LIVE MODE: Initializing local RL brain...")
-        signal_exp_file = str(get_data_file_path("data/signal_experience.json"))
+        # Use symbol-specific folder for experiences
+        signal_exp_file = str(get_data_file_path(f"experiences/{trading_symbol}/signal_experience.json"))
         rl_brain = SignalConfidenceRL(
             experience_file=signal_exp_file,
             backtest_mode=False,  # Live mode
             confidence_threshold=CONFIG.get("rl_confidence_threshold"),
             exploration_rate=0.0,  # No exploration in live mode (pure exploitation)
             min_exploration=0.0,
-            exploration_decay=0.995
+            exploration_decay=0.995,
+            save_local=False  # Live mode: read local but save to cloud only
         )
-        logger.info(f"[{trading_symbol}] ✅ Local RL brain initialized with {len(rl_brain.experiences)} experiences")
+        logger.info(f"[{trading_symbol}] ✅ Local RL brain initialized with {len(rl_brain.experiences)} experiences from experiences/{trading_symbol}/")
+        logger.info(f"[{trading_symbol}] 📝 Live mode: Reading local experiences, saving to cloud only")
         
         # Initialize Cloud API Client for reporting trade outcomes to cloud
         license_key = CONFIG.get("quotrading_license") or CONFIG.get("user_api_key")

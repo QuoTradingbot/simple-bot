@@ -150,15 +150,19 @@ def initialize_rl_brains_for_backtest(bot_config) -> Tuple[Any, ModuleType]:
     # Load the module
     spec.loader.exec_module(bot_module)
     
-    # Initialize RL brain with experience file and config values
-    signal_exp_file = os.path.join(PROJECT_ROOT, "data/signal_experience.json")
+    # Get symbol for symbol-specific experience folder
+    symbol = bot_config.instrument
+    
+    # Initialize RL brain with symbol-specific experience file and config values
+    signal_exp_file = os.path.join(PROJECT_ROOT, f"experiences/{symbol}/signal_experience.json")
     rl_brain = SignalConfidenceRL(
         experience_file=signal_exp_file,
         backtest_mode=True,
         confidence_threshold=bot_config.rl_confidence_threshold,
         exploration_rate=bot_config.rl_exploration_rate,
         min_exploration=bot_config.rl_min_exploration_rate,
-        exploration_decay=bot_config.rl_exploration_decay
+        exploration_decay=bot_config.rl_exploration_decay,
+        save_local=True  # Backtest mode: save locally
     )
     
     # Set it on the bot module if it has rl_brain attribute

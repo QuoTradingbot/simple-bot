@@ -34,7 +34,7 @@ class SignalConfidenceRL:
     Reward: Profit/loss from trade outcome
     """
     
-    def __init__(self, experience_file: str = None, backtest_mode: bool = False, confidence_threshold: Optional[float] = None, exploration_rate: Optional[float] = None, min_exploration: Optional[float] = None, exploration_decay: Optional[float] = None):
+    def __init__(self, experience_file: str = None, backtest_mode: bool = False, confidence_threshold: Optional[float] = None, exploration_rate: Optional[float] = None, min_exploration: Optional[float] = None, exploration_decay: Optional[float] = None, save_local: bool = True):
         """
         Initialize RL confidence scorer.
         
@@ -47,6 +47,7 @@ class SignalConfidenceRL:
             exploration_rate: Percentage of random exploration (0.0-1.0). Default: 0.05 (5%)
             min_exploration: Minimum exploration rate (0.0-1.0). Default: 0.05 (5%)
             exploration_decay: Decay factor for exploration rate. Default: 0.995
+            save_local: Whether to save experiences locally (False for live mode cloud-only saving)
         """
         # Default to no local experience file for production (cloud-based RL)
         # Only load local file for backtesting or if explicitly provided
@@ -58,6 +59,7 @@ class SignalConfidenceRL:
         self.recent_trades = deque(maxlen=20)  # Last 20 outcomes
         self.backtest_mode = backtest_mode
         self.freeze_learning = False  # LEARNING ENABLED - Brain 2 learns during backtests
+        self.save_local = save_local  # Whether to save experiences locally
         
         # Random exploration enabled - no fixed seed for natural learning
         
@@ -682,6 +684,11 @@ class SignalConfidenceRL:
     
     def save_experience(self):
         """Save experiences to file."""
+        # Skip saving if disabled (e.g., live mode with cloud-only saving)
+        if not self.save_local:
+            logger.debug("[DEBUG] Local saving disabled - skipping save (cloud-only mode)")
+            return
+        
         # Skip saving if no experience file is configured (cloud-based RL)
         if self.experience_file is None:
             logger.debug("[DEBUG] No local experience file configured - skipping save (cloud-based RL)")

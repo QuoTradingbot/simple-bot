@@ -77,14 +77,9 @@ class BotConfiguration:
     market_open_time: time = field(default_factory=lambda: time(9, 30))  # Legacy stock market alignment - not used for VWAP reset
     entry_start_time: time = field(default_factory=lambda: time(18, 0))  # 6:00 PM Eastern - CME futures session opens
     entry_end_time: time = field(default_factory=lambda: time(16, 0))  # 4:00 PM Eastern - no new entries after this (can hold positions until 4:45 PM)
-    flatten_time: time = field(default_factory=lambda: time(16, 45))  # 4:45 PM Eastern - flatten positions (15 min before maintenance)
-    forced_flatten_time: time = field(default_factory=lambda: time(17, 0))  # 5:00 PM Eastern - maintenance starts
+    forced_flatten_time: time = field(default_factory=lambda: time(16, 45))  # 4:45 PM Eastern - force close all positions before maintenance
     shutdown_time: time = field(default_factory=lambda: time(18, 0))  # 6:00 PM Eastern - market reopens after maintenance
     vwap_reset_time: time = field(default_factory=lambda: time(18, 0))  # 6:00 PM Eastern - daily session reset at market open
-    
-    # Friday Special Rules - Close before weekend (Eastern times)
-    friday_entry_cutoff: time = field(default_factory=lambda: time(16, 30))  # 4:30 PM Eastern - stop entries Friday
-    friday_close_target: time = field(default_factory=lambda: time(17, 0))  # 5:00 PM Eastern - Friday weekly close
     
     # Safety Parameters - USER CONFIGURABLE
     daily_loss_limit: float = 1000.0  # USER CONFIGURABLE - max $ loss per day (or auto-calculated)
@@ -245,7 +240,6 @@ class BotConfiguration:
     use_atr_stops: bool = False  # ATR stops disabled - using proven 11-tick fixed stops
     atr_period: int = 14  # ATR calculation period
     stop_loss_atr_multiplier: float = 3.6  # Iteration 3 (tight stops)
-    profit_target_atr_multiplier: float = 4.75  # Iteration 3 (solid targets)
     
     # Instrument Specifications
     tick_size: float = 0.25
@@ -302,12 +296,13 @@ class BotConfiguration:
     partial_exit_3_r_multiple: float = 5.0  # Exit at 5.0R
     
     # Reinforcement Learning Parameters
-    # RL ENABLED - Learning which signals to trust from experience
-    rl_enabled: bool = True  # ENABLED - RL layer learns signal quality
-    rl_exploration_rate: float = 0.30  # 30% exploration (random decisions)
+    # RL confidence filtering - uses RL experience to filter out low-confidence signals
+    # USER CONFIGURABLE - threshold determines which signals to take
+    rl_enabled: bool = True  # ENABLED - RL layer filters signals based on confidence
+    rl_exploration_rate: float = 0.30  # 30% exploration (for learning)
     rl_min_exploration_rate: float = 0.05  # Minimum exploration after decay
     rl_exploration_decay: float = 0.995  # Decay rate per signal
-    rl_confidence_threshold: float = 0.5  # Minimum confidence to take signal (USER CONFIGURABLE via GUI)
+    rl_confidence_threshold: float = 0.5  # USER CONFIGURABLE via GUI - minimum confidence to take signal
     # NOTE: Contracts are FIXED at user's max_contracts setting (no dynamic scaling)
     # NOTE: For production, RL is cloud-based. Local files only for backtesting/development.
     rl_experience_file: str = None  # Path to local RL experience file (None = cloud-based RL)
@@ -350,14 +345,7 @@ class BotConfiguration:
         # For 24-hour trading, entry_start_time (6 PM) > entry_end_time (4:55 PM) is VALID
         # Skip the old entry_start_time >= entry_end_time check since futures wrap midnight
         
-        # Flatten times should still be in order on same day
-        if self.flatten_time >= self.forced_flatten_time:
-            errors.append(f"flatten_time must be before forced_flatten_time")
-        
-        # Flatten times should still be in order on same day
-        if self.flatten_time >= self.forced_flatten_time:
-            errors.append(f"flatten_time must be before forced_flatten_time")
-        
+        # Time Window Validation
         if self.forced_flatten_time >= self.shutdown_time:
             errors.append(f"forced_flatten_time must be before shutdown_time")
         
@@ -432,12 +420,9 @@ class BotConfiguration:
             "market_open_time": self.market_open_time,
             "entry_start_time": self.entry_start_time,
             "entry_end_time": self.entry_end_time,
-            "flatten_time": self.flatten_time,
             "forced_flatten_time": self.forced_flatten_time,
             "shutdown_time": self.shutdown_time,
             "vwap_reset_time": self.vwap_reset_time,
-            "friday_entry_cutoff": self.friday_entry_cutoff,
-            "friday_close_target": self.friday_close_target,
             "daily_loss_limit": self.daily_loss_limit,
             "tick_timeout_seconds": self.tick_timeout_seconds,
             "proactive_stop_buffer_ticks": self.proactive_stop_buffer_ticks,
@@ -758,7 +743,6 @@ def log_config(config: BotConfiguration, logger) -> None:
     
     # Time windows
     logger.info(f"Entry Window: {config.entry_start_time} - {config.entry_end_time} ET")
-    logger.info(f"Flatten Time: {config.flatten_time} ET")
     logger.info(f"Forced Flatten: {config.forced_flatten_time} ET")
     
     # API token info (only relevant for live trading)
@@ -770,77 +754,6 @@ def log_config(config: BotConfiguration, logger) -> None:
         logger.info("API Token: (not configured)")
     
     logger.info("=" * 60)
-
-
-def apply_learned_parameters(config: BotConfiguration, learning_file: str = "learning_history.json") -> bool:
-    """
-    Load and apply the best parameters learned from continuous learning.
-    
-    Args:
-        config: Bot configuration to update
-        learning_file: Path to learning history JSON file
-        
-    Returns:
-        True if parameters were loaded and applied, False otherwise
-    """
-    import json
-    import os
-    from pathlib import Path
-    import logging
-    
-    log = logging.getLogger(__name__)
-    
-    learning_path = Path(learning_file)
-    
-    if not learning_path.exists():
-        log.warning(f"No learning history found at {learning_file}")
-        log.info("Using default configuration parameters")
-        return False
-    
-    try:
-        with open(learning_path, 'r') as f:
-            learning_data = json.load(f)
-        
-        best_params = learning_data.get('best_params', {})
-        best_score = learning_data.get('best_score', 0)
-        
-        if not best_params:
-            log.warning("No best parameters found in learning history")
-            return False
-        
-        # Apply learned parameters
-        log.info("=" * 60)
-        log.info(" APPLYING LEARNED PARAMETERS FROM CONTINUOUS LEARNING")
-        log.info(f"Best Score: {best_score:,.0f}")
-        log.info("-" * 60)
-        
-        param_mapping = {
-            'vwap_std_dev_1': 'vwap_std_dev_1',
-            'vwap_std_dev_3': 'vwap_std_dev_3',
-            'rsi_period': 'rsi_period',
-            'rsi_oversold': 'rsi_oversold',
-            'rsi_overbought': 'rsi_overbought',
-            'stop_loss_atr_multiplier': 'stop_loss_atr_multiplier',
-            'profit_target_atr_multiplier': 'profit_target_atr_multiplier',
-        }
-        
-        for learned_key, config_key in param_mapping.items():
-            if learned_key in best_params:
-                old_value = getattr(config, config_key)
-                new_value = best_params[learned_key]
-                setattr(config, config_key, new_value)
-                log.info(f"  {config_key}: {old_value} → {new_value}")
-        
-        log.info("=" * 60)
-        log.info(" Learned parameters applied successfully!")
-        log.info("=" * 60)
-        
-        return True
-        
-    except Exception as e:
-        log.error(f"Failed to load learned parameters: {e}")
-        log.info("Using default configuration parameters")
-        return False
 
 
 # ========================================

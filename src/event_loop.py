@@ -45,7 +45,6 @@ class EventType(IntEnum):
     TICK_DATA = 20
     TIME_CHECK = 21
     VWAP_RESET = 22
-    FLATTEN_MODE = 23
     
     # Low priority events
     LOG_UPDATE = 30
@@ -368,16 +367,6 @@ class TimerManager:
                     if current_time_only >= vwap_reset_time:
                         self.event_loop.post_event(
                             EventType.VWAP_RESET,
-                            EventPriority.MEDIUM,
-                            {"time": current_time}
-                        )
-                
-                # Check flatten mode time
-                warning_time = self.config.get("warning_time")
-                if warning_time and self._should_check("flatten_mode", current_time, 60):
-                    if current_time_only >= warning_time:
-                        self.event_loop.post_event(
-                            EventType.FLATTEN_MODE,
                             EventPriority.MEDIUM,
                             {"time": current_time}
                         )

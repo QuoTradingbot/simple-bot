@@ -349,14 +349,9 @@ async def save_trade_experience_async(
     """
     global cloud_api_client, rl_brain
     
-    print(f"\n[DEBUG] save_trade_experience_async CALLED! Backtest mode: {is_backtest_mode()}")
-    print(f"[DEBUG] rl_brain exists: {rl_brain is not None}")
-    print(f"[DEBUG] rl_state keys: {list(rl_state.keys())[:5]}")
-    
     # BACKTEST MODE: Use local RL brain
     if is_backtest_mode() or CONFIG.get("backtest_mode", False):
         if rl_brain is not None:
-            print(f"[DEBUG] Calling rl_brain.record_outcome()")
             rl_brain.record_outcome(rl_state, True, pnl, duration_minutes, execution_data)
         return
     

@@ -486,12 +486,6 @@ class SignalConfidenceRL:
                 - exit_reason: How trade closed
                 - held_full_duration: Whether hit target/stop vs time exit
         """
-        print(f"\n[DEBUG] record_outcome() called!")
-        print(f"[DEBUG] Input state type: {type(state)}")
-        print(f"[DEBUG] Input state keys: {list(state.keys()) if isinstance(state, dict) else 'NOT A DICT'}")
-        print(f"[DEBUG] took_trade: {took_trade}, pnl: {pnl}, duration: {duration_minutes}")
-        print(f"[DEBUG] execution_data: {execution_data}")
-        
         # FLAT FORMAT: Merge all fields at top level
         # Start with market state (16 fields from capture_market_state)
         experience = state.copy() if isinstance(state, dict) else {}
@@ -521,16 +515,9 @@ class SignalConfidenceRL:
             if 'exit_reason' in execution_data:
                 experience['exit_reason'] = execution_data['exit_reason']
         
-        print(f"[DEBUG] FLAT FORMAT experience created with {len(experience)} fields")
-        print(f"[DEBUG] Experience keys: {list(experience.keys())}")
-        print(f"[DEBUG] Sample values: timestamp={experience.get('timestamp', 'MISSING')}, "
-              f"price={experience.get('price', 'MISSING')}, pnl={experience.get('pnl', 'MISSING')}")
-        
         # Add to memory (learning enabled)
         self.experiences.append(experience)
         self.recent_trades.append(pnl)
-        
-        print(f"[DEBUG] Experience appended. Total experiences: {len(self.experiences)}")
         
         # Update win/loss streaks
         if took_trade:
@@ -543,7 +530,6 @@ class SignalConfidenceRL:
         
         # Save every 5 trades (auto-save enabled)
         if len(self.experiences) % 5 == 0:
-            print(f"[DEBUG] Auto-save triggered (every 5 experiences)")
             self.save_experience()
         
         # Log learning progress with execution details

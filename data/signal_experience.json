@@ -1,38 +1,5 @@
 {
-  "experiences": [
-    {
-      "timestamp": "2025-11-25T23:25:48.019728",
-      "state": {
-        "timestamp": "2025-11-21T01:48:00-05:00",
-        "symbol": "ES",
-        "price": 6587.75,
-        "returns": -0.000720515737580584,
-        "vwap_distance": 0.7222354086744919,
-        "vwap_slope": 0.001406095614501786,
-        "atr": 6.964285714285714,
-        "atr_slope": -0.1841004184100419,
-        "rsi": 50,
-        "macd_hist": 0.0,
-        "stoch_k": 81.19658119658119,
-        "volume_ratio": 1.6033719346049045,
-        "volume_slope": 1.8946963873943121,
-        "hour": 1,
-        "session": "ETH",
-        "regime": "LOW_VOL_TRENDING",
-        "volatility_regime": "HIGH"
-      },
-      "action": {
-        "took_trade": true,
-        "exploration_rate": 1.0
-      },
-      "reward": -352.5,
-      "duration": 6.0,
-      "execution": {
-        "mfe": 0.0,
-        "mae": 362.5
-      }
-    }
-  ],
+  "experiences": [],
   "stats": {
     "total_signals": 0,
     "taken": 0,

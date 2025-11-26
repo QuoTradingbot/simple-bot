@@ -1391,7 +1391,6 @@ def initialize_state(symbol: str) -> None:
             "quantity": 0,
             "entry_price": None,
             "stop_price": None,
-            "target_price": None,
             "entry_time": None,
             # Regime Information - For dynamic exit management
             "entry_regime": None,  # Regime at entry
@@ -1507,7 +1506,6 @@ def save_position_state(symbol: str) -> None:
             "quantity": position["quantity"],
             "entry_price": position["entry_price"],
             "stop_price": position["stop_price"],
-            "target_price": position["target_price"],
             "entry_time": position["entry_time"].isoformat() if position.get("entry_time") else None,
             "order_id": position.get("order_id"),
             "stop_order_id": position.get("stop_order_id"),
@@ -1598,7 +1596,6 @@ def load_position_state(symbol: str) -> bool:
         state[symbol]["position"]["quantity"] = saved_state["quantity"]
         state[symbol]["position"]["entry_price"] = saved_state["entry_price"]
         state[symbol]["position"]["stop_price"] = saved_state["stop_price"]
-        state[symbol]["position"]["target_price"] = saved_state["target_price"]
         state[symbol]["position"]["order_id"] = saved_state.get("order_id")
         state[symbol]["position"]["stop_order_id"] = saved_state.get("stop_order_id")
         
@@ -2803,7 +2800,7 @@ def check_for_signals(symbol: str) -> None:
 # PHASE EIGHT: Position Sizing
 # ============================================================================
 
-def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confidence: Optional[float] = None) -> Tuple[int, float, float]:
+def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confidence: Optional[float] = None) -> Tuple[int, float]:
     """
     Calculate position size based on risk management rules.
     
@@ -2844,12 +2841,9 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
         max_stop_ticks = 11
         if side == "long":
             stop_price = entry_price - (max_stop_ticks * tick_size)
-            target_price = vwap_bands["upper_3"]
         else:
             stop_price = entry_price + (max_stop_ticks * tick_size)
-            target_price = vwap_bands["lower_3"]
         stop_price = round_to_tick(stop_price)
-        target_price = round_to_tick(target_price)
     else:
         # Use regime-based stop loss calculation
         entry_regime = regime_detector.detect_regime(bars, atr, CONFIG.get("atr_period", 14))
@@ -2858,18 +2852,13 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
         stop_multiplier = entry_regime.stop_mult
         logger.info(f"Regime-based stop: {entry_regime.name}, multiplier {stop_multiplier:.2f}x")
         
-        # Use fixed target multiplier (can be made regime-based in future)
-        target_multiplier = CONFIG.get("profit_target_atr_multiplier", 4.75)
         
         if side == "long":
             stop_price = entry_price - (atr * stop_multiplier)
-            target_price = entry_price + (atr * target_multiplier)
         else:  # short
             stop_price = entry_price + (atr * stop_multiplier)
-            target_price = entry_price - (atr * target_multiplier)
         
         stop_price = round_to_tick(stop_price)
-        target_price = round_to_tick(target_price)
     
     # Calculate stop distance in ticks
     stop_distance = abs(entry_price - stop_price)
@@ -2893,18 +2882,15 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
     
     if contracts == 0:
         logger.warning(f"Position size too small: risk=${risk_per_contract:.2f}, allowance=${risk_dollars:.2f}")
-        return 0, stop_price, None
+        return 0, stop_price
     
-    # Calculate target distance for logging
-    target_distance = abs(target_price - entry_price)
     
     logger.info(f"Position sizing: {contracts} contract(s)")
     logger.info(f"  Entry: ${entry_price:.2f}, Stop: ${stop_price:.2f}, Target: ${target_price:.2f}")
     logger.info(f"  Risk: {ticks_at_risk:.1f} ticks (${risk_per_contract:.2f})")
-    logger.info(f"  Reward: {target_distance/tick_size:.1f} ticks ({target_distance/stop_distance:.1f}:1 R/R)")
-    logger.info(f"  VWAP: ${vwap:.2f} (mean reversion target)")
+    logger.info(f"  VWAP: ${vwap:.2f} (mean reversion reference)")
     
-    return contracts, stop_price, target_price
+    return contracts, stop_price
 
 
 # ============================================================================
@@ -3279,14 +3265,10 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
         
         if side == "long":
             suggested_stop = entry_price - (max_stop_ticks * tick_size)
-            suggested_target = vwap_bands["upper_3"]
             logger.info(f"  Suggested Stop: ${suggested_stop:.2f} ({max_stop_ticks} ticks)")
-            logger.info(f"  Suggested Target: ${suggested_target:.2f} (Upper Band 3)")
         else:
             suggested_stop = entry_price + (max_stop_ticks * tick_size)
-            suggested_target = vwap_bands["lower_3"]
             logger.info(f"  Suggested Stop: ${suggested_stop:.2f} ({max_stop_ticks} ticks)")
-            logger.info(f"  Suggested Target: ${suggested_target:.2f} (Lower Band 3)")
         
         logger.info(f"")
         logger.info(f"  ≡ƒÄ» SHADOW MODE: Signal shown - No automatic execution")
@@ -3301,7 +3283,6 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
                 side=side,
                 entry_price=entry_price,
                 stop_price=suggested_stop,
-                target_price=suggested_target,
                 mode="SIGNAL_ONLY"
             )
         except Exception as e:
@@ -3379,7 +3360,7 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
     rl_confidence = state[symbol].get("entry_rl_confidence")
     
     # Calculate position size (with RL adjustment if confidence available)
-    contracts, stop_price, target_price = calculate_position_size(symbol, side, entry_price, rl_confidence)
+    contracts, stop_price = calculate_position_size(symbol, side, entry_price, rl_confidence)
     
     if contracts == 0:
         logger.warning("Cannot enter trade - position size is zero")
@@ -3412,7 +3393,7 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
     original_contracts = contracts
     if bid_ask_manager is not None:
         try:
-            expected_profit_ticks = abs(target_price - entry_price) / CONFIG["tick_size"]
+            expected_profit_ticks = 20  # Use reasonable default for spread calculation
             adjusted_contracts, cost_breakdown = bid_ask_manager.calculate_spread_aware_position_size(
                 symbol, contracts, expected_profit_ticks
             )
@@ -3425,7 +3406,6 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
     
     logger.info(f"  Contracts: {contracts}")
     logger.info(f"  Stop Loss: ${stop_price:.2f}")
-    logger.info(f"  Target: ${target_price:.2f}")
     
     # Track order execution details for post-trade analysis
     fill_start_time = datetime.now()
@@ -3634,7 +3614,6 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
         "quantity": contracts,
         "entry_price": actual_fill_price,
         "stop_price": stop_price,
-        "target_price": target_price,
         "entry_time": entry_time,
         "order_id": order.get("order_id"),
         "order_type_used": order_type_used,  # Track for exit optimization
@@ -3712,7 +3691,6 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
             state[symbol]["position"]["side"] = None
             state[symbol]["position"]["entry_price"] = None
             state[symbol]["position"]["stop_price"] = None
-            state[symbol]["position"]["target_price"] = None
             
             # CRITICAL: Save state to disk immediately
             save_position_state(symbol)
@@ -3767,65 +3745,6 @@ def check_stop_hit(symbol: str, current_bar: Dict[str, Any], position: Dict[str,
     else:  # short
         if current_bar["high"] >= stop_price:
             return True, stop_price
-    
-    return False, None
-
-
-def check_target_reached(symbol: str, current_bar: Dict[str, Any], position: Dict[str, Any], 
-                        bar_time: datetime) -> Tuple[bool, Optional[float]]:
-    """
-    Check if VWAP target has been reached.
-    
-    Uses regime-based target calculation only. No time-based tightening.
-    
-    Args:
-        symbol: Instrument symbol
-        current_bar: Current 1-minute bar
-        position: Position dictionary
-        bar_time: Current bar timestamp
-    
-    Returns:
-        Tuple of (target_reached, target_price)
-    """
-    side = position["side"]
-    target_price = position["target_price"]
-    
-    # Check regular target
-    if side == "long":
-        if current_bar["high"] >= target_price:
-            # ===== CRITICAL FIX #4: Target Order Validation =====
-            # Price reached target - verify we can actually fill at this price
-            # In backtesting, assume fill. In live, would check if limit order filled.
-            
-            # Check if price is still near target (within CONFIG threshold)
-            tick_size = CONFIG["tick_size"]
-            target_validation_ticks = CONFIG.get("target_fill_validation_ticks", 2)
-            price_distance = abs(current_bar["close"] - target_price) / tick_size
-            
-            if price_distance <= target_validation_ticks:
-                # Price still near target - good fill likely
-                return True, target_price
-            else:
-                # Price ran past target and reversed - might not fill at target
-                logger.warning(f"[WARN] Target Validation: Price hit ${target_price:.2f} but reversed to ${current_bar['close']:.2f}")
-                logger.warning(f"  Distance: {price_distance:.1f} ticks (>{target_validation_ticks} tick threshold)")
-                logger.warning(f"  Using current price for guaranteed fill instead")
-                # Use current price (more conservative, guaranteed fill)
-                return True, current_bar["close"]
-    else:  # short
-        if current_bar["low"] <= target_price:
-            # ===== CRITICAL FIX #4: Target Order Validation =====
-            tick_size = CONFIG["tick_size"]
-            target_validation_ticks = CONFIG.get("target_fill_validation_ticks", 2)
-            price_distance = abs(current_bar["close"] - target_price) / tick_size
-            
-            if price_distance <= target_validation_ticks:
-                return True, target_price
-            else:
-                logger.warning(f"[WARN] Target Validation: Price hit ${target_price:.2f} but reversed to ${current_bar['close']:.2f}")
-                logger.warning(f"  Distance: {price_distance:.1f} ticks (>{target_validation_ticks} tick threshold)")
-                logger.warning(f"  Using current price for guaranteed fill instead")
-                return True, current_bar["close"]
     
     return False, None
 
@@ -5076,13 +4995,7 @@ def check_exit_conditions(symbol: str) -> None:
         execute_exit(symbol, price, reason)
         return
     
-    # SECOND - VWAP target hit check
-    target_hit, price = check_target_reached(symbol, current_bar, position, bar_time)
-    if target_hit:
-        execute_exit(symbol, price, "target_reached")
-        return
-    
-    # THIRD - VWAP stop hit check
+    # SECOND - VWAP stop hit check
     stop_hit, price = check_stop_hit(symbol, current_bar, position)
     if stop_hit:
         execute_exit(symbol, price, "stop_loss")
@@ -5425,7 +5338,6 @@ def handle_exit_orders(symbol: str, position: Dict[str, Any], exit_price: float,
     # Normal exit handling (non-forced-flatten)
     # Determine exit type based on reason
     exit_type_map = {
-        "target_reached": "target",
         "stop_loss": "stop",
         "time_based_profit_take": "time_flatten",
         "time_based_loss_cut": "time_flatten",
@@ -5709,7 +5621,6 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
         "quantity": 0,
         "entry_price": None,
         "stop_price": None,
-        "target_price": None,
         "entry_time": None,
         # Advanced Exit Management - Breakeven State
         "breakeven_active": False,

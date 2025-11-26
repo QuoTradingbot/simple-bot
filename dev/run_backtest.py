@@ -473,23 +473,21 @@ def main():
         max_contracts=bot_config.max_contracts
     )
     
-    # Create a custom filter to allow only specific INFO messages through AND track signals
+    # Create a custom filter to suppress signal spam and only track them
     class BacktestMessageFilter(logging.Filter):
         def filter(self, record):
-            # Track RL signals for the reporter
+            # Track RL signals for the reporter but suppress output
             msg = record.getMessage()
             if 'RL APPROVED' in msg:
                 reporter.record_signal(approved=True)
-                return True
+                return False  # Suppress output
             elif 'RL REJECTED' in msg:
                 reporter.record_signal(approved=False)
-                return True  # Show rejections for debugging
+                return False  # Suppress output
             elif 'Exploring' in msg:
-                # Show exploration messages
-                return True
+                return False  # Suppress exploration messages
             elif 'LONG SIGNAL' in msg or 'SHORT SIGNAL' in msg:
-                # Show when signals are detected (before RL decision)
-                return True
+                return False  # Suppress signal detection messages
             # Allow WARNING and above
             return record.levelno >= logging.WARNING
     

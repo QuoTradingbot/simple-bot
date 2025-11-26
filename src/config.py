@@ -810,7 +810,6 @@ def apply_learned_parameters(config: BotConfiguration, learning_file: str = "lea
             'rsi_oversold': 'rsi_oversold',
             'rsi_overbought': 'rsi_overbought',
             'stop_loss_atr_multiplier': 'stop_loss_atr_multiplier',
-            'profit_target_atr_multiplier': 'profit_target_atr_multiplier',
         }
         
         for learned_key, config_key in param_mapping.items():

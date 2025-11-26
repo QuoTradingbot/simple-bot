@@ -17,7 +17,7 @@ This bot is designed to run continuously using US Eastern wall-clock time:
 CME Futures Trading Schedule (US Eastern Wall-Clock):
 - MAIN SESSION OPENS: 6:00 PM Eastern (market resumes after maintenance)
 - ENTRY CUTOFF: 4:00 PM Eastern (no new positions after this time)
-- FLATTEN POSITIONS: 4:45 PM Eastern (emergency close all positions before maintenance)
+- FLATTEN POSITIONS: 4:45 PM Eastern (close existing positions before maintenance)
 - DAILY MAINTENANCE: 4:45-6:00 PM Eastern (1hr 15min daily break)
 - SUNDAY OPEN: 6:00 PM Eastern Sunday (weekly start)
 - FRIDAY CLOSE: 4:45 PM Eastern (weekly close, start of weekend maintenance)
@@ -26,22 +26,18 @@ IMPORTANT ENTRY/EXIT RULES:
 - Bot can OPEN new positions: 6:00 PM - 4:00 PM next day
 - Bot can HOLD existing positions: Until 4:45 PM (forced flatten time)
 - Gap between 4:00 PM - 4:45 PM: Can hold positions but cannot open new ones
-- NO flatten mode - positions managed by regime until 4:45 PM forced flatten
 
 NOTE: These times NEVER change - always same wall-clock time regardless of DST.
 pytz handles EST (UTC-5) and EDT (UTC-4) conversions automatically.
 
 Bot States:
 - entry_window: Market open, can trade (6:00 PM - 4:00 PM for new entries)
+- flatten_mode: 4:30-4:45 PM ET, aggressively close positions (15 min before forced close)
 - closed: During maintenance (4:45-6:00 PM ET) or weekend, auto-flatten positions
 
 Friday Special Rules:
 - Trading ends at 4:45 PM ET (start of weekend maintenance)
 - No special flatten logic needed on Friday, market closes at maintenance time
-
-RL Decision Making:
-- LIVE MODE: Uses Cloud API for RL decisions (cloud-based experience sharing)
-- BACKTEST MODE: Uses local RL brain (local experience file)
 
 For Multi-User Subscriptions:
 - All users see US Eastern times (CME standard)
@@ -3933,9 +3929,9 @@ def check_time_based_exits(symbol: str, current_bar: Dict[str, Any], position: D
     
     ONLY checks for:
     1. Emergency forced flatten at 4:45 PM ET (market close before maintenance)
+    2. Flatten mode aggressive management during 4:30-4:45 PM window
     
     All other exits are regime-based (stops, timeouts, breakeven, trailing).
-    No flatten mode - positions managed by regime until forced flatten.
     
     Args:
         symbol: Instrument symbol
@@ -3947,11 +3943,28 @@ def check_time_based_exits(symbol: str, current_bar: Dict[str, Any], position: D
         Tuple of (exit_reason, exit_price) or (None, None)
     """
     side = position["side"]
+    entry_price = position["entry_price"]
+    stop_price = position["stop_price"]
+    tick_size = CONFIG["tick_size"]
     
     # Force close at forced_flatten_time (4:45 PM ET - maintenance starts)
     trading_state = get_trading_state(bar_time)
     if trading_state == "closed":
         return "emergency_forced_flatten", get_flatten_price(symbol, side, current_bar["close"])
+    
+    # Flatten mode: aggressive profit/loss management during 4:30-4:45 PM window
+    if bot_status["flatten_mode"]:
+        # Flatten mode: aggressive profit/loss management
+        if side == "long":
+            profit_ticks = (current_bar["close"] - entry_price) / tick_size
+            midpoint = entry_price - (entry_price - stop_price) / 2
+            if profit_ticks > 1 or current_bar["close"] < midpoint:
+                return "flatten_mode_exit", get_flatten_price(symbol, side, current_bar["close"])
+        else:  # short
+            profit_ticks = (entry_price - current_bar["close"]) / tick_size
+            midpoint = entry_price + (stop_price - entry_price) / 2
+            if profit_ticks > 1 or current_bar["close"] > midpoint:
+                return "flatten_mode_exit", get_flatten_price(symbol, side, current_bar["close"])
     
     return None, None
 
@@ -6778,18 +6791,17 @@ def get_trading_state(dt: datetime = None) -> str:
     
     Returns:
         Trading state:
-        - 'entry_window': Market open, ready to trade (6:00 PM - 4:00 PM next day for entries)
-        - 'closed': Market closed (flatten all positions immediately at 4:45 PM)
+        - 'entry_window': Market open, ready to trade (6:00 PM - 4:45 PM next day)
+        - 'flatten_mode': 4:30-4:45 PM ET, close positions before forced flatten
+        - 'closed': Market closed (flatten all positions immediately)
     
     CME Futures Schedule (US Eastern Wall-Clock - NEVER changes with DST):
     - Market opens: 6:00 PM Eastern (Sunday-Thursday)
-    - Entry cutoff: 4:00 PM Eastern (no new positions after this)
-    - Forced flatten: 4:45 PM Eastern daily (emergency close all positions)
+    - Flatten mode: 4:30 PM Eastern daily (Mon-Fri) - start aggressive exits
+    - Forced flatten: 4:45 PM Eastern daily (Mon-Fri) - close all positions
     - Maintenance: 4:45-6:00 PM Eastern (1hr 15min daily break)
     - Friday close: 4:45 PM Eastern (market closes for weekend maintenance)
     - Sunday open: 6:00 PM Eastern Sunday (weekly start)
-    
-    NO FLATTEN MODE - Positions managed by regime until 4:45 PM forced flatten.
     """
     # AZURE-FIRST: Try cloud time service (unless in backtest mode)
     if backtest_current_time is None:  # Live mode only
@@ -6833,6 +6845,7 @@ def get_trading_state(dt: datetime = None) -> str:
     # Get configured trading times from CONFIG (CME Eastern schedule)
     # Futures market: Trading 6:00 PM - 4:45 PM daily
     # Maintenance: 4:45 PM - 6:00 PM daily
+    flatten_time = CONFIG.get("flatten_time", datetime_time(16, 30))  # 4:30 PM ET - start flatten mode
     forced_flatten_time = CONFIG.get("forced_flatten_time", datetime_time(16, 45))  # 4:45 PM ET - force close
     
     # CLOSED: Daily maintenance (4:45-6:00 PM ET, Monday-Thursday)
@@ -6840,11 +6853,16 @@ def get_trading_state(dt: datetime = None) -> str:
         if forced_flatten_time <= current_time < datetime_time(18, 0):
             return 'closed'  # Daily maintenance period
     
+    # FLATTEN MODE: 4:30-4:45 PM ET daily (15 min before forced close)
+    # This applies Monday-Friday (not Saturday/Sunday which are already handled above)
+    if flatten_time <= current_time < forced_flatten_time:
+        return 'flatten_mode'
+    
     # ENTRY WINDOW: Market open, ready to trade
     # We're in entry window if:
     # - Between 6:00 PM and 4:45 PM next day (Mon-Thu)
-    # - Between 6:00 PM Sunday and 4:45 PM Friday
-    # - NOT in closed periods above
+    # - Between 6:00 PM Sunday and 5:00 PM Friday
+    # - NOT in closed/flatten periods above
     return 'entry_window'
 
 

@@ -38,11 +38,12 @@ class RegimeParameters:
         return f"RegimeParameters({self.name}, stop={self.stop_mult}x, be={self.breakeven_mult}x, trail={self.trailing_mult}x)"
 
 
-# Seven regime definitions with exact parameters from problem statement
+# Seven regime definitions - Adjusted for consistent ~$300 max risk (12 ticks)
+# Target: Max loss ~$300 (0.6% of $50k account) across ALL regimes
 REGIME_DEFINITIONS = {
     "NORMAL": RegimeParameters(
         name="NORMAL",
-        stop_mult=1.25,
+        stop_mult=1.25,  # 4.8 ATR * 1.25 = 6 * $50 = $300 (12 ticks)
         breakeven_mult=1.0,
         trailing_mult=1.0,
         sideways_timeout=10,
@@ -50,7 +51,7 @@ REGIME_DEFINITIONS = {
     ),
     "NORMAL_TRENDING": RegimeParameters(
         name="NORMAL_TRENDING",
-        stop_mult=1.62,
+        stop_mult=1.25,  # Reduced from 1.62 - 4.8 ATR * 1.25 = $300 (12 ticks)
         breakeven_mult=1.0,
         trailing_mult=1.15,
         sideways_timeout=14,
@@ -58,7 +59,7 @@ REGIME_DEFINITIONS = {
     ),
     "NORMAL_CHOPPY": RegimeParameters(
         name="NORMAL_CHOPPY",
-        stop_mult=1.20,
+        stop_mult=1.20,  # 5 ATR * 1.20 = 6 * $50 = $300 (12 ticks)
         breakeven_mult=0.95,
         trailing_mult=0.95,
         sideways_timeout=8,
@@ -66,7 +67,7 @@ REGIME_DEFINITIONS = {
     ),
     "HIGH_VOL_CHOPPY": RegimeParameters(
         name="HIGH_VOL_CHOPPY",
-        stop_mult=1.50,
+        stop_mult=0.75,  # Reduced from 1.50 - 8 ATR * 0.75 = 6 * $50 = $300 (12 ticks)
         breakeven_mult=0.75,
         trailing_mult=0.85,
         sideways_timeout=12,
@@ -74,7 +75,7 @@ REGIME_DEFINITIONS = {
     ),
     "HIGH_VOL_TRENDING": RegimeParameters(
         name="HIGH_VOL_TRENDING",
-        stop_mult=1.90,
+        stop_mult=0.75,  # Reduced from 1.90 - 8 ATR * 0.75 = 6 * $50 = $300 (12 ticks)
         breakeven_mult=0.85,
         trailing_mult=1.25,
         sideways_timeout=18,
@@ -82,7 +83,7 @@ REGIME_DEFINITIONS = {
     ),
     "LOW_VOL_RANGING": RegimeParameters(
         name="LOW_VOL_RANGING",
-        stop_mult=1.10,
+        stop_mult=1.50,  # Increased from 1.10 - 4 ATR * 1.50 = 6 * $50 = $300 (12 ticks)
         breakeven_mult=1.0,
         trailing_mult=0.90,
         sideways_timeout=8,
@@ -90,7 +91,7 @@ REGIME_DEFINITIONS = {
     ),
     "LOW_VOL_TRENDING": RegimeParameters(
         name="LOW_VOL_TRENDING",
-        stop_mult=1.40,
+        stop_mult=1.50,  # Increased from 1.40 - 4 ATR * 1.50 = 6 * $50 = $300 (12 ticks)
         breakeven_mult=1.0,
         trailing_mult=1.10,
         sideways_timeout=15,

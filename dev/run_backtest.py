@@ -144,8 +144,10 @@ def initialize_rl_brains_for_backtest(bot_config) -> Tuple[Any, ModuleType]:
     bot_module = importlib.util.module_from_spec(spec)
     sys.modules['quotrading_engine'] = bot_module
     
-    # Also make it available as vwap_bounce_bot for compatibility
-    sys.modules['vwap_bounce_bot'] = bot_module
+    # Also make it available as quotrading_bot for compatibility
+    sys.modules['quotrading_bot'] = bot_module
+    sys.modules['vwap_bounce_bot'] = bot_module  # Legacy alias
+
     
     # Load the module
     spec.loader.exec_module(bot_module)

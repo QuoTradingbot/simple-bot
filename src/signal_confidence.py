@@ -306,14 +306,8 @@ class SignalConfidenceRL:
         # Calculate similarity score for each past experience
         scored = []
         for exp in self.experiences:
-            # FLAT FORMAT: fields are at top level (not in exp['state'])
-            # Handle both old nested format (backward compatibility) and new flat format
-            if 'state' in exp:
-                # Old nested format (backward compatibility)
-                past = exp['state']
-            else:
-                # New flat format - use exp directly
-                past = exp
+            # FLAT FORMAT: All fields are at top level
+            past = exp
             
             # Calculate distance for continuous features (normalized to 0-1 range)
             # 11 continuous features (streak removed - not logged)
@@ -387,22 +381,17 @@ class SignalConfidenceRL:
         threshold_results = {}
         
         # OPTIMIZATION: Pre-calculate confidences once instead of for each threshold
-        # This avoids O(n┬▓) complexity by doing the expensive work upfront
+        # This avoids O(n²) complexity by doing the expensive work upfront
         experience_confidences = []
         for exp in self.experiences:
-            # FLAT FORMAT: 'took_trade' is at top level (not in exp['action'])
-            if not exp.get('took_trade', exp.get('action', {}).get('took_trade', False)):
+            # FLAT FORMAT: 'took_trade' is at top level
+            if not exp.get('took_trade', False):
                 continue  # Skip experiences where trade wasn't taken
             
             # Calculate what confidence this trade would have had
             # (based on similar past trades at the time)
-            # FLAT FORMAT: fields are at top level (not in exp['state'])
-            if 'state' in exp:
-                # Old nested format (backward compatibility)
-                state = exp['state']
-            else:
-                # New flat format
-                state = exp
+            # FLAT FORMAT: All fields are at top level
+            state = exp
             
             similar_before = [
                 e for e in self.experiences 
@@ -426,6 +415,7 @@ class SignalConfidenceRL:
                 'confidence': confidence,
                 'reward': pnl_value  # Keep 'reward' key for consistency in threshold calculation
             })
+        
         
         # Now test each threshold quickly using pre-calculated confidences
         # CONSERVATIVE RANGE: Start at 50% minimum (don't test low thresholds that lead to overtrading)
@@ -589,8 +579,10 @@ class SignalConfidenceRL:
                 experience['exit_reason'] = execution_data['exit_reason']
         
         # Add to memory (learning enabled)
-        self.experiences.append(experience)
-        self.recent_trades.append(pnl)
+        # USER REQUEST: Only save trades that were actually taken
+        if took_trade:
+            self.experiences.append(experience)
+            self.recent_trades.append(pnl)
         
         # Update win/loss streaks
         if took_trade:

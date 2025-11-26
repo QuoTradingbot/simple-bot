@@ -73,11 +73,11 @@ class BacktestReporter:
         
         # Determine win/loss status based on actual P&L
         if pnl > 0:
-            status = "✓ WIN "
+            status = "[WIN] "
         elif pnl < 0:
-            status = "✗ LOSS"
+            status = "[LOSS]"
         else:
-            status = "- B/E "  # Break even
+            status = "[B/E] "  # Break even
         
         # Format entry/exit times
         entry_time = trade.get('entry_time', '')

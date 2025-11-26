@@ -1,26 +1,26 @@
 """
 Cloud API Client for User Bots
 ================================
-Simple client that asks cloud whether to take trades and reports outcomes.
-NO RL LOGIC - just communicates with cloud.
+Simple client that reports trade outcomes to cloud for data collection.
+Bots make decisions locally using their own RL brain.
 """
 
 import logging
 import requests
-import aiohttp
-import asyncio
 from typing import Dict, Tuple, Optional
+
 
 logger = logging.getLogger(__name__)
 
 
 class CloudAPIClient:
     """
-    Simple API client for user bots to communicate with cloud RL brain.
+    Simple API client for user bots to report trade outcomes to cloud.
     
     User bots use this to:
-    1. Ask "should I take this trade?" before executing
-    2. Report "here's what happened" after trade closes
+    1. Report "here's what happened" after trade closes
+    
+    Decision-making happens locally in each bot's RL brain.
     """
     
     def __init__(self, api_url: str, license_key: str, timeout: int = 10, max_retries: int = 2):
@@ -38,194 +38,15 @@ class CloudAPIClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.license_valid = True  # Set to False only on 401 license errors
-        self.session: Optional[aiohttp.ClientSession] = None
         
-        logger.info(f"🌐 Cloud API client initialized: {self.api_url} (retries: {max_retries})")
-
-    async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create the shared ClientSession"""
-        if self.session is None or self.session.closed:
-            self.session = aiohttp.ClientSession()
-        return self.session
-
-    async def close(self):
-        """Close the session"""
-        if self.session and not self.session.closed:
-            await self.session.close()
-    
-    def ask_should_take_trade(self, state: Dict) -> Tuple[bool, float, str]:
-        """
-        Ask cloud RL brain whether to take this trade.
-        
-        Args:
-            state: Current market conditions {rsi, vwap_distance, atr, volume_ratio,
-                   hour, day_of_week, recent_pnl, streak, side, price}
-        
-        Returns:
-            (take_trade, confidence, reason)
-            
-        Example:
-            take, conf, reason = client.ask_should_take_trade({
-                'rsi': 45.2,
-                'vwap_distance': 0.02,
-                'atr': 2.5,
-                'volume_ratio': 1.3,
-                'hour': 14,
-                'day_of_week': 2,
-                'recent_pnl': -50.0,
-                'streak': -1,
-                'side': 'long',
-                'price': 6767.75
-            })
-            
-            if take:
-                # Execute trade
-                ...
-        """
-        # Only skip if license is permanently invalid
-        if not self.license_valid:
-            logger.error("❌ License invalid - trading disabled")
-            return False, 0.0, "License invalid - trading disabled"
-        
-        # Try with retries on EVERY call (always tries to reconnect)
-        last_error = None
-        for attempt in range(self.max_retries + 1):
-            try:
-                if attempt > 0:
-                    logger.info(f"🔄 Retry attempt {attempt}/{self.max_retries}...")
-                
-                response = requests.post(
-                    f"{self.api_url}/api/rl/analyze-signal",
-                    json={
-                        "license_key": self.license_key,
-                        "state": state
-                    },
-                    timeout=self.timeout
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    take_trade = data.get('take_trade', False)
-                    confidence = data.get('confidence', 0.5)
-                    reason = data.get('reason', 'Cloud decision')
-                    
-                    logger.info(f"☁️ Cloud decision: {reason}")
-                    return take_trade, confidence, reason
-                
-                elif response.status_code == 401:
-                    logger.error("❌ License validation failed - check license key")
-                    self.license_valid = False
-                    return False, 0.0, "License invalid - trading disabled"
-                
-                else:
-                    # Server error - retry if we have attempts left
-                    if attempt < self.max_retries:
-                        logger.warning(f"⚠️ Cloud API error {response.status_code} - will retry")
-                        last_error = f"HTTP {response.status_code}"
-                        continue
-                    else:
-                        logger.warning(f"⚠️ Cloud API error {response.status_code} after {self.max_retries} retries - using fallback")
-                        return self._fallback_decision(state)
-                    
-            except requests.Timeout:
-                if attempt < self.max_retries:
-                    logger.warning(f"⏱️ Cloud API timeout after {self.timeout}s - will retry")
-                    last_error = "Timeout"
-                    continue
-                else:
-                    logger.warning(f"⏱️ Cloud API timeout after {self.max_retries} retries - using fallback")
-                    return self._fallback_decision(state)
-                
-            except Exception as e:
-                if attempt < self.max_retries:
-                    logger.warning(f"⚠️ Cloud API error: {e} - will retry")
-                    last_error = str(e)
-                    continue
-                else:
-                    logger.warning(f"⚠️ Cloud API error after {self.max_retries} retries: {e} - using fallback")
-                    return self._fallback_decision(state)
-        
-        # Should never reach here, but just in case
-        return self._fallback_decision(state)
-
-    async def ask_should_take_trade_async(self, state: Dict) -> Tuple[bool, float, str]:
-        """
-        Async version of ask_should_take_trade using aiohttp.
-        Non-blocking call for high-performance trading.
-        """
-        # Only skip if license is permanently invalid
-        if not self.license_valid:
-            logger.error("❌ License invalid - trading disabled")
-            return False, 0.0, "License invalid - trading disabled"
-        
-        # Try with retries on EVERY call (always tries to reconnect)
-        last_error = None
-        for attempt in range(self.max_retries + 1):
-            try:
-                if attempt > 0:
-                    logger.info(f"🔄 Retry attempt {attempt}/{self.max_retries}...")
-                
-                session = await self._get_session()
-                async with session.post(
-                    f"{self.api_url}/api/rl/analyze-signal",
-                    json={
-                        "license_key": self.license_key,
-                        "state": state
-                    },
-                    timeout=self.timeout
-                ) as response:
-                        
-                        if response.status == 200:
-                            data = await response.json()
-                            take_trade = data.get('take_trade', False)
-                            confidence = data.get('confidence', 0.5)
-                            reason = data.get('reason', 'Cloud decision')
-                            
-                            logger.info(f"☁️ Cloud decision: {reason}")
-                            return take_trade, confidence, reason
-                        
-                        elif response.status == 401:
-                            logger.error("❌ License validation failed - check license key")
-                            self.license_valid = False
-                            return False, 0.0, "License invalid - trading disabled"
-                        
-                        else:
-                            # Server error - retry if we have attempts left
-                            if attempt < self.max_retries:
-                                logger.warning(f"⚠️ Cloud API error {response.status} - will retry")
-                                last_error = f"HTTP {response.status}"
-                                continue
-                            else:
-                                logger.warning(f"⚠️ Cloud API error {response.status} after {self.max_retries} retries - using fallback")
-                                return self._fallback_decision(state)
-                    
-            except asyncio.TimeoutError:
-                if attempt < self.max_retries:
-                    logger.warning(f"⏱️ Cloud API timeout after {self.timeout}s - will retry")
-                    last_error = "Timeout"
-                    continue
-                else:
-                    logger.warning(f"⏱️ Cloud API timeout after {self.max_retries} retries - using fallback")
-                    return self._fallback_decision(state)
-                
-            except Exception as e:
-                if attempt < self.max_retries:
-                    logger.warning(f"⚠️ Cloud API error: {e} - will retry")
-                    last_error = str(e)
-                    continue
-                else:
-                    logger.warning(f"⚠️ Cloud API error after {self.max_retries} retries: {e} - using fallback")
-                    return self._fallback_decision(state)
-        
-        # Should never reach here, but just in case
-        return self._fallback_decision(state)
+        logger.info(f"🌐 Cloud API client initialized: {self.api_url} (data collection only)")
     
     def report_trade_outcome(self, state: Dict, took_trade: bool, pnl: float, duration: float, execution_data: Optional[Dict] = None) -> bool:
         """
-        Report trade outcome to cloud RL brain.
+        Report trade outcome to cloud for data collection.
         
         Args:
-            state: Market state when trade was taken (same as sent to ask_should_take_trade)
+            state: Market state when trade was taken (17 fields: timestamp, symbol, price, etc.)
             took_trade: Whether trade was actually taken
             pnl: Profit/loss in dollars
             duration: Trade duration in seconds
@@ -280,66 +101,6 @@ class CloudAPIClient:
         except Exception as e:
             logger.debug(f"Non-critical: Could not report outcome to cloud: {e}")
             return False
-
-    async def report_trade_outcome_async(self, state: Dict, took_trade: bool, pnl: float, duration: float, execution_data: Optional[Dict] = None) -> bool:
-        """
-        Async version of report_trade_outcome using aiohttp.
-        """
-        # Skip reporting if license is invalid
-        if not self.license_valid:
-            logger.debug("License invalid - skipping outcome report")
-            return False
-        
-        try:
-            payload = {
-                "license_key": self.license_key,
-                "state": state,
-                "took_trade": took_trade,
-                "pnl": pnl,
-                "duration": duration
-            }
-            
-            # Add execution data if provided
-            if execution_data:
-                payload["execution_data"] = execution_data
-            
-            session = await self._get_session()
-            async with session.post(
-                f"{self.api_url}/api/rl/submit-outcome",
-                json=payload,
-                timeout=self.timeout
-            ) as response:
-                    
-                    if response.status == 200:
-                        data = await response.json()
-                        total_exp = data.get('total_experiences', '?')
-                        win_rate = data.get('win_rate', 0) * 100
-                        logger.info(f"✅ Outcome reported to cloud ({total_exp} experiences, {win_rate:.0f}% WR)")
-                        return True
-                    else:
-                        logger.warning(f"⚠️ Failed to report outcome: HTTP {response.status}")
-                        return False
-                
-        except Exception as e:
-            logger.debug(f"Non-critical: Could not report outcome to cloud: {e}")
-            return False
-    
-    def _fallback_decision(self, state: Dict) -> Tuple[bool, float, str]:
-        """
-        Fallback decision when cloud is unavailable.
-        
-        Conservative approach: Skip signals when cloud is down to avoid bad trades.
-        Users can configure this behavior in config.json.
-        
-        Args:
-            state: Market state
-        
-        Returns:
-            (take_trade, confidence, reason)
-        """
-        # Conservative: skip when cloud is down
-        # Alternative: use basic rules (e.g., RSI < 30 for longs)
-        return False, 0.0, "⚠️ Cloud unavailable - skipping for safety"
     
     def set_license_valid(self, valid: bool):
         """
@@ -349,3 +110,4 @@ class CloudAPIClient:
         self.license_valid = valid
         status = "valid" if valid else "invalid"
         logger.info(f"License marked as {status}")
+

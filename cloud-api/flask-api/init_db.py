@@ -30,20 +30,32 @@ def init_database():
         CREATE TABLE IF NOT EXISTS rl_experiences (
             id SERIAL PRIMARY KEY,
             license_key VARCHAR(50) NOT NULL,
+            timestamp TIMESTAMP NOT NULL,
             symbol VARCHAR(20) NOT NULL,
-            rsi DECIMAL(5,2) NOT NULL,
+            price DECIMAL(10,2) NOT NULL,
+            returns DECIMAL(10,6) NOT NULL,
             vwap_distance DECIMAL(10,6) NOT NULL,
+            vwap_slope DECIMAL(10,6) NOT NULL,
             atr DECIMAL(10,6) NOT NULL,
+            atr_slope DECIMAL(10,6) NOT NULL,
+            rsi DECIMAL(5,2) NOT NULL,
+            macd_hist DECIMAL(10,6) NOT NULL,
+            stoch_k DECIMAL(5,2) NOT NULL,
             volume_ratio DECIMAL(10,2) NOT NULL,
+            volume_slope DECIMAL(10,2) NOT NULL,
             hour INTEGER NOT NULL,
-            day_of_week INTEGER NOT NULL,
-            recent_pnl DECIMAL(10,2) NOT NULL,
-            streak INTEGER NOT NULL,
-            side VARCHAR(10) NOT NULL,
+            session VARCHAR(10) NOT NULL,
             regime VARCHAR(50) NOT NULL,
-            took_trade BOOLEAN NOT NULL,
+            volatility_regime VARCHAR(20) NOT NULL,
             pnl DECIMAL(10,2) NOT NULL,
             duration DECIMAL(10,2) NOT NULL,
+            took_trade BOOLEAN NOT NULL,
+            exploration_rate DECIMAL(5,2) NOT NULL,
+            mfe DECIMAL(10,2) NOT NULL,
+            mae DECIMAL(10,2) NOT NULL,
+            order_type_used VARCHAR(20) NOT NULL,
+            entry_slippage_ticks DECIMAL(5,2) NOT NULL,
+            exit_reason VARCHAR(50) NOT NULL,
             created_at TIMESTAMP DEFAULT NOW()
         )
     """)
@@ -55,9 +67,9 @@ def init_database():
         "CREATE INDEX IF NOT EXISTS idx_rl_experiences_symbol ON rl_experiences(symbol)",
         "CREATE INDEX IF NOT EXISTS idx_rl_experiences_created ON rl_experiences(created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_rl_experiences_took_trade ON rl_experiences(took_trade)",
-        "CREATE INDEX IF NOT EXISTS idx_rl_experiences_side ON rl_experiences(side)",
         "CREATE INDEX IF NOT EXISTS idx_rl_experiences_regime ON rl_experiences(regime)",
-        "CREATE INDEX IF NOT EXISTS idx_rl_experiences_similarity ON rl_experiences(symbol, rsi, vwap_distance, atr, volume_ratio, side, regime)"
+        "CREATE INDEX IF NOT EXISTS idx_rl_experiences_timestamp ON rl_experiences(timestamp DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_rl_experiences_similarity ON rl_experiences(symbol, regime, volatility_regime, rsi, vwap_distance, atr)"
     ]
     
     for idx in indexes:

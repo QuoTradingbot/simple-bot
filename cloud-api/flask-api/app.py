@@ -10,18 +10,14 @@ from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 import logging
-import statistics
 import secrets
 import string
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from rl_decision_engine import CloudRLDecisionEngine
 import hmac
 import hashlib
 import requests
-import redis
-import pickle
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -32,12 +28,6 @@ DB_NAME = os.environ.get("DB_NAME", "quotrading")
 DB_USER = os.environ.get("DB_USER", "quotradingadmin")
 DB_PASSWORD = os.environ.get("DB_PASSWORD")
 DB_PORT = os.environ.get("DB_PORT", "5432")
-
-# Redis configuration
-REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
-REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
-REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", "")
-REDIS_SSL = os.environ.get("REDIS_SSL", "false").lower() == "true"
 
 # Whop configuration
 WHOP_API_KEY = os.environ.get("WHOP_API_KEY", "")
@@ -56,45 +46,8 @@ FROM_EMAIL = os.environ.get("FROM_EMAIL", "noreply@quotrading.com")
 # Download link for the bot EXE
 BOT_DOWNLOAD_URL = os.environ.get("BOT_DOWNLOAD_URL", "https://your-download-link.com/QuoTrading_Bot.exe")
 
-# Redis client for caching
-_redis_client = None
-
 # Connection pool for PostgreSQL (reuse connections)
 _db_pool = None
-
-def get_bucket(value, buckets):
-    """Find the closest bucket for a value"""
-    if not buckets:
-        return 0
-    return min(buckets, key=lambda x: abs(x - value))
-
-def get_redis_client():
-    """Get or create Redis client for caching"""
-    global _redis_client
-    
-    if _redis_client is not None:
-        return _redis_client
-    
-    try:
-        import ssl
-        _redis_client = redis.Redis(
-            host=REDIS_HOST,
-            port=REDIS_PORT,
-            password=REDIS_PASSWORD if REDIS_PASSWORD else None,
-            ssl=REDIS_SSL,
-            ssl_cert_reqs=ssl.CERT_NONE if REDIS_SSL else None,  # Skip SSL cert verification
-            decode_responses=False,  # We'll use pickle
-            socket_connect_timeout=10,
-            socket_timeout=10
-        )
-        # Test connection
-        _redis_client.ping()
-        logging.info(f"✅ Redis connected: {REDIS_HOST}:{REDIS_PORT}")
-        return _redis_client
-    except Exception as e:
-        logging.warning(f"⚠️ Redis unavailable: {e} - falling back to no cache")
-        _redis_client = None
-        return None
 
 def send_license_email(email, license_key):
     try:
@@ -317,103 +270,32 @@ def validate_license(license_key: str):
     finally:
         return_connection(conn)
 
-def load_experiences(symbol='ES', regime=None, side=None):
+def load_experiences(symbol='ES'):
     """
-    ULTRA-FAST: Load RL experiences from REDIS (in-memory) instead of PostgreSQL.
-    
-    ALL EXPERIENCES LOADED INTO REDIS ON STARTUP:
-    - PostgreSQL: 200-400ms query time
-    - Redis: 5-10ms lookup time (40-80x faster!)
-    
-    Redis stores experiences by symbol/regime/side for instant filtering.
-    Cache is permanent (refreshed nightly), not 5-minute TTL.
-    
-    This is how top companies achieve <100ms response times.
+    DEPRECATED: Bots use local experience files for decision-making.
+    Cloud API only collects trade outcomes, does not serve experiences.
     
     Args:
-        symbol: Trading symbol (ES, NQ, YM, RTY, etc.)
-        regime: Market regime to filter by (NORMAL, HIGH_VOL, LOW_VOL, etc.)
-        side: Trade side to filter by (LONG, SHORT)
+        symbol: Trading symbol (ES, NQ, MES, MNQ, etc.)
+    
+    Returns:
+        Empty list (function deprecated)
     """
-    # Build cache key for this specific scenario
-    cache_parts = [symbol]
-    if regime:
-        cache_parts.append(regime)
-    if side:
-        cache_parts.append(side)
-    cache_key = f"experiences:{':'.join(cache_parts)}"
-    
-    # REDIS-ONLY APPROACH: No PostgreSQL queries during requests
-    redis_client = get_redis_client()
-    if not redis_client:
-        logging.error("❌ Redis unavailable - cannot load experiences")
-        return None
-    
-    try:
-        cached_data = redis_client.get(cache_key)
-        if cached_data:
-            experiences = pickle.loads(cached_data)
-            logging.info(f"⚡ Redis HIT - loaded {len(experiences)} {symbol} experiences (<10ms)")
-            return experiences
-        else:
-            logging.warning(f"⚠️ Redis MISS - cache not populated yet for {cache_key}")
-            logging.warning("Run: python load_to_redis.py to populate cache")
-            return []
-    except Exception as e:
-        logging.error(f"❌ Redis read error: {e}")
-        return None
-
-def calculate_confidence(signal_type: str, regime: str, vix_level: float, experiences: list) -> float:
-    """Calculate signal confidence based on RL experiences"""
-    if not experiences:
-        return 0.5
-    
-    # Filter similar experiences
-    similar = [
-        exp for exp in experiences
-        if exp.get('signal_type') == signal_type and exp.get('regime') == regime
-    ]
-    
-    if not similar:
-        return 0.5
-    
-    # Calculate average reward from similar experiences
-    rewards = [exp.get('reward', 0) for exp in similar]
-    avg_reward = statistics.mean(rewards) if rewards else 0
-    
-    # Convert reward to confidence (0.0 to 1.0)
-    confidence = max(0.0, min(1.0, (avg_reward + 1.0) / 2.0))
-    
-    return round(confidence, 3)
+    logging.warning("⚠️ load_experiences() is DEPRECATED - bots use local files")
+    return []
 
 @app.route('/api/hello', methods=['GET'])
 def hello():
     """Health check endpoint"""
-    experiences = load_experiences()
-    
-    # Test Redis connection
-    redis_status = "disconnected"
-    redis_error = None
-    redis_client = get_redis_client()
-    if redis_client:
-        try:
-            redis_client.ping()
-            redis_status = "connected"
-        except Exception as e:
-            redis_error = str(e)
-    
     return jsonify({
         "status": "success",
-        "message": f"✅ QuoTrading Flask API is running!",
-        "experiences_loaded": len(experiences),
+        "message": "✅ QuoTrading Cloud API - Data Collection Only",
+        "endpoints": [
+            "POST /api/rl/submit-outcome - Submit trade outcome",
+            "GET /api/hello - Health check"
+        ],
         "database_configured": bool(DB_PASSWORD),
-        "redis_status": redis_status,
-        "redis_config": {
-            "host": REDIS_HOST,
-            "port": REDIS_PORT,
-            "ssl": REDIS_SSL
-        },
-        "redis_error": redis_error
+        "note": "Bots make decisions locally using their own RL brain"
     }), 200
 
 @app.route('/api/main', methods=['POST'])
@@ -471,9 +353,6 @@ def main():
             "status": "error",
             "message": str(e)
         }), 500
-
-# Whop integration replaces Stripe checkout
-# Checkout is handled via Whop dashboard links
 
 @app.route('/api/admin/list-licenses', methods=['GET'])
 def list_licenses():
@@ -1416,219 +1295,62 @@ def admin_rl_experiences():
         return_connection(conn)
 
 # ============================================================================
-# RL DECISION ENDPOINTS - Cloud makes trading decisions for user bots
+# DATA COLLECTION ENDPOINT - Bots report trade outcomes for analysis
 # ============================================================================
-
-@app.route('/api/rl/analyze-signal', methods=['POST'])
-def analyze_signal():
-    """
-    User bot sends market state, cloud RL brain decides whether to take trade.
-    
-    Request body:
-    {
-        "license_key": "user's license key",
-        "state": {
-            "rsi": 45.2,
-            "vwap_distance": 0.02,
-            "atr": 2.5,
-            "volume_ratio": 1.3,
-            "hour": 14,
-            "day_of_week": 2,
-            "recent_pnl": -50.0,
-            "streak": -1,
-            "side": "long",
-            "price": 6767.75
-        }
-    }
-    
-    Response:
-    {
-        "take_trade": true/false,
-        "confidence": 0.68,
-        "reason": "✅ TAKE (68% confidence) - 8W/2L similar | Winners: 75% WR, $150 avg"
-    }
-    """
-    try:
-        data = request.get_json()
-        license_key = data.get('license_key')
-        state = data.get('state', {})
-        
-        # Cache key based on state (round values to avoid float precision issues)
-        symbol = state.get('symbol', 'ES').upper()
-        rsi_bucket = int(state.get('rsi', 50) / 5) * 5  # Round to nearest 5
-        regime = state.get('regime', 'NORMAL').upper()
-        side = state.get('side', 'long').upper()
-        cache_key = f"analysis:{symbol}:{regime}:{rsi_bucket}:{side}"
-        
-        # Try Redis cache first for BLAZING FAST results
-        redis_client = get_redis_client()
-        if redis_client:
-            try:
-                logging.info(f"🔍 Checking cache: {cache_key}")
-                cached_result = redis_client.get(cache_key)
-                if cached_result:
-                    result = pickle.loads(cached_result)
-                    logging.info(f"⚡ CACHE HIT - returned in <50ms for {cache_key}")
-                    return jsonify(result), 200
-                else:
-                    logging.info(f"❌ Cache miss for {cache_key}")
-            except Exception as e:
-                logging.error(f"Redis cache read error: {e}", exc_info=True)
-        
-        # Validate license key
-        if not license_key:
-            return jsonify({"error": "Missing license_key"}), 401
-        
-        # Load RL brain and make decision for this symbol
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({"error": "Database unavailable"}), 503
-        
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        try:
-            # TODO: Add license validation once users table is created
-            symbol = state.get('symbol', 'ES')
-            regime = state.get('regime', 'NORMAL')  # Get regime from market state
-            side = state.get('side', 'LONG')  # Get trade direction
-            
-            # ULTRA-FAST: Lookup pre-computed confidence from Redis (<10ms)
-            # Buckets: RSI (0-100 by 10s), VWAP (-2% to +2%), ATR, Volume, Hour, Streak
-            rsi_bucket = get_bucket(state.get('rsi', 50), list(range(0, 100, 10)))
-            vwap_bucket = get_bucket(state.get('vwap_distance', 0.0), [-0.02, -0.01, 0.0, 0.01, 0.02])
-            atr_bucket = get_bucket(state.get('atr', 2.5), [1.0, 2.5, 5.0])
-            volume_bucket = get_bucket(state.get('volume_ratio', 1.0), [0.5, 1.0, 1.5, 2.0])
-            hour_bucket = get_bucket(state.get('hour', 12), [9, 12, 15])
-            streak_bucket = get_bucket(state.get('streak', 0), [-3, -1, 0, 1, 3])
-            
-            # Build bucket cache key
-            bucket_key = (
-                f"confidence_bucket:{symbol}:{regime}:{side}:"
-                f"{rsi_bucket}:{vwap_bucket}:{atr_bucket}:"
-                f"{volume_bucket}:{hour_bucket}:{streak_bucket}"
-            )
-            
-            # Try to get pre-computed confidence from Redis
-            bucket_result = None
-            if redis_client:
-                try:
-                    cached_bucket = redis_client.get(bucket_key)
-                    if cached_bucket:
-                        bucket_result = pickle.loads(cached_bucket)
-                        logging.info(f"⚡ Pre-computed bucket HIT: {bucket_key}")
-                except Exception as e:
-                    logging.warning(f"Redis bucket read error: {e}")
-            
-            # If pre-computed bucket exists, use it (INSTANT)
-            if bucket_result:
-                confidence = bucket_result['confidence']
-                sample_size = bucket_result['sample_size']
-                win_rate = bucket_result['win_rate']
-                
-                # Decision logic based on pre-computed confidence
-                if confidence >= 0.6:
-                    take_trade = True
-                    reason = f"✅ High confidence ({confidence:.1%}) based on {sample_size} similar scenarios (WR: {win_rate:.1%})"
-                elif confidence >= 0.4:
-                    take_trade = state.get('recent_pnl', 0) >= 0  # Take if recent PnL positive
-                    reason = f"⚠️ Medium confidence ({confidence:.1%}), sample: {sample_size}, WR: {win_rate:.1%}"
-                else:
-                    take_trade = False
-                    reason = f"❌ Low confidence ({confidence:.1%}), sample: {sample_size}, WR: {win_rate:.1%}"
-            
-            else:
-                # FALLBACK: Pre-compute hasn't run yet, use real-time calculation
-                logging.warning(f"⚠️ Bucket MISS (using fallback): {bucket_key}")
-                
-                experiences = load_experiences(symbol, regime, side)
-                
-                if experiences is None:
-                    return jsonify({
-                        "take_trade": False,
-                        "confidence": 0.0,
-                        "reason": "❌ Database unavailable - rejecting for safety"
-                    }), 200
-                
-                if not experiences:
-                    return jsonify({
-                        "take_trade": False,
-                        "confidence": 0.0,
-                        "reason": "❌ No historical data for symbol - rejecting for safety"
-                    }), 200
-                
-                # Real-time engine (slower but still works)
-                engine = CloudRLDecisionEngine(experiences)
-                take_trade, confidence, reason = engine.should_take_signal(state)
-            
-            # Build result
-            result = {
-                "take_trade": take_trade,
-                "confidence": confidence,
-                "reason": reason
-            }
-            
-            # Cache result in Redis for 2 minutes (similar market conditions)
-            if redis_client:
-                try:
-                    logging.info(f"💾 Writing to cache: {cache_key}")
-                    redis_client.setex(
-                        cache_key,
-                        120,  # 2 minute TTL
-                        pickle.dumps(result)
-                    )
-                    logging.info(f"✅ Successfully cached result for {cache_key} (2 min TTL)")
-                except Exception as e:
-                    logging.error(f"❌ Redis cache write FAILED for {cache_key}: {e}", exc_info=True)
-            
-            # Log API call
-            cursor.execute("""
-                INSERT INTO api_logs (license_key, endpoint, created_at)
-                VALUES (%s, %s, NOW())
-            """, (license_key, 'rl/analyze-signal'))
-            conn.commit()
-            
-            return jsonify(result), 200
-                
-        finally:
-            cursor.close()
-            return_connection(conn)
-            
-    except Exception as e:
-        logging.error(f"Analyze signal error: {e}")
-        return jsonify({"error": str(e)}), 500
-
 
 @app.route('/api/rl/submit-outcome', methods=['POST'])
 def submit_outcome():
     """
     User bot reports trade outcome after execution (win/loss).
-    Cloud RL brain records this to PostgreSQL for scalability.
+    Cloud collects trade outcomes for data aggregation.
     
     SCALES TO 1000+ USERS: Direct database insert, no locking needed.
     PostgreSQL handles concurrent writes natively.
     
-    Request body:
+    Request body (FLAT FORMAT - all 24 fields at root level):
     {
         "license_key": "user's license key",
-        "state": {...},  // Same state sent to analyze-signal
+        // 17 market state fields
+        "timestamp": "2025-11-26T10:00:00-05:00",
+        "symbol": "ES",
+        "price": 6587.75,
+        "returns": -0.000720,
+        "vwap_distance": 0.7927,
+        "vwap_slope": 0.0014,
+        "atr": 6.96,
+        "atr_slope": -0.1841,
+        "rsi": 68.36,
+        "macd_hist": 1.12,
+        "stoch_k": 81.20,
+        "volume_ratio": 1.60,
+        "volume_slope": 1.89,
+        "hour": 10,
+        "session": "RTH",
+        "regime": "LOW_VOL_TRENDING",
+        "volatility_regime": "HIGH",
+        // 7 outcome fields
+        "pnl": -352.5,
+        "duration": 6.0,
         "took_trade": true,
-        "pnl": 125.50,
-        "duration": 1800  // seconds
+        "exploration_rate": 1.0,
+        "mfe": 0.0,
+        "mae": 362.5,
+        "order_type_used": "market",
+        "entry_slippage_ticks": 0.0,
+        "exit_reason": "stop_loss"
     }
     
     Response:
     {
         "success": true,
         "total_experiences": 7560,
-        "win_rate": 0.56
+        "win_rate": 0.56,
+        "avg_reward": 125.50
     }
     """
     try:
         data = request.get_json()
         license_key = data.get('license_key')
-        state = data.get('state', {})
-        took_trade = data.get('took_trade', False)
-        pnl = data.get('pnl', 0.0)
-        duration = data.get('duration', 0.0)
         
         # Validate license key
         if not license_key:
@@ -1642,46 +1364,74 @@ def submit_outcome():
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             # TODO: Add license validation once users table is created
             
+            # Extract execution data if provided
+            exec_data = data.get('execution_data', {})
+            
             # Insert outcome directly into PostgreSQL (instant, no locking)
+            # All 24 fields are now at root level (flat format)
             cursor.execute("""
                 INSERT INTO rl_experiences (
                     license_key,
+                    timestamp,
                     symbol,
-                    rsi,
+                    price,
+                    returns,
                     vwap_distance,
+                    vwap_slope,
                     atr,
+                    atr_slope,
+                    rsi,
+                    macd_hist,
+                    stoch_k,
                     volume_ratio,
+                    volume_slope,
                     hour,
-                    day_of_week,
-                    recent_pnl,
-                    streak,
-                    side,
+                    session,
                     regime,
-                    took_trade,
+                    volatility_regime,
                     pnl,
                     duration,
+                    took_trade,
+                    exploration_rate,
+                    mfe,
+                    mae,
+                    order_type_used,
+                    entry_slippage_ticks,
+                    exit_reason,
                     created_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
             """, (
                 license_key,
-                state.get('symbol', 'ES'),  # Default to ES if not provided
-                state.get('rsi', 50.0),
-                state.get('vwap_distance', 0.0),
-                state.get('atr', 0.0),
-                state.get('volume_ratio', 1.0),
-                state.get('hour', 0),
-                state.get('day_of_week', 0),
-                state.get('recent_pnl', 0.0),
-                state.get('streak', 0),
-                state.get('side', 'long'),
-                state.get('regime', 'NORMAL'),
-                took_trade,
-                pnl,
-                duration
+                data.get('timestamp', datetime.now().isoformat()),
+                data.get('symbol', 'ES'),
+                data.get('price', 0.0),
+                data.get('returns', 0.0),
+                data.get('vwap_distance', 0.0),
+                data.get('vwap_slope', 0.0),
+                data.get('atr', 0.0),
+                data.get('atr_slope', 0.0),
+                data.get('rsi', 50.0),
+                data.get('macd_hist', 0.0),
+                data.get('stoch_k', 50.0),
+                data.get('volume_ratio', 1.0),
+                data.get('volume_slope', 0.0),
+                data.get('hour', 0),
+                data.get('session', 'RTH'),
+                data.get('regime', 'NORMAL'),
+                data.get('volatility_regime', 'MEDIUM'),
+                data.get('pnl', 0.0),
+                data.get('duration', 0.0),
+                data.get('took_trade', False),
+                data.get('exploration_rate', 0.0),
+                data.get('mfe', 0.0),
+                data.get('mae', 0.0),
+                data.get('order_type_used', 'market'),
+                data.get('entry_slippage_ticks', 0.0),
+                data.get('exit_reason', 'unknown')
             ))
             
             # Get total experiences and win rate for this symbol
-            symbol = state.get('symbol', 'ES')
+            symbol = data.get('symbol', 'ES')
             cursor.execute("""
                 SELECT 
                     COUNT(*) as total,
@@ -1699,59 +1449,6 @@ def submit_outcome():
             """, (license_key, 'rl/submit-outcome'))
             
             conn.commit()
-            
-            # AUTO-REFRESH: Update Redis cache for this specific symbol/regime/side
-            # This makes new symbols/regimes automatically available without manual refresh
-            symbol = state.get('symbol', 'ES')
-            regime = state.get('regime', 'NORMAL')
-            side = state.get('side', 'LONG').upper()
-            
-            redis_client = get_redis_client()
-            if redis_client:
-                try:
-                    # Reload this specific cache key from PostgreSQL
-                    cursor.execute("""
-                        SELECT 
-                            rsi, vwap_distance, atr, volume_ratio, hour,
-                            day_of_week, recent_pnl, streak, side, regime,
-                            took_trade, pnl, duration
-                        FROM rl_experiences
-                        WHERE symbol = %s AND regime = %s AND side = %s
-                        ORDER BY created_at DESC
-                        LIMIT 10000
-                    """, (symbol, regime, side))
-                    
-                    rows = cursor.fetchall()
-                    
-                    # Convert to RL format
-                    experiences = []
-                    for row in rows:
-                        experiences.append({
-                            'state': {
-                                'rsi': float(row['rsi']),
-                                'vwap_distance': float(row['vwap_distance']),
-                                'atr': float(row['atr']),
-                                'volume_ratio': float(row['volume_ratio']),
-                                'hour': int(row['hour']),
-                                'day_of_week': int(row['day_of_week']),
-                                'recent_pnl': float(row['recent_pnl']),
-                                'streak': int(row['streak']),
-                                'side': str(row['side']),
-                                'regime': str(row['regime'])
-                            },
-                            'action': {'took_trade': bool(row['took_trade'])},
-                            'reward': float(row['pnl']),
-                            'duration': float(row['duration'])
-                        })
-                    
-                    # Update Redis cache
-                    cache_key = f"experiences:{symbol}:{regime}:{side}"
-                    redis_client.set(cache_key, pickle.dumps(experiences))
-                    
-                    logging.info(f"🔄 Auto-refreshed Redis cache: {cache_key} ({len(experiences)} experiences)")
-                    
-                except Exception as e:
-                    logging.warning(f"Redis auto-refresh failed: {e}")
             
             return jsonify({
                 "success": True,
@@ -2513,20 +2210,32 @@ def init_database_if_needed():
             CREATE TABLE IF NOT EXISTS rl_experiences (
                 id SERIAL PRIMARY KEY,
                 license_key VARCHAR(50) NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
                 symbol VARCHAR(20) NOT NULL,
-                rsi DECIMAL(5,2) NOT NULL,
+                price DECIMAL(10,2) NOT NULL,
+                returns DECIMAL(10,6) NOT NULL,
                 vwap_distance DECIMAL(10,6) NOT NULL,
+                vwap_slope DECIMAL(10,6) NOT NULL,
                 atr DECIMAL(10,6) NOT NULL,
+                atr_slope DECIMAL(10,6) NOT NULL,
+                rsi DECIMAL(5,2) NOT NULL,
+                macd_hist DECIMAL(10,6) NOT NULL,
+                stoch_k DECIMAL(5,2) NOT NULL,
                 volume_ratio DECIMAL(10,2) NOT NULL,
+                volume_slope DECIMAL(10,2) NOT NULL,
                 hour INTEGER NOT NULL,
-                day_of_week INTEGER NOT NULL,
-                recent_pnl DECIMAL(10,2) NOT NULL,
-                streak INTEGER NOT NULL,
-                side VARCHAR(10) NOT NULL,
+                session VARCHAR(10) NOT NULL,
                 regime VARCHAR(50) NOT NULL,
-                took_trade BOOLEAN NOT NULL,
+                volatility_regime VARCHAR(20) NOT NULL,
                 pnl DECIMAL(10,2) NOT NULL,
                 duration DECIMAL(10,2) NOT NULL,
+                took_trade BOOLEAN NOT NULL,
+                exploration_rate DECIMAL(5,2) NOT NULL,
+                mfe DECIMAL(10,2) NOT NULL,
+                mae DECIMAL(10,2) NOT NULL,
+                order_type_used VARCHAR(20) NOT NULL,
+                entry_slippage_ticks DECIMAL(5,2) NOT NULL,
+                exit_reason VARCHAR(50) NOT NULL,
                 created_at TIMESTAMP DEFAULT NOW()
             )
         """)
@@ -2537,9 +2246,9 @@ def init_database_if_needed():
             "CREATE INDEX IF NOT EXISTS idx_rl_experiences_symbol ON rl_experiences(symbol)",
             "CREATE INDEX IF NOT EXISTS idx_rl_experiences_created ON rl_experiences(created_at DESC)",
             "CREATE INDEX IF NOT EXISTS idx_rl_experiences_took_trade ON rl_experiences(took_trade)",
-            "CREATE INDEX IF NOT EXISTS idx_rl_experiences_side ON rl_experiences(side)",
             "CREATE INDEX IF NOT EXISTS idx_rl_experiences_regime ON rl_experiences(regime)",
-            "CREATE INDEX IF NOT EXISTS idx_rl_experiences_similarity ON rl_experiences(symbol, rsi, vwap_distance, atr, volume_ratio, side, regime)"
+            "CREATE INDEX IF NOT EXISTS idx_rl_experiences_timestamp ON rl_experiences(timestamp DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_rl_experiences_similarity ON rl_experiences(symbol, regime, volatility_regime, rsi, vwap_distance, atr)"
         ]
         
         for idx in indexes:
@@ -2980,53 +2689,6 @@ def admin_retention_metrics():
     finally:
         cur.close()
         return_connection(conn)
-
-
-@app.route('/api/admin/precompute', methods=['POST'])
-def admin_precompute():
-    """
-    Admin endpoint to trigger pre-compute job.
-    Called nightly by Azure Logic App at 3 AM or manually for immediate refresh.
-    """
-    try:
-        # Verify admin key
-        admin_key = request.headers.get('X-Admin-Key')
-        expected_key = os.environ.get('ADMIN_KEY', 'change-me-in-production')
-        
-        if admin_key != expected_key:
-            return jsonify({"error": "Unauthorized"}), 401
-        
-        # Run pre-compute in background thread (don't block response)
-        import threading
-        
-        def run_precompute():
-            try:
-                logging.info("🔄 Starting scheduled pre-compute job...")
-                # Import here to avoid circular dependency
-                import sys
-                sys.path.insert(0, os.path.dirname(__file__))
-                from precompute_confidence import precompute_all_buckets
-                
-                success = precompute_all_buckets()
-                if success:
-                    logging.info("✅ Scheduled pre-compute completed successfully")
-                else:
-                    logging.error("❌ Scheduled pre-compute failed")
-            except Exception as e:
-                logging.error(f"❌ Pre-compute error: {e}")
-        
-        thread = threading.Thread(target=run_precompute, daemon=True)
-        thread.start()
-        
-        return jsonify({
-            "status": "started",
-            "message": "Pre-compute job started in background",
-            "timestamp": datetime.now().isoformat()
-        }), 200
-        
-    except Exception as e:
-        logging.error(f"Admin precompute error: {e}")
-        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':

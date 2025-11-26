@@ -89,7 +89,6 @@ class BacktestReporter:
             exit_str = exit_time.strftime('%H:%M') if hasattr(exit_time, 'strftime') else 'N/A'
         elif isinstance(entry_time, str) and len(entry_time) >= 10:
             try:
-                from datetime import datetime
                 dt = datetime.fromisoformat(entry_time.replace('Z', '+00:00') if 'Z' in entry_time else entry_time)
                 entry_str = dt.strftime('%a %m/%d %H:%M')
                 if isinstance(exit_time, str):
@@ -129,7 +128,7 @@ class BacktestReporter:
               f"P&L: ${pnl:+8.2f} | {exit_reason:12} | {duration:3.0f}min | Conf: {confidence:3.0f}%{regime_str}")
         
     def update_progress(self, bars_processed: int, total_bars: int):
-        """Update progress - only show periodically to reduce spam"""
+        """Update progress - only show every 10% to reduce spam"""
         if total_bars > 0:
             pct = (bars_processed / total_bars) * 100
             # Only show progress every 10% or at completion

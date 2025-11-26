@@ -308,8 +308,8 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
         for bar_idx, bar in enumerate(bars_1min):
             bars_processed = bar_idx + 1
             
-            # Update progress less frequently - every 5% or every 500 bars
-            progress_interval = max(500, total_bars // 20)  # Show 20 updates max
+            # Update progress less frequently - every 10% or every 500 bars (whichever is larger)
+            progress_interval = max(500, total_bars // 10)  # Show 10 updates max
             if bars_processed % progress_interval == 0 or bars_processed == total_bars:
                 reporter.update_progress(bars_processed, total_bars)
             

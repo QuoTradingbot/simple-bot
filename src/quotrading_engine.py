@@ -2886,7 +2886,7 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
     
     
     logger.info(f"Position sizing: {contracts} contract(s)")
-    logger.info(f"  Entry: ${entry_price:.2f}, Stop: ${stop_price:.2f}, Target: ${target_price:.2f}")
+    logger.info(f"  Entry: ${entry_price:.2f}, Stop: ${stop_price:.2f}")
     logger.info(f"  Risk: {ticks_at_risk:.1f} ticks (${risk_per_contract:.2f})")
     logger.info(f"  VWAP: ${vwap:.2f} (mean reversion reference)")
     
@@ -6723,18 +6723,13 @@ flatten rules accurately:
    - If 30%+ of trades get force-flattened, average trade duration is too long
    - Either extend trading hours or accept lower targets to close positions faster
 
-4. Friday-specific backtesting:
-   - Enforce no new trades after 1 PM Friday
-   - Execute forced close at 3 PM Friday
-   - Measure weekend gap impact on positions that would have been held
-
-5. DST transition testing:
+4. DST transition testing:
    - Test bot behavior on DST change days (March and November)
    - Ensure time checks still work correctly during "spring forward" and "fall back"
 
-Phase Eighteen: Monitoring During Flatten Window (4:45 PM - 5:00 PM)
+Phase Eighteen: Monitoring During Market Close Window (4:45 PM ET)
 
-This is the highest-risk 15-minute window requiring active monitoring if possible:
+This is the highest-risk period requiring active monitoring if possible:
 
 1. Manual intervention scenarios:
    - Bot tries to close but gets no fills even with aggressive limits

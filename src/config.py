@@ -81,8 +81,6 @@ class BotConfiguration:
     shutdown_time: time = field(default_factory=lambda: time(18, 0))  # 6:00 PM Eastern - market reopens after maintenance
     vwap_reset_time: time = field(default_factory=lambda: time(18, 0))  # 6:00 PM Eastern - daily session reset at market open
     
-    # Friday Special Rules - Close before weekend (Eastern times)
-    
     # Safety Parameters - USER CONFIGURABLE
     daily_loss_limit: float = 1000.0  # USER CONFIGURABLE - max $ loss per day (or auto-calculated)
     daily_loss_percent: float = 2.0  # USER CONFIGURABLE - max daily loss as % of account

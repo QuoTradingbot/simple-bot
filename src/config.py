@@ -77,8 +77,7 @@ class BotConfiguration:
     market_open_time: time = field(default_factory=lambda: time(9, 30))  # Legacy stock market alignment - not used for VWAP reset
     entry_start_time: time = field(default_factory=lambda: time(18, 0))  # 6:00 PM Eastern - CME futures session opens
     entry_end_time: time = field(default_factory=lambda: time(16, 0))  # 4:00 PM Eastern - no new entries after this (can hold positions until 4:45 PM)
-    flatten_time: time = field(default_factory=lambda: time(16, 45))  # 4:45 PM Eastern - flatten positions (15 min before maintenance)
-    forced_flatten_time: time = field(default_factory=lambda: time(17, 0))  # 5:00 PM Eastern - maintenance starts
+    forced_flatten_time: time = field(default_factory=lambda: time(16, 45))  # 4:45 PM Eastern - force close all positions before maintenance
     shutdown_time: time = field(default_factory=lambda: time(18, 0))  # 6:00 PM Eastern - market reopens after maintenance
     vwap_reset_time: time = field(default_factory=lambda: time(18, 0))  # 6:00 PM Eastern - daily session reset at market open
     
@@ -350,14 +349,7 @@ class BotConfiguration:
         # For 24-hour trading, entry_start_time (6 PM) > entry_end_time (4:55 PM) is VALID
         # Skip the old entry_start_time >= entry_end_time check since futures wrap midnight
         
-        # Flatten times should still be in order on same day
-        if self.flatten_time >= self.forced_flatten_time:
-            errors.append(f"flatten_time must be before forced_flatten_time")
-        
-        # Flatten times should still be in order on same day
-        if self.flatten_time >= self.forced_flatten_time:
-            errors.append(f"flatten_time must be before forced_flatten_time")
-        
+        # Time Window Validation
         if self.forced_flatten_time >= self.shutdown_time:
             errors.append(f"forced_flatten_time must be before shutdown_time")
         
@@ -432,7 +424,6 @@ class BotConfiguration:
             "market_open_time": self.market_open_time,
             "entry_start_time": self.entry_start_time,
             "entry_end_time": self.entry_end_time,
-            "flatten_time": self.flatten_time,
             "forced_flatten_time": self.forced_flatten_time,
             "shutdown_time": self.shutdown_time,
             "vwap_reset_time": self.vwap_reset_time,
@@ -758,7 +749,6 @@ def log_config(config: BotConfiguration, logger) -> None:
     
     # Time windows
     logger.info(f"Entry Window: {config.entry_start_time} - {config.entry_end_time} ET")
-    logger.info(f"Flatten Time: {config.flatten_time} ET")
     logger.info(f"Forced Flatten: {config.forced_flatten_time} ET")
     
     # API token info (only relevant for live trading)

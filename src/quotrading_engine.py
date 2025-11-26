@@ -55,7 +55,6 @@ from typing import Any, Dict, List, Optional, Tuple, Callable
 import pytz
 import time as time_module  # Import time module with alias
 import statistics  # For calculating statistics like mean, median, etc.
-import aiohttp
 import asyncio
 import hashlib
 
@@ -268,18 +267,6 @@ logger = setup_logging()
 # Cloud API is used ONLY for reporting trade outcomes (data collection).
 # Trading decisions (confidence/approval) are made locally using RL brain.
 
-# Cloud ML API configuration (for rejected signal tracking - legacy)
-CLOUD_ML_API_URL = os.getenv("CLOUD_ML_API_URL", "https://quotrading-api-v2.azurewebsites.net")
-USE_CLOUD_SIGNALS = os.getenv("USE_CLOUD_SIGNALS", "true").lower() == "true"
-
-# Generate privacy-preserving user ID
-def get_user_id() -> str:
-    """Generate consistent user ID from broker username"""
-    username = CONFIG.get("broker_username", "default_user")
-    return hashlib.md5(username.encode()).hexdigest()[:12]
-
-USER_ID = get_user_id()
-
 
 
 async def get_ml_confidence_async(rl_state: Dict[str, Any], side: str) -> Tuple[bool, float, str]:
@@ -365,78 +352,6 @@ async def save_trade_experience_async(
     except Exception as e:
         logger.debug(f"Non-critical: Could not report outcome to cloud: {e}")
 
-
-
-async def save_rejected_signal_async(
-    rl_state: Dict[str, Any],
-    side: str,
-    rejection_reason: str,
-    price_move_ticks: float
-) -> None:
-    """
-    Save rejected signal to cloud API so RL can learn from missed opportunities.
-    Helps RL understand: "Should I have taken this trade anyway?"
-    """
-    if not USE_CLOUD_SIGNALS:
-        return
-    
-    # Only retry once for rejected signals (less critical than actual trades)
-    max_retries = 1
-    for attempt in range(max_retries):
-        try:
-            payload = {
-                "user_id": USER_ID,
-                "symbol": CONFIG["instrument"],
-                "side": side,
-                "signal": f"{side}_bounce",
-                "rsi": rl_state.get("rsi", 50),
-                "vwap_distance": rl_state.get("vwap_distance", 0),
-                "volume_ratio": rl_state.get("volume_ratio", 1.0),
-                "streak": rl_state.get("streak", 0),
-                "time_of_day_score": rl_state.get("time_of_day_score", 0.5),
-                "volatility": rl_state.get("volatility", 1.0),
-                "took_trade": False,
-                "rejection_reason": rejection_reason,
-                "price_move_ticks": price_move_ticks
-            }
-            
-            timeout_seconds = 3.0
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{CLOUD_ML_API_URL}/api/main",
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=timeout_seconds)
-                ) as response:
-                    if response.status == 200:
-                        logger.debug(f"[CLOUD RL] Rejected signal saved: {rejection_reason}")
-                        return  # Success!
-                    else:
-                        if attempt < max_retries - 1:
-                            await asyncio.sleep(0.5)
-                            continue
-                        
-        except Exception as e:
-            if attempt < max_retries - 1:
-                await asyncio.sleep(0.5)
-                continue
-
-
-def save_rejected_signal(
-    rl_state: Dict[str, Any],
-    side: str,
-    rejection_reason: str,
-    price_move_ticks: float
-) -> None:
-    """Synchronous wrapper for save_rejected_signal_async"""
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.ensure_future(save_rejected_signal_async(rl_state, side, rejection_reason, price_move_ticks))
-        else:
-            loop.run_until_complete(save_rejected_signal_async(rl_state, side, rejection_reason, price_move_ticks))
-    except Exception as e:
-        logger.debug(f"Failed to save rejected signal: {e}")
 
 
 def save_trade_experience(
@@ -3515,7 +3430,7 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
         logger.warning(f"  Signal: {side.upper()} @ ${entry_price:.2f}")
         logger.warning(SEPARATOR_LINE)
         
-        # Track rejected signal for RL learning
+        # Store for potential shadow outcome tracking
         rl_state = state[symbol].get("entry_rl_state")
         if rl_state is not None:
             # Extract price movement from reason (e.g., "Price moved UP 5.0 ticks")
@@ -3523,15 +3438,6 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
             match = re.search(r'(\d+\.?\d*)\s+ticks', price_reason)
             price_move_ticks = float(match.group(1)) if match else 0.0
             
-            # Save to cloud so RL learns: "Should I take trades when price moved X ticks?"
-            save_rejected_signal(
-                rl_state=rl_state,
-                side=side,
-                rejection_reason=f"price_moved_{price_move_ticks:.0f}_ticks",
-                price_move_ticks=price_move_ticks
-            )
-            
-            # Store for potential shadow outcome tracking
             state[symbol]["last_rejected_signal"] = {
                 "time": get_current_time(),
                 "state": rl_state,

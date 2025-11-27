@@ -122,6 +122,33 @@ class SignalConfidenceRL:
         else:
             logger.debug(f" LIVE MODE: 0% exploration (pure exploitation - NO RANDOM TRADES!)")
     
+    def _generate_experience_key(self, experience: Dict, execution_data: Optional[Dict] = None) -> Tuple:
+        """
+        Generate a unique key for duplicate detection.
+        
+        Args:
+            experience: The experience dictionary with market state and outcome data
+            execution_data: Optional execution data dict (used during record_outcome)
+        
+        Returns:
+            Tuple of (timestamp, symbol, rounded_pnl, exit_reason) for O(1) duplicate detection
+        """
+        # Get exit_reason from either execution_data or experience dict
+        # During record_outcome: exit_reason is in execution_data (before being merged into experience)
+        # During load_experience: exit_reason is already in experience dict
+        exit_reason = None
+        if execution_data and 'exit_reason' in execution_data:
+            exit_reason = execution_data['exit_reason']
+        elif 'exit_reason' in experience:
+            exit_reason = experience['exit_reason']
+        
+        return (
+            experience.get('timestamp'),
+            experience.get('symbol'),
+            round(experience.get('pnl', 0), 2),  # Round to 2 decimals for floating point safety
+            exit_reason
+        )
+    
     def capture_signal_state(self, rsi: float, vwap_distance: float, 
                             atr: float, volume_ratio: float,
                             hour: int, day_of_week: int,
@@ -583,14 +610,8 @@ class SignalConfidenceRL:
         # USER REQUEST: Only save trades that were actually taken
         if took_trade:
             # DUPLICATE PREVENTION: Check if this experience already exists
-            # Create unique key from timestamp, symbol, pnl (rounded), and exit_reason
-            # Round PnL to 2 decimal places to avoid floating point precision issues
-            exp_key = (
-                experience.get('timestamp'),
-                experience.get('symbol'),
-                round(experience.get('pnl', 0), 2),
-                execution_data.get('exit_reason') if execution_data else None
-            )
+            # Use helper method to generate consistent key
+            exp_key = self._generate_experience_key(experience, execution_data)
             
             # Check if this exact experience already exists (O(1) lookup with set)
             if exp_key in self.experience_keys:
@@ -687,15 +708,10 @@ class SignalConfidenceRL:
                     self.experiences = data.get('experiences', [])
                     
                     # Populate experience_keys set for O(1) duplicate detection
-                    # Round PnL to 2 decimal places to avoid floating point precision issues
+                    # Use helper method to ensure consistency with record_outcome
                     self.experience_keys = set()
                     for exp in self.experiences:
-                        exp_key = (
-                            exp.get('timestamp'),
-                            exp.get('symbol'),
-                            round(exp.get('pnl', 0), 2),  # Round to 2 decimal places
-                            exp.get('exit_reason')
-                        )
+                        exp_key = self._generate_experience_key(exp)
                         self.experience_keys.add(exp_key)
                     
                     logger.debug(f"Γ£ô Loaded {len(self.experiences)} past signal experiences")

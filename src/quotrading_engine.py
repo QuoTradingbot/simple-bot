@@ -21,6 +21,7 @@ CME Futures Trading Schedule (US Eastern Wall-Clock):
 - DAILY MAINTENANCE: 4:45-6:00 PM Eastern (1hr 15min daily break)
 - SUNDAY OPEN: 6:00 PM Eastern Sunday (weekly start)
 - FRIDAY CLOSE: 4:45 PM Eastern (weekly close, start of weekend maintenance)
+- THANKSGIVING: Last Thursday of November - flatten at 12:45 PM, market closes 1:00 PM ET
 
 IMPORTANT ENTRY/EXIT RULES:
 - Bot can OPEN new positions: 6:00 PM - 4:00 PM next day
@@ -2221,6 +2222,34 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
         return False, f"Market closed"
     
     # Trading state is "entry_window" - market is open, proceed with checks
+    
+    # THANKSGIVING SPECIAL: No new entries after 12:00 PM on last Thursday of November
+    eastern_tz = pytz.timezone('US/Eastern')
+    current_time_et = current_time.astimezone(eastern_tz)
+    if current_time_et.weekday() == 3 and current_time_et.month == 11:  # Thursday in November
+        # Check if this is the last Thursday of November
+        if current_time_et.month == 12:
+            next_month = current_time_et.replace(year=current_time_et.year + 1, month=1, day=1)
+        else:
+            next_month = current_time_et.replace(month=current_time_et.month + 1, day=1)
+        last_day = (next_month - timedelta(days=1)).day
+        
+        # Find last Thursday
+        for day in range(last_day, 0, -1):
+            check_date = current_time_et.replace(day=day)
+            if check_date.weekday() == 3:  # Thursday
+                last_thursday = day
+                break
+        
+        # If today is Thanksgiving, no new entries after 12:00 PM (flatten at 12:45 PM)
+        if current_time_et.day == last_thursday and current_time_et.time() >= datetime_time(12, 0):
+            log_time_based_action(
+                "thanksgiving_entry_blocked",
+                f"Thanksgiving Day - no new entries after 12:00 PM (market closes 1:00 PM)",
+                {"time": current_time_et.strftime('%H:%M:%S')}
+            )
+            logger.debug(f"Thanksgiving Day - no new entries after 12:00 PM (flatten at 12:45 PM, market closes at 1:00 PM)")
+            return False, "Thanksgiving entry cutoff (12:00 PM ET)"
     
     # Daily entry cutoff - no new positions after 4:00 PM ET (can hold until 4:45 PM flatten)
     # CRITICAL: This only applies BEFORE the market reopens at 6:00 PM
@@ -6777,6 +6806,30 @@ def get_trading_state(dt: datetime = None) -> str:
     
     # CME Futures Hours (US Eastern - wall-clock time):
     # Sunday 6:00 PM - Friday 5:00 PM (with daily 5:00-6:00 PM maintenance Mon-Thu)
+    
+    # THANKSGIVING SPECIAL: Last Thursday of November closes at 1:00 PM ET
+    if weekday == 3:  # Thursday
+        # Check if this is the last Thursday of November
+        if eastern_time.month == 11:
+            # Get last day of November
+            if eastern_time.month == 12:
+                next_month = eastern_time.replace(year=eastern_time.year + 1, month=1, day=1)
+            else:
+                next_month = eastern_time.replace(month=eastern_time.month + 1, day=1)
+            last_day = (next_month - timedelta(days=1)).day
+            
+            # Find last Thursday (iterate backwards from last day)
+            for day in range(last_day, 0, -1):
+                check_date = eastern_time.replace(day=day)
+                if check_date.weekday() == 3:  # Thursday
+                    last_thursday = day
+                    break
+            
+            # If today is Thanksgiving (last Thursday of November)
+            if eastern_time.day == last_thursday:
+                # Market closes at 1:00 PM ET (flatten at 12:45 PM)
+                if current_time >= datetime_time(12, 45):
+                    return 'closed'
     
     # CLOSED: Saturday (all day) - Market is closed
     if weekday == 5:  # Saturday

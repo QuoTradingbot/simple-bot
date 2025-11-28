@@ -122,32 +122,61 @@ class SignalConfidenceRL:
         else:
             logger.debug(f" LIVE MODE: 0% exploration (pure exploitation - NO RANDOM TRADES!)")
     
-    def _generate_experience_key(self, experience: Dict, execution_data: Optional[Dict] = None) -> Tuple:
+    def _generate_experience_key(self, experience: Dict, execution_data: Optional[Dict] = None) -> str:
         """
         Generate a unique key for duplicate detection.
+        Uses ALL significant fields to identify truly identical experiences.
+        
+        This prevents incorrectly removing valid experiences that have:
+        - Same timestamp but different outcomes (P&L, duration, exit reason)
+        - Same signal but different execution quality (MFE/MAE, slippage)
         
         Args:
             experience: The experience dictionary with market state and outcome data
             execution_data: Optional execution data dict (used during record_outcome)
         
         Returns:
-            Tuple of (timestamp, symbol, rounded_pnl, exit_reason) for O(1) duplicate detection
+            Hash string for O(1) duplicate detection
         """
+        import hashlib
+        
+        # ALL fields that make an experience unique
+        # If any of these differ, experiences are NOT duplicates
+        key_fields = [
+            'timestamp', 'symbol', 'price', 'pnl', 'duration', 'took_trade',
+            'regime', 'volatility_regime', 'rsi', 'vwap_distance', 'vwap_slope',
+            'atr', 'atr_slope', 'macd_hist', 'stoch_k',
+            'volume_ratio', 'volume_slope', 'hour', 'session',
+            'mfe', 'mae', 'returns',
+            'order_type_used', 'entry_slippage_ticks', 'exploration_rate'
+        ]
+        
         # Get exit_reason from either execution_data or experience dict
-        # During record_outcome: exit_reason is in execution_data (before being merged into experience)
-        # During load_experience: exit_reason is already in experience dict
         exit_reason = None
         if execution_data and 'exit_reason' in execution_data:
             exit_reason = execution_data['exit_reason']
         elif 'exit_reason' in experience:
             exit_reason = experience['exit_reason']
+        key_fields.append('exit_reason')
         
-        return (
-            experience.get('timestamp'),
-            experience.get('symbol'),
-            round(experience.get('pnl', 0), 2),  # Round to 2 decimals for floating point safety
-            exit_reason
-        )
+        # Build key from all significant values
+        values = []
+        for field in key_fields:
+            if field == 'exit_reason':
+                val = exit_reason
+            elif field in experience:
+                val = experience[field]
+            else:
+                val = None
+            
+            # Round floats to 6 decimals to avoid precision issues
+            if isinstance(val, float):
+                val = round(val, 6)
+            values.append(str(val) if val is not None else '')
+        
+        # Create hash from concatenated values
+        key_string = '|'.join(values)
+        return hashlib.md5(key_string.encode()).hexdigest()
     
     def capture_signal_state(self, rsi: float, vwap_distance: float, 
                             atr: float, volume_ratio: float,

@@ -230,6 +230,7 @@ class BotConfiguration:
             "daily_loss_limit": self.daily_loss_limit,
             "max_contracts": self.max_contracts,
             "max_trades_per_day": self.max_trades_per_day,
+            "max_stop_loss_dollars": self.max_stop_loss_dollars,
             "risk_per_trade": self.risk_per_trade,
             "risk_reward_ratio": self.risk_reward_ratio,
         }

@@ -230,6 +230,7 @@ class BotConfiguration:
             "daily_loss_limit": self.daily_loss_limit,
             "max_contracts": self.max_contracts,
             "max_trades_per_day": self.max_trades_per_day,
+            "max_stop_loss_dollars": self.max_stop_loss_dollars,
             "risk_per_trade": self.risk_per_trade,
             "risk_reward_ratio": self.risk_reward_ratio,
         }
@@ -240,6 +241,11 @@ class BotConfiguration:
     use_atr_stops: bool = False  # ATR stops disabled - using proven 11-tick fixed stops
     atr_period: int = 14  # ATR calculation period
     stop_loss_atr_multiplier: float = 3.6  # Iteration 3 (tight stops)
+    
+    # Stop Loss Configuration - USER CONFIGURABLE
+    max_stop_loss_dollars: float = 200.0  # USER CONFIGURABLE - max loss per trade in dollars (default $200)
+    # This is the "Max Loss Per Trade" setting from the GUI
+    # Position closes automatically if trade loses this amount
     
     # Instrument Specifications
     tick_size: float = 0.25
@@ -492,6 +498,8 @@ def load_from_env() -> BotConfiguration:
     if os.getenv("BOT_DAILY_LOSS_LIMIT"):
         config.daily_loss_limit = float(os.getenv("BOT_DAILY_LOSS_LIMIT"))
     
+    if os.getenv("BOT_MAX_LOSS_PER_TRADE"):
+        config.max_stop_loss_dollars = float(os.getenv("BOT_MAX_LOSS_PER_TRADE"))
     
     if os.getenv("BOT_DAILY_LOSS_PERCENT"):
         config.daily_loss_percent = float(os.getenv("BOT_DAILY_LOSS_PERCENT"))
@@ -547,6 +555,8 @@ def load_from_env() -> BotConfiguration:
     # Broker name (USER CONFIGURABLE)
     if os.getenv("BOT_BROKER"):
         config.broker = os.getenv("BOT_BROKER")
+    elif os.getenv("BROKER"):
+        config.broker = os.getenv("BROKER")
     
     # API Token (support both old TOPSTEP and new TOPSTEPX variable names, plus generic)
     if os.getenv("BOT_API_TOKEN"):

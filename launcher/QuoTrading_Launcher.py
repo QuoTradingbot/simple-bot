@@ -609,191 +609,6 @@ class QuoTradingLauncher:
         # Update broker options based on selected type
         self.update_broker_options()
         
-        # Account Type Selection (dynamic label based on broker)
-        self.account_type_label = tk.Label(
-            content,
-            text="Account Type:",
-            font=("Segoe UI", 9, "bold"),
-            bg=self.colors['card'],
-            fg=self.colors['text']
-        )
-        self.account_type_label.pack(anchor=tk.W, pady=(8, 3))
-        
-        # Define TopStep account types with their rules
-        self.topstep_account_types = {
-            "Trading Combine $50K": {
-                "size": "50000",
-                "daily_loss": "2000",
-                "total_drawdown": "3000",
-                "profit_target": "3000",
-                "description": "Daily Loss: $2,000 | Total DD: $3,000 | Target: $3,000"
-            },
-            "Trading Combine $100K": {
-                "size": "100000",
-                "daily_loss": "4000",
-                "total_drawdown": "6000",
-                "profit_target": "6000",
-                "description": "Daily Loss: $4,000 | Total DD: $6,000 | Target: $6,000"
-            },
-            "Trading Combine $150K": {
-                "size": "150000",
-                "daily_loss": "6000",
-                "total_drawdown": "9000",
-                "profit_target": "9000",
-                "description": "Daily Loss: $6,000 | Total DD: $9,000 | Target: $9,000"
-            },
-            "Trading Combine $250K": {
-                "size": "250000",
-                "daily_loss": "10000",
-                "total_drawdown": "15000",
-                "profit_target": "15000",
-                "description": "Daily Loss: $10,000 | Total DD: $15,000 | Target: $15,000"
-            },
-            "Express Funded $50K": {
-                "size": "50000",
-                "daily_loss": "2000",
-                "total_drawdown": "3000",
-                "profit_target": "3000",
-                "description": "Daily Loss: $2,000 | Total DD: $3,000 | Target: $3,000 (15-day eval)"
-            },
-            "Express Funded $100K": {
-                "size": "100000",
-                "daily_loss": "4000",
-                "total_drawdown": "6000",
-                "profit_target": "6000",
-                "description": "Daily Loss: $4,000 | Total DD: $6,000 | Target: $6,000 (15-day eval)"
-            },
-            "Funded Account $50K": {
-                "size": "50000",
-                "daily_loss": "2000",
-                "total_drawdown": "3000",
-                "profit_target": "N/A",
-                "description": "Daily Loss: $2,000 | Trailing Threshold: $3,000 | No target"
-            },
-            "Funded Account $100K": {
-                "size": "100000",
-                "daily_loss": "4000",
-                "total_drawdown": "6000",
-                "profit_target": "N/A",
-                "description": "Daily Loss: $4,000 | Trailing Threshold: $6,000 | No target"
-            },
-            "Funded Account $150K": {
-                "size": "150000",
-                "daily_loss": "6000",
-                "total_drawdown": "9000",
-                "profit_target": "N/A",
-                "description": "Daily Loss: $6,000 | Trailing Threshold: $9,000 | No target"
-            }
-        }
-        
-        # Define Tradovate account types
-        self.tradovate_account_types = {
-            "Live Account $5K": {
-                "size": "5000",
-                "daily_loss": "500",
-                "total_drawdown": "1000",
-                "profit_target": "N/A",
-                "description": "Personal funded account - $5,000 starting balance"
-            },
-            "Live Account $10K": {
-                "size": "10000",
-                "daily_loss": "1000",
-                "total_drawdown": "2000",
-                "profit_target": "N/A",
-                "description": "Personal funded account - $10,000 starting balance"
-            },
-            "Live Account $25K": {
-                "size": "25000",
-                "daily_loss": "2500",
-                "total_drawdown": "5000",
-                "profit_target": "N/A",
-                "description": "Personal funded account - $25,000 starting balance"
-            },
-            "Live Account $50K": {
-                "size": "50000",
-                "daily_loss": "5000",
-                "total_drawdown": "10000",
-                "profit_target": "N/A",
-                "description": "Personal funded account - $50,000 starting balance"
-            },
-            "Live Account $100K": {
-                "size": "100000",
-                "daily_loss": "10000",
-                "total_drawdown": "20000",
-                "profit_target": "N/A",
-                "description": "Personal funded account - $100,000 starting balance"
-            },
-            "Live Account (Custom)": {
-                "size": "10000",
-                "daily_loss": "1000",
-                "total_drawdown": "2000",
-                "profit_target": "N/A",
-                "description": "Custom account size - adjust values after selection"
-            }
-        }
-        
-        # Get current broker type to determine which account types to show
-        broker_type = self.broker_type_var.get()
-        if broker_type == "Prop Firm":
-            current_account_types = self.topstep_account_types
-            default_account_type = "Trading Combine $50K"
-        else:  # Live Broker
-            current_account_types = self.tradovate_account_types
-            default_account_type = "Live Account $10K"
-        
-        # Get saved account type or default
-        saved_account_type = self.config.get("account_type", default_account_type)
-        # Ensure saved account type is valid for current broker, fallback to default if not
-        if saved_account_type not in current_account_types:
-            saved_account_type = default_account_type
-        self.account_type_var = tk.StringVar(value=saved_account_type)
-        
-        # Store current account types for access in other methods
-        self.current_account_types = current_account_types
-        
-        # Create styled dropdown frame
-        dropdown_frame = tk.Frame(content, bg=self.colors['border'], bd=0)
-        dropdown_frame.pack(fill=tk.X, padx=1, pady=1)
-        
-        # Create custom style for combobox to make it look better
-        # Use unique style name to avoid conflicts with other widgets
-        style = ttk.Style()
-        style.theme_use('clam')
-        style.configure('TopStepAccount.TCombobox',
-                       fieldbackground=self.colors['input_bg'],
-                       background=self.colors['success'],
-                       foreground=self.colors['text'],
-                       arrowcolor=self.colors['success'],
-                       borderwidth=0,
-                       relief='flat')
-        style.map('TopStepAccount.TCombobox',
-                 fieldbackground=[('readonly', self.colors['input_bg'])],
-                 selectbackground=[('readonly', self.colors['input_focus'])],
-                 selectforeground=[('readonly', self.colors['text'])])
-        
-        self.account_type_dropdown = ttk.Combobox(
-            dropdown_frame,
-            textvariable=self.account_type_var,
-            state="readonly",
-            font=("Segoe UI", 9),
-            style='TopStepAccount.TCombobox',
-            values=list(current_account_types.keys())
-        )
-        self.account_type_dropdown.pack(fill=tk.X, ipady=3, padx=2, pady=2)
-        self.account_type_dropdown.bind("<<ComboboxSelected>>", self.update_account_type_info)
-        
-        # Account type info display
-        self.account_info_display = tk.Label(
-            content,
-            text=current_account_types[saved_account_type]["description"],
-            font=("Segoe UI", 7),
-            bg=self.colors['card'],
-            fg=self.colors['text_light'],
-            wraplength=500,
-            justify=tk.LEFT
-        )
-        self.account_info_display.pack(anchor=tk.W, pady=(2, 4))
-        
         # Broker Username
         self.broker_username_entry = self.create_input_field(
             content,
@@ -879,32 +694,6 @@ class QuoTradingLauncher:
         
         # Update broker dropdown
         self.update_broker_options()
-        
-        # Update account types based on broker type
-        if broker_type == "Prop Firm":
-            self.current_account_types = self.topstep_account_types
-            default_account_type = "Trading Combine $50K"
-            self.account_type_label.config(text="TopStep Account Type:")
-        else:  # Live Broker
-            self.current_account_types = self.tradovate_account_types
-            default_account_type = "Live Account $10K"
-            self.account_type_label.config(text="Tradovate Account Type:")
-        
-        # Update dropdown values
-        self.account_type_dropdown['values'] = list(self.current_account_types.keys())
-        
-        # Set default account type for this broker
-        self.account_type_var.set(default_account_type)
-        
-        # Update info display
-        self.update_account_type_info()
-    
-    def update_account_type_info(self, event=None):
-        """Update the account type info display when selection changes."""
-        selected_type = self.account_type_var.get()
-        if selected_type in self.current_account_types:
-            account_info = self.current_account_types[selected_type]
-            self.account_info_display.config(text=account_info["description"])
     
     def update_broker_options(self):
         """Update broker dropdown based on account type."""
@@ -1302,19 +1091,13 @@ class QuoTradingLauncher:
         symbol_frame.pack(fill=tk.X, pady=(0, 0))
         
         self.symbol_vars = {}
+        # Primary trading symbols in GUI (ES, MES, MNQ, NQ)
+        # Other symbols (YM, RTY, CL, GC, NG, 6E, ZN, MBTX) are kept in experiences/ for future use
         symbols = [
             ("ES", "E-mini S&P 500"),
-            ("NQ", "E-mini Nasdaq 100"),
-            ("YM", "E-mini Dow"),
-            ("RTY", "E-mini Russell 2000"),
-            ("CL", "Crude Oil"),
-            ("GC", "Gold"),
-            ("NG", "Natural Gas"),
-            ("6E", "Euro FX"),
-            ("ZN", "10-Year Treasury Note"),
             ("MES", "Micro E-mini S&P 500"),
             ("MNQ", "Micro E-mini Nasdaq 100"),
-            ("MBTX", "Micro Bitcoin")
+            ("NQ", "E-mini Nasdaq 100")
         ]
         
         saved_symbols = self.config.get("symbols", ["ES"])
@@ -1457,6 +1240,46 @@ class QuoTradingLauncher:
         )
         self.loss_entry.pack(fill=tk.X, ipady=2, padx=2)
         self.loss_entry.insert(0, self.config.get("daily_loss_limit", "2000"))
+        
+        # Second Settings Row for Max Loss Per Trade
+        settings_row_2 = tk.Frame(content, bg=self.colors['card'])
+        settings_row_2.pack(fill=tk.X, pady=(3, 3))
+        
+        # Max Loss Per Trade
+        max_loss_trade_frame = tk.Frame(settings_row_2, bg=self.colors['card'])
+        max_loss_trade_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+        
+        tk.Label(
+            max_loss_trade_frame,
+            text="Max Loss Per Trade ($):",
+            font=("Segoe UI", 7, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['text']
+        ).pack(anchor=tk.W, pady=(0, 1))
+        
+        self.max_loss_per_trade_entry = tk.Entry(
+            max_loss_trade_frame,
+            font=("Segoe UI", 7),
+            bg=self.colors['input_bg'],
+            fg=self.colors['text'],
+            insertbackground=self.colors['success'],
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=2,
+            highlightbackground=self.colors['border'],
+            highlightcolor=self.colors['success']
+        )
+        self.max_loss_per_trade_entry.pack(fill=tk.X, ipady=2, padx=2)
+        self.max_loss_per_trade_entry.insert(0, self.config.get("max_loss_per_trade", "200"))
+        
+        # Info label for max loss per trade
+        tk.Label(
+            max_loss_trade_frame,
+            text="Position closes if trade loses this amount",
+            font=("Segoe UI", 6),
+            bg=self.colors['card'],
+            fg=self.colors['text_light']
+        ).pack(anchor=tk.W, pady=(1, 0))
         
         # Advanced Settings Row - COMPACT
         advanced_row = tk.Frame(content, bg=self.colors['card'])
@@ -1899,10 +1722,23 @@ class QuoTradingLauncher:
             )
             return
         
+        # Validate max loss per trade
+        try:
+            max_loss_per_trade = float(self.max_loss_per_trade_entry.get())
+            if max_loss_per_trade <= 0:
+                raise ValueError("Max loss per trade must be greater than 0")
+        except ValueError as e:
+            messagebox.showerror(
+                "Invalid Max Loss Per Trade",
+                "Please enter a valid numeric value greater than 0 for max loss per trade."
+            )
+            return
+        
         # Save all settings
         self.config["symbols"] = selected_symbols
         self.config["account_size"] = account_size
         self.config["daily_loss_limit"] = loss_limit
+        self.config["max_loss_per_trade"] = max_loss_per_trade
         self.config["max_contracts"] = self.contracts_var.get()
         self.config["max_trades"] = self.trades_var.get()
         self.config["confidence_threshold"] = self.confidence_var.get()
@@ -2997,6 +2833,8 @@ BOT_MAX_TRADES_PER_DAY={self.trades_var.get()}
 # Bot stays on but will NOT execute trades after reaching max (resets daily after market maintenance)
 BOT_DAILY_LOSS_LIMIT={self.loss_entry.get()}
 # Bot stays on but will NOT execute trades if this limit (in dollars) is hit (resets daily after market maintenance)
+BOT_MAX_LOSS_PER_TRADE={self.config.get("max_loss_per_trade", 200)}
+# Position closes automatically if a single trade loses this amount
 
 # AI/Confidence Settings
 BOT_CONFIDENCE_THRESHOLD={self.confidence_var.get()}

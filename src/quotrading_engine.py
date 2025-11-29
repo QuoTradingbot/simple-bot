@@ -385,17 +385,16 @@ def initialize_broker() -> None:
     
     # ===== LICENSE VALIDATION =====
     # Check if user has valid license before connecting to broker
+    # Both regular licenses and admin keys must be validated by the server
     license_key = os.getenv("QUOTRADING_LICENSE_KEY")
     
-    # Skip validation if admin/dev mode
-    admin_key = os.getenv("QUOTRADING_API_KEY")
-    if admin_key:
-        logger.info("Γ£à Admin mode detected - skipping license check")
-    elif license_key:
-        logger.info("≡ƒöÉ Validating license...")
+    if license_key:
+        logger.info("🔐 Validating license...")
         try:
             import requests
-            api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-api-v2.azurewebsites.net")
+            api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
+            
+            # Validate with server (server handles both regular and admin keys)
             response = requests.post(
                 f"{api_url}/api/main",
                 json={"license_key": license_key},
@@ -404,8 +403,8 @@ def initialize_broker() -> None:
             
             if response.status_code == 200:
                 data = response.json()
-                if data.get("valid"):
-                    logger.info(f"Γ£à License validated - Welcome {data.get('customer_name', 'Trader')}!")
+                if data.get("license_valid"):
+                    logger.info(f"Γ£à License validated - {data.get('message', 'Access Granted')}")
                 else:
                     logger.error("Γ¥î INVALID LICENSE - Bot will not start")
                     logger.error(f"Reason: {data.get('message', 'Unknown error')}")
@@ -674,6 +673,12 @@ def check_broker_connection() -> None:
         check_azure_time_service()
     except Exception as e:
         logger.debug(f"Time service check failed (non-critical): {e}")
+    
+    # Send heartbeat to show bot is online
+    try:
+        send_heartbeat()
+    except Exception as e:
+        logger.debug(f"Heartbeat failed (non-critical): {e}")
     
     # AUTO-IDLE: Disconnect broker during maintenance (no data needed)
     current_time = get_current_time()
@@ -5914,11 +5919,19 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
     
     # Check if we're in license grace period and position just closed
     if bot_status.get("license_grace_period", False):
-        logger.warning("=" * 70)
-        logger.warning("ΓÅ░ GRACE PERIOD ENDED - Position Closed")
-        logger.warning("License expired and position has now closed safely")
-        logger.warning("Stopping trading as license is no longer valid")
-        logger.warning("=" * 70)
+        logger.critical("=" * 70)
+        logger.critical("")
+        logger.critical("  LICENSE EXPIRED - Position Safely Closed")
+        logger.critical("")
+        logger.critical(f"  Final P&L: ${pnl:+.2f}")
+        logger.critical(f"  Exit: {reason}")
+        logger.critical("")
+        logger.critical("  Your license has expired.")
+        logger.critical("  Please renew your license to continue trading.")
+        logger.critical("")
+        logger.critical("  Contact: support@quotrading.com")
+        logger.critical("")
+        logger.critical("=" * 70)
         
         # End grace period
         bot_status["license_grace_period"] = False
@@ -5930,7 +5943,7 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
         try:
             notifier = get_notifier()
             notifier.send_error_alert(
-                error_message=f"≡ƒöÆ TRADING STOPPED - Grace Period Ended\n\n"
+                error_message=f"🔒 TRADING STOPPED - Grace Period Ended\n\n"
                              f"Your license expired and the active position has now closed safely.\n"
                              f"Final P&L: ${pnl:+.2f}\n"
                              f"Exit Reason: {reason}\n\n"
@@ -5938,10 +5951,23 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
                 error_type="License Expired - Grace Period Ended"
             )
         except Exception as e:
-            logger.debug(f"Failed to send grace period end notification: {e}")
+            pass  # Silent
         
-        logger.critical("≡ƒöÆ Trading disabled - license renewal required")
-        logger.critical("Contact support@quotrading.com to renew your license")
+        # Disconnect broker cleanly
+        logger.critical("Disconnecting from broker...")
+        try:
+            global broker
+            if broker is not None:
+                broker.disconnect()
+        except Exception as e:
+            pass  # Silent disconnect
+        
+        # Exit the bot completely
+        logger.critical("Bot shutdown complete.")
+        import sys
+        import time
+        time.sleep(2)  # Give user time to read message
+        sys.exit(0)
     logger.info("  Γ£ô Position state saved to disk (FLAT)")
 
 
@@ -7603,111 +7629,92 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
             if not data.get("license_valid", False):
                 # License has expired or been revoked
                 reason = data.get("message", "License invalid")
-                logger.critical(f"≡ƒÜ¿ LICENSE EXPIRED: {reason}")
+                logger.critical(f"🛡️ LICENSE EXPIRED: {reason}")
                 bot_status["license_expired"] = True
                 bot_status["license_expiry_reason"] = reason
                 
-                # Determine when to stop trading based on current time
-                current_time = get_current_time()
-                trading_state = get_trading_state(current_time)
+                # LICENSE EXPIRED - Stop trading immediately
+                # Exception: If position is active, enter grace period to safely close it
+                symbol = CONFIG["instrument"]
+                has_active_position = symbol in state and state[symbol]["position"]["active"]
                 
-                eastern_tz = pytz.timezone('US/Eastern')
-                eastern_time = current_time.astimezone(eastern_tz)
-                weekday = eastern_time.weekday()  # 0=Monday, 6=Sunday
-                current_time_only = eastern_time.time()
-                
-                # Check if we're approaching maintenance or end of week
-                maintenance_start = CONFIG.get("forced_flatten_time", datetime_time(16, 45))  # 4:45 PM ET
-                
-                should_stop_now = True
-                stop_reason = "License expired - stopping trading immediately"
-                
-                # If Friday and before close, wait until market closes
-                if weekday == 4 and current_time_only < maintenance_start:
-                    logger.warning(f"ΓÅ░ License expired on Friday - will stop at market close (4:45 PM ET)")
-                    should_stop_now = False
-                    stop_reason = "License expired - will stop at Friday market close"
-                    # Set flag to stop at market close
-                    bot_status["stop_at_market_close"] = True
-                
-                # If weekday and close to forced flatten, wait until maintenance
-                elif weekday < 4 and datetime_time(16, 30) <= current_time_only < maintenance_start:
-                    logger.warning(f"ΓÅ░ License expired during flatten window - will stop at forced flatten (4:45 PM ET)")
-                    should_stop_now = False
-                    stop_reason = "License expired - will stop at forced flatten time"
-                    bot_status["stop_at_maintenance"] = True
-                
-                # If weekend, should have already stopped on Friday
-                elif weekday in [5, 6]:  # Saturday or Sunday
-                    logger.critical("ΓÅ░ License expired over weekend - stopping immediately")
-                    should_stop_now = True
-                    stop_reason = "License expired over weekend"
-                
-                if should_stop_now:
-                    logger.critical(f"≡ƒ¢æ {stop_reason}")
+                if has_active_position:
+                    # GRACE PERIOD: License expired but position is active
+                    # Allow bot to manage position until it closes naturally
+                    logger.warning("=" * 70)
+                    logger.warning("⏳ LICENSE GRACE PERIOD ACTIVATED")
+                    logger.warning("License expired but position is active")
+                    logger.warning("Bot will continue managing position until it closes")
+                    logger.warning("Position will close via normal exit rules (target/stop/time)")
+                    logger.warning("No new trades will be allowed")
+                    logger.warning("=" * 70)
                     
-                    # Check if there's an active position
-                    symbol = CONFIG["instrument"]
-                    has_active_position = symbol in state and state[symbol]["position"]["active"]
+                    # Set grace period flag
+                    bot_status["license_grace_period"] = True
+                    bot_status["grace_period_reason"] = "Active position - managing until close"
                     
-                    if has_active_position:
-                        # GRACE PERIOD: License expired but position is active
-                        # Allow bot to manage position until it closes naturally
-                        logger.warning("=" * 70)
-                        logger.warning("ΓÅ░ LICENSE GRACE PERIOD ACTIVATED")
-                        logger.warning("License expired but position is active")
-                        logger.warning("Bot will continue managing position until it closes")
-                        logger.warning("Position will close via normal exit rules (target/stop/time)")
-                        logger.warning("No new trades will be allowed")
-                        logger.warning("=" * 70)
-                        
-                        # Set grace period flag
-                        bot_status["license_grace_period"] = True
-                        bot_status["grace_period_reason"] = "Active position - managing until close"
-                        
-                        # Block new trades but allow position management
-                        # Note: check_safety_conditions will allow position management
-                        # but block new entries when license_expired=True and position is active
-                        
-                        # Send notification about grace period
-                        try:
-                            notifier = get_notifier()
-                            position = state[symbol]["position"]
-                            notifier.send_error_alert(
-                                error_message=f"≡ƒÜ¿ LICENSE EXPIRED (Grace Period Active)\n\n"
-                                             f"Your license has expired but you have an active {position['side']} position.\n"
-                                             f"Bot will continue managing the position until it closes.\n"
-                                             f"Position: {position['quantity']} contracts @ ${position['entry_price']:.2f}\n\n"
-                                             f"No new trades will be allowed.\n"
-                                             f"Please renew your license.",
-                                error_type="License Expired - Grace Period"
-                            )
-                        except Exception as e:
-                            logger.debug(f"Failed to send grace period notification: {e}")
-                        
-                    else:
-                        # No active position - stop immediately
-                        logger.critical("No active position - stopping trading immediately")
-                        
-                        # Disable trading
-                        bot_status["trading_enabled"] = False
-                        bot_status["emergency_stop"] = True
-                        bot_status["stop_reason"] = stop_reason
-                        
-                        # Send notification
-                        try:
-                            notifier = get_notifier()
-                            notifier.send_error_alert(
-                                error_message=f"≡ƒÜ¿ TRADING STOPPED: {reason}\n\nPlease renew your license to continue trading.",
-                                error_type="License Expired"
-                            )
-                        except Exception as e:
-                            logger.debug(f"Failed to send license expiry notification: {e}")
-                        
-                        logger.critical("≡ƒöÆ Trading disabled - license renewal required")
-                        logger.critical("Contact support@quotrading.com to renew your license")
+                    # Block new trades but allow position management
+                    # Note: check_safety_conditions will allow position management
+                    # but block new entries when license_expired=True and position is active
+                    
+                    # Send notification about grace period
+                    try:
+                        notifier = get_notifier()
+                        position = state[symbol]["position"]
+                        notifier.send_error_alert(
+                            error_message=f"🛡️ LICENSE EXPIRED (Grace Period Active)\n\n"
+                                         f"Your license has expired but you have an active {position['side']} position.\n"
+                                         f"Bot will continue managing the position until it closes.\n"
+                                         f"Position: {position['quantity']} contracts @ ${position['entry_price']:.2f}\n\n"
+                                         f"No new trades will be allowed.\n"
+                                         f"Please renew your license.",
+                            error_type="License Expired - Grace Period"
+                        )
+                    except Exception as e:
+                        logger.debug(f"Failed to send grace period notification: {e}")
+                    
                 else:
-                    logger.warning(f"ΓÜá∩╕Å {stop_reason}")
+                    # No active position - stop immediately
+                    logger.critical("=" * 70)
+                    logger.critical("")
+                    logger.critical("  LICENSE EXPIRED")
+                    logger.critical("")
+                    logger.critical("  Your license has expired and is no longer valid.")
+                    logger.critical("  Please renew your license to continue trading.")
+                    logger.critical("")
+                    logger.critical("  Contact: support@quotrading.com")
+                    logger.critical("")
+                    logger.critical("=" * 70)
+                    
+                    # Disable trading
+                    bot_status["trading_enabled"] = False
+                    bot_status["emergency_stop"] = True
+                    bot_status["stop_reason"] = "License expired - trading stopped"
+                    
+                    # Send notification
+                    try:
+                        notifier = get_notifier()
+                        notifier.send_error_alert(
+                            error_message=f"🛡️ TRADING STOPPED: {reason}\n\nPlease renew your license to continue trading.",
+                            error_type="License Expired"
+                        )
+                    except Exception as e:
+                        pass  # Silent - no logs after expiration
+                    
+                    # Disconnect broker cleanly
+                    logger.critical("Disconnecting from broker...")
+                    try:
+                        if broker is not None:
+                            broker.disconnect()
+                    except Exception as e:
+                        pass  # Silent disconnect
+                    
+                    # Exit the bot completely - no more logs
+                    logger.critical("Bot shutdown complete.")
+                    import sys
+                    import time
+                    time.sleep(2)  # Give user time to read message
+                    sys.exit(0)
             else:
                 # License is still valid
                 logger.debug("Γ£à License validation successful")
@@ -7817,6 +7824,102 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
     except Exception as e:
         # Other error - log but continue trading
         logger.warning(f"License validation error: {e} - will retry in 5 minutes")
+
+
+def send_heartbeat() -> None:
+    """
+    Send bot heartbeat to cloud API for online status tracking.
+    Called every 30 seconds to show bot is alive.
+    Admin dashboard uses this to show online users and performance.
+    """
+    # Skip in backtest mode
+    if is_backtest_mode():
+        return
+    
+    try:
+        import requests
+        
+        api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
+        license_key = CONFIG.get("quotrading_license") or CONFIG.get("user_api_key")
+        
+        if not license_key:
+            return
+        
+        # Collect performance metrics from symbol state
+        symbol = CONFIG.get("instrument", "ES")
+        
+        # Get session stats if symbol state exists
+        session_pnl = 0.0
+        total_trades = 0
+        winning_trades = 0
+        losing_trades = 0
+        current_position = 0
+        position_pnl = 0.0
+        
+        if symbol in state:
+            session_stats = state[symbol].get("session_stats", {})
+            session_pnl = session_stats.get("total_pnl", 0.0)
+            total_trades = len(session_stats.get("trades", []))
+            winning_trades = session_stats.get("win_count", 0)
+            losing_trades = session_stats.get("loss_count", 0)
+            
+            # Get current position info
+            position = state[symbol].get("position", {})
+            if position.get("active", False):
+                qty = position.get("quantity", 0)
+                current_position = qty if position.get("side") == "long" else -qty
+                
+                # Calculate unrealized P&L if we have current price
+                entry_price = position.get("entry_price", 0)
+                current_price = state[symbol].get("last_price", 0)
+                if entry_price and current_price:
+                    tick_value = CONFIG.get("tick_value", 12.50)
+                    if position.get("side") == "long":
+                        position_pnl = (current_price - entry_price) * qty * tick_value
+                    else:
+                        position_pnl = (entry_price - current_price) * qty * tick_value
+        
+        win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+        
+        # Send heartbeat with bot status and performance
+        payload = {
+            "license_key": license_key,
+            "bot_version": "2.0.0",
+            "status": "online" if bot_status.get("trading_enabled", False) else "idle",
+            "metadata": {
+                "symbol": symbol,
+                "shadow_mode": CONFIG.get("shadow_mode", False),
+                "kill_switch_active": bot_status.get("kill_switch_active", False),
+                # Real-time performance metrics
+                "session_pnl": round(session_pnl, 2),
+                "total_trades": total_trades,
+                "winning_trades": winning_trades,
+                "losing_trades": losing_trades,
+                "win_rate": round(win_rate, 1),
+                "current_position": current_position,
+                "position_pnl": round(position_pnl, 2),
+                # License status indicators
+                "license_expired": bot_status.get("license_expired", False),
+                "license_grace_period": bot_status.get("license_grace_period", False),
+                "near_expiry_mode": bot_status.get("near_expiry_mode", False),
+                "days_until_expiration": bot_status.get("days_until_expiration"),
+                "hours_until_expiration": bot_status.get("hours_until_expiration")
+            }
+        }
+        
+        response = requests.post(
+            f"{api_url}/api/heartbeat",
+            json=payload,
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            logger.debug("Heartbeat sent successfully")
+        else:
+            logger.debug(f"Heartbeat returned HTTP {response.status_code}")
+    
+    except Exception as e:
+        logger.debug(f"Heartbeat error: {e}")
 
 
 def handle_shutdown_event(data: Dict[str, Any]) -> None:

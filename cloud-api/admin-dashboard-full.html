@@ -1,0 +1,2368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuoTrading Admin Control Center</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #f8f9fa;
+            color: #202124;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Google Sheets-style header */
+        .header {
+            background: #fff;
+            border-bottom: 1px solid #dadce0;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo {
+            font-size: 18px;
+            font-weight: 600;
+            color: #5f6368;
+        }
+
+        .sheet-title {
+            font-size: 18px;
+            font-weight: 400;
+            color: #202124;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .refresh-btn, .export-btn, .add-btn {
+            background: #1a73e8;
+            color: white;
+            border: none;
+            padding: 8px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+
+        .refresh-btn:hover, .add-btn:hover {
+            background: #1765cc;
+        }
+
+        .export-btn {
+            background: #34a853;
+        }
+
+        .export-btn:hover {
+            background: #2d9249;
+        }
+
+        .last-update {
+            font-size: 12px;
+            color: #5f6368;
+        }
+
+        /* System Health Indicators */
+        .system-health {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 4px 12px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .health-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .health-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .health-dot.healthy {
+            background: #34a853;
+            box-shadow: 0 0 4px rgba(52, 168, 83, 0.5);
+        }
+
+        .health-dot.unhealthy {
+            background: #ea4335;
+            box-shadow: 0 0 4px rgba(234, 67, 53, 0.5);
+            animation: pulse-error 1s infinite;
+        }
+
+        .health-dot.degraded {
+            background: #fbbc04;
+            box-shadow: 0 0 4px rgba(251, 188, 4, 0.5);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        @keyframes pulse-error {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.1); }
+        }
+
+        .health-text {
+            color: #5f6368;
+            font-weight: 500;
+        }
+
+        .health-metric {
+            color: #80868b;
+            font-size: 11px;
+        }
+
+        /* Tab navigation like Google Sheets */
+        .tabs {
+            background: #fff;
+            border-bottom: 1px solid #dadce0;
+            padding: 0 20px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            font-size: 14px;
+            color: #5f6368;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            background: #f1f3f4;
+        }
+
+        .tab.active {
+            color: #1a73e8;
+            border-bottom-color: #1a73e8;
+            font-weight: 500;
+        }
+
+        /* Stats bar */
+        .stats-bar {
+            background: #fff;
+            padding: 16px 20px;
+            border-bottom: 1px solid #dadce0;
+            display: flex;
+            gap: 32px;
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #5f6368;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 500;
+            color: #202124;
+        }
+
+        .stat-value.online {
+            color: #34a853;
+        }
+
+        .stat-value.profit {
+            color: #34a853;
+        }
+
+        .stat-value.loss {
+            color: #ea4335;
+        }
+
+        /* Main content area */
+        .content {
+            height: calc(100vh - 180px);
+            overflow: auto;
+            background: #fff;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 0;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Google Sheets-style table */
+        .sheet-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        .sheet-table thead {
+            position: sticky;
+            top: 0;
+            background: #f8f9fa;
+            z-index: 10;
+        }
+
+        .sheet-table th {
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 500;
+            color: #202124;
+            border-bottom: 1px solid #dadce0;
+            border-right: 1px solid #dadce0;
+            background: #f8f9fa;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .sheet-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #e8eaed;
+            border-right: 1px solid #e8eaed;
+            color: #202124;
+        }
+
+        .sheet-table tbody tr {
+            transition: background 0.15s;
+        }
+
+        .sheet-table tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        /* Expiring license row highlighting */
+        .sheet-table tbody tr.license-expired {
+            background: #fce8e6 !important;
+        }
+
+        .sheet-table tbody tr.license-critical {
+            background: #fce8e6 !important;
+        }
+
+        .sheet-table tbody tr.license-warning {
+            background: #fef7e0 !important;
+        }
+
+        .sheet-table tbody tr.license-caution {
+            background: #fffde7 !important;
+        }
+
+        /* Cell types */
+        .cell-editable {
+            cursor: text;
+            position: relative;
+        }
+
+        .cell-editable:hover {
+            outline: 1px solid #1a73e8;
+            outline-offset: -1px;
+        }
+
+        /* Status badges */
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+
+        .badge-active {
+            background: #e6f4ea;
+            color: #1e8e3e;
+        }
+
+        .badge-suspended {
+            background: #fce8e6;
+            color: #c5221f;
+        }
+
+        .badge-online {
+            background: #e8f0fe;
+            color: #1967d2;
+        }
+
+        .badge-beta {
+            background: #fef7e0;
+            color: #ea8600;
+        }
+
+        .badge-admin {
+            background: #f3e8fd;
+            color: #8430ce;
+        }
+
+        .badge-monthly, .badge-annual, .badge-trial {
+            background: #e8f0fe;
+            color: #1967d2;
+        }
+
+        .badge-expired, .badge-cancelled {
+            background: #f5f5f5;
+            color: #5f6368;
+        }
+
+        /* Expiration status badges */
+        .badge-expires-critical {
+            background: #fce8e6;
+            color: #c5221f;
+            font-weight: 600;
+        }
+
+        .badge-expires-warning {
+            background: #fef7e0;
+            color: #e37400;
+            font-weight: 600;
+        }
+
+        .badge-expires-caution {
+            background: #fffde7;
+            color: #c17900;
+        }
+
+        .badge-expires-active {
+            background: #e6f4ea;
+            color: #1e8e3e;
+        }
+
+        .badge-expires-expired {
+            background: #f5f5f5;
+            color: #5f6368;
+            font-weight: 600;
+        }
+
+        /* Action buttons in cells */
+        .action-btn {
+            background: transparent;
+            border: 1px solid #dadce0;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            color: #5f6368;
+            transition: all 0.2s;
+            margin-right: 4px;
+        }
+
+        .action-btn:hover {
+            background: #f8f9fa;
+            border-color: #202124;
+            color: #202124;
+        }
+
+        .action-btn.danger {
+            color: #d93025;
+            border-color: #d93025;
+        }
+
+        .action-btn.danger:hover {
+            background: #fce8e6;
+        }
+
+        .action-btn.success {
+            color: #1e8e3e;
+            border-color: #1e8e3e;
+        }
+
+        .action-btn.success:hover {
+            background: #e6f4ea;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.4);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        }
+
+        .modal-header {
+            padding: 24px;
+            border-bottom: 1px solid #dadce0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 400;
+            color: #202124;
+        }
+
+        .close-btn {
+            background: transparent;
+            border: none;
+            font-size: 32px;
+            color: #5f6368;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            line-height: 28px;
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+
+        .close-btn:hover {
+            background: #f8f9fa;
+            color: #202124;
+        }
+
+        .modal-body {
+            padding: 24px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            color: #5f6368;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .form-input, .form-select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: 'Segoe UI', sans-serif;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus, .form-select:focus {
+            outline: none;
+            border-color: #1a73e8;
+        }
+
+        .modal-footer {
+            padding: 16px 24px;
+            border-top: 1px solid #dadce0;
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        .btn-cancel {
+            background: transparent;
+            border: none;
+            padding: 8px 16px;
+            cursor: pointer;
+            color: #5f6368;
+            font-size: 14px;
+        }
+
+        .btn-cancel:hover {
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+
+        .btn-primary {
+            background: #1a73e8;
+            color: white;
+            border: none;
+            padding: 8px 24px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .btn-primary:hover {
+            background: #1765cc;
+        }
+
+        /* Search and filter bar */
+        .toolbar {
+            padding: 12px 20px;
+            background: #fff;
+            border-bottom: 1px solid #dadce0;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .search-box {
+            flex: 1;
+            max-width: 400px;
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 8px 12px 8px 36px;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #5f6368;
+        }
+
+        .filter-btn {
+            padding: 8px 16px;
+            border: 1px solid #dadce0;
+            background: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            color: #5f6368;
+        }
+
+        .filter-btn:hover {
+            background: #f8f9fa;
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #5f6368;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            opacity: 0.3;
+        }
+
+        .empty-state-text {
+            font-size: 16px;
+        }
+
+        /* Success message */
+        .success-message {
+            background: #e6f4ea;
+            border: 1px solid #34a853;
+            color: #1e8e3e;
+            padding: 12px 16px;
+            border-radius: 4px;
+            margin-bottom: 16px;
+            display: none;
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f3f4;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #dadce0;
+            border-radius: 6px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #bdc1c6;
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="header-left">
+            <div class="logo">📊 QuoTrading</div>
+            <div class="sheet-title">Admin Control Center</div>
+        </div>
+        <div class="header-right">
+            <div class="system-health" id="systemHealth">
+                <div class="health-indicator">
+                    <div class="health-dot healthy" id="dbHealthDot"></div>
+                    <span class="health-text">DB</span>
+                    <span class="health-metric" id="dbResponseTime">-</span>
+                </div>
+                <div class="health-indicator">
+                    <div class="health-dot healthy" id="rlHealthDot"></div>
+                    <span class="health-text">RL</span>
+                    <span class="health-metric" id="rlExperienceCount">-</span>
+                </div>
+            </div>
+            <span class="last-update" id="lastUpdate">Loading...</span>
+            <button class="export-btn" onclick="exportToCSV()">📥 Export</button>
+            <button class="add-btn" onclick="openAddUserModal()">+ Add User</button>
+            <button class="refresh-btn" onclick="loadDashboard()">🔄 Refresh</button>
+        </div>
+    </div>
+
+    <!-- Stats Bar -->
+    <div class="stats-bar">
+        <div class="stat-item">
+            <div class="stat-label">Total Users</div>
+            <div class="stat-value" id="totalUsers">0</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">Active</div>
+            <div class="stat-value" id="activeUsers">0</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">Expiring Soon</div>
+            <div class="stat-value" style="color: #e37400;" id="expiringUsers">0</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">Online Now</div>
+            <div class="stat-value online" id="onlineUsers">0</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">API Calls (24h)</div>
+            <div class="stat-value" id="apiCalls">0</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">Total Trades</div>
+            <div class="stat-value" id="totalTrades">0</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-label">Total P&L</div>
+            <div class="stat-value profit" id="totalPnl">$0.00</div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <div class="tab active" onclick="switchTab('users')">👥 Users</div>
+        <div class="tab" onclick="switchTab('activity')">📊 Activity</div>
+        <div class="tab" onclick="switchTab('online')">🟢 Online</div>
+        <div class="tab" onclick="switchTab('test')">🔑 Test License</div>
+        <div class="tab" onclick="switchTab('rl')">🧠 RL Brain</div>
+        <div class="tab" onclick="switchTab('reports')">📈 Reports</div>
+    </div>
+
+    <!-- Content Area -->
+    <div class="content">
+        <!-- Users Tab -->
+        <div class="tab-content active" id="users-tab">
+            <div class="toolbar">
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input type="text" class="search-input" placeholder="Search users..." id="userSearch" onkeyup="filterUsers()">
+                </div>
+                <button class="filter-btn" onclick="filterByStatus('ACTIVE')">Active Only</button>
+                <button class="filter-btn" onclick="filterByStatus('all')">Show All</button>
+            </div>
+            <table class="sheet-table">
+                <thead>
+                    <tr>
+                        <th style="width: 120px">Account ID</th>
+                        <th style="width: 200px">Email</th>
+                        <th style="width: 100px">License Type</th>
+                        <th style="width: 100px">Status</th>
+                        <th style="width: 120px">Expires</th>
+                        <th style="width: 140px">Last Active</th>
+                        <th style="width: 100px">API Calls</th>
+                        <th style="width: 100px">Trades</th>
+                        <th style="width: 250px">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="usersTableBody">
+                    <tr>
+                        <td colspan="9" class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <div class="empty-state-text">Loading users...</div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Activity Tab -->
+        <div class="tab-content" id="activity-tab">
+            <table class="sheet-table">
+                <thead>
+                    <tr>
+                        <th style="width: 160px">Timestamp</th>
+                        <th style="width: 120px">User</th>
+                        <th style="width: 200px">Endpoint</th>
+                        <th style="width: 80px">Method</th>
+                        <th style="width: 100px">Status</th>
+                        <th style="width: 120px">Response Time</th>
+                        <th style="width: 140px">IP Address</th>
+                    </tr>
+                </thead>
+                <tbody id="activityTableBody">
+                    <tr>
+                        <td colspan="7" class="empty-state">
+                            <div class="empty-state-icon">📊</div>
+                            <div class="empty-state-text">No recent activity</div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Online Users Tab -->
+        <div class="tab-content" id="online-tab">
+            <div style="padding: 24px; max-width: 1800px; margin: 0 auto;">
+                <div style="background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 style="font-size: 20px; margin: 0; color: #202124;">🟢 Online Users - Real-Time Performance</h3>
+                        <div style="font-size: 14px; color: #5f6368;">Updates every 30 seconds</div>
+                    </div>
+                    
+                    <table class="sheet-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 100px">Account</th>
+                                <th style="width: 180px">Email</th>
+                                <th style="width: 80px">Symbol</th>
+                                <th style="width: 90px">Status</th>
+                                <th style="width: 90px">Session P&L</th>
+                                <th style="width: 70px">Trades</th>
+                                <th style="width: 80px">Win Rate</th>
+                                <th style="width: 80px">Position</th>
+                                <th style="width: 90px">Position P&L</th>
+                                <th style="width: 140px">Last Active</th>
+                            </tr>
+                        </thead>
+                        <tbody id="onlineTableBody">
+                    <tr>
+                        <td colspan="5" class="empty-state">
+                            <div class="empty-state-icon">🟢</div>
+                            <div class="empty-state-text">No users online</div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Test License Tab -->
+        <div class="tab-content" id="test-tab">
+            <div style="padding: 40px; max-width: 800px; margin: 0 auto;">
+                <h2 style="font-size: 28px; margin-bottom: 30px; color: #202124;">
+                    🔑 License Key Tester
+                </h2>
+                
+                <div style="background: white; border-radius: 16px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                    <p style="color: #5f6368; margin-bottom: 24px;">
+                        Test any license key to verify it's working correctly. This simulates what the bot does when it starts up.
+                    </p>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <label style="display: block; margin-bottom: 8px; color: #202124; font-weight: 500;">License Key</label>
+                        <input type="text" id="testLicenseKey" placeholder="XXXX-XXXX-XXXX-XXXX" 
+                            style="width: 100%; padding: 12px 16px; border: 1px solid #dadce0; border-radius: 4px; font-size: 16px; font-family: 'Courier New', monospace;">
+                    </div>
+                    
+                    <button onclick="testLicenseKey()" 
+                        style="width: 100%; background: #1a73e8; color: white; border: none; padding: 14px 24px; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500; transition: background 0.2s;">
+                        🔍 Test License Key
+                    </button>
+                    
+                    <div id="testResult" style="margin-top: 24px; display: none;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RL Brain Tab -->
+        <div class="tab-content" id="rl-tab">
+            <div style="padding: 40px;">
+                <div style="max-width: 1600px; margin: 0 auto;">
+                    <h2 style="font-size: 28px; margin-bottom: 30px; color: #202124;">
+                        🧠 Collective RL Brain
+                    </h2>
+                    
+                    <!-- RL Experience Count Card -->
+                    <div style="display: flex; justify-content: flex-end; gap: 20px; margin-bottom: 30px;">
+                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); min-width: 200px;">
+                            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 5px;">🧠 Total Experiences</div>
+                            <div style="font-size: 32px; font-weight: bold;" id="signalExpCount">Loading...</div>
+                            <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">+<span id="signalExp24h">0</span> today</div>
+                        </div>
+                    </div>
+                    
+                    <div style="background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h3 style="font-size: 20px; margin: 0; color: #202124;">📊 Trade Experiences - Real-time Feed</h3>
+                            <div>
+                                <button class="filter-btn" onclick="filterRLExperiences('winning')">Winning Only</button>
+                                <button class="filter-btn" onclick="filterRLExperiences('losing')">Losing Only</button>
+                                <button class="filter-btn" onclick="filterRLExperiences('all')">Show All</button>
+                            </div>
+                        </div>
+                        
+                        <table class="sheet-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 140px">Timestamp</th>
+                                    <th style="width: 80px">Symbol</th>
+                                    <th style="width: 60px">Side</th>
+                                    <th style="width: 80px">Price</th>
+                                    <th style="width: 60px">RSI</th>
+                                    <th style="width: 90px">VWAP Dist</th>
+                                    <th style="width: 70px">ATR</th>
+                                    <th style="width: 80px">Vol Ratio</th>
+                                    <th style="width: 90px">Recent P&L</th>
+                                    <th style="width: 70px">Streak</th>
+                                    <th style="width: 80px">Took Trade</th>
+                                    <th style="width: 80px">Reward</th>
+                                    <th style="width: 90px">Duration</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rlExperiencesTable">
+                                <tr>
+                                    <td colspan="13" class="empty-state">
+                                        <div class="empty-state-icon">🧠</div>
+                                        <div class="empty-state-text">Loading RL experiences...</div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        
+                        <div style="margin-top: 16px; text-align: center; color: #5f6368; font-size: 13px;">
+                            Showing last 100 experiences. <span id="rlLastUpdated" style="font-weight: 600;">-</span>
+                        </div>
+                    </div>
+                    
+                    <div style="background: white; border-radius: 16px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                        <h3 style="font-size: 20px; margin-bottom: 20px; color: #202124;">📈 Learning Progress</h3>
+                        <div style="color: #5f6368; line-height: 1.8;">
+                            <p><strong>How it works:</strong> Every bot running in production sends trading experiences to this centralized cloud brain. The more customers you have, the faster the RL system learns.</p>
+                            
+                            <p style="margin-top: 16px; padding: 16px; background: #e8f5e9; border-left: 4px solid #4caf50; border-radius: 8px;">
+                                💡 <strong>Growth Strategy:</strong> As more users trade, the collective brain gets smarter. Each customer contributes experiences, and all customers benefit from improved signal quality.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Reports Tab -->
+        <div class="tab-content" id="reports-tab">
+            <div style="padding: 40px;">
+                <div style="max-width: 1600px; margin: 0 auto;">
+                    <h2 style="font-size: 28px; margin-bottom: 30px; color: #202124;">
+                        📈 Advanced Reports & Analytics
+                    </h2>
+                    
+                    <!-- Report Configuration Panel -->
+                    <div style="background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
+                        <h3 style="font-size: 20px; margin-bottom: 20px; color: #202124;">Report Configuration</h3>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                            <!-- Report Type Selector -->
+                            <div class="form-group">
+                                <label class="form-label">Report Type</label>
+                                <select class="form-select" id="reportType" onchange="updateReportFilters()">
+                                    <option value="user-activity">User Activity Report</option>
+                                    <option value="revenue">Revenue Analysis</option>
+                                    <option value="performance">Trading Performance</option>
+                                    <option value="retention">Retention & Churn</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Date Range -->
+                            <div class="form-group" id="startDateGroup">
+                                <label class="form-label">Start Date</label>
+                                <input type="date" class="form-input" id="reportStartDate">
+                            </div>
+                            
+                            <div class="form-group" id="endDateGroup">
+                                <label class="form-label">End Date</label>
+                                <input type="date" class="form-input" id="reportEndDate">
+                            </div>
+                        </div>
+                        
+                        <!-- Quick Date Filters -->
+                        <div style="margin-bottom: 20px;" id="quickFiltersGroup">
+                            <label class="form-label">Quick Filters:</label>
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+                                <button class="filter-btn" onclick="setQuickDateRange(7)">Last 7 Days</button>
+                                <button class="filter-btn" onclick="setQuickDateRange(30)">Last 30 Days</button>
+                                <button class="filter-btn" onclick="setQuickDateRange('month')">This Month</button>
+                                <button class="filter-btn" onclick="setQuickDateRange('lastMonth')">Last Month</button>
+                                <button class="filter-btn" onclick="setQuickDateRange('quarter')">This Quarter</button>
+                                <button class="filter-btn" onclick="setQuickDateRange('year')">This Year</button>
+                            </div>
+                        </div>
+                        
+                        <!-- Additional Filters -->
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                            <!-- License Type Filter (for user activity & revenue) -->
+                            <div class="form-group" id="licenseTypeGroup">
+                                <label class="form-label">License Type</label>
+                                <select class="form-select" id="reportLicenseType">
+                                    <option value="all">All Types</option>
+                                    <option value="MONTHLY">Monthly</option>
+                                    <option value="ANNUAL">Annual</option>
+                                    <option value="TRIAL">Trial</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Status Filter (for user activity) -->
+                            <div class="form-group" id="statusGroup">
+                                <label class="form-label">Status</label>
+                                <select class="form-select" id="reportStatus">
+                                    <option value="all">All Statuses</option>
+                                    <option value="ACTIVE">Active</option>
+                                    <option value="SUSPENDED">Suspended</option>
+                                    <option value="EXPIRED">Expired</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Symbol Filter (for performance) -->
+                            <div class="form-group" id="symbolGroup" style="display: none;">
+                                <label class="form-label">Symbol</label>
+                                <select class="form-select" id="reportSymbol">
+                                    <option value="all">All Symbols</option>
+                                    <option value="ES">ES (E-mini S&P 500)</option>
+                                    <option value="NQ">NQ (E-mini Nasdaq)</option>
+                                    <option value="YM">YM (E-mini Dow)</option>
+                                    <option value="RTY">RTY (E-mini Russell)</option>
+                                </select>
+                            </div>
+                            
+                            <!-- Month/Year (for revenue) -->
+                            <div class="form-group" id="monthGroup" style="display: none;">
+                                <label class="form-label">Month</label>
+                                <select class="form-select" id="reportMonth">
+                                    <option value="1">January</option>
+                                    <option value="2">February</option>
+                                    <option value="3">March</option>
+                                    <option value="4">April</option>
+                                    <option value="5">May</option>
+                                    <option value="6">June</option>
+                                    <option value="7">July</option>
+                                    <option value="8">August</option>
+                                    <option value="9">September</option>
+                                    <option value="10">October</option>
+                                    <option value="11">November</option>
+                                    <option value="12">December</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group" id="yearGroup" style="display: none;">
+                                <label class="form-label">Year</label>
+                                <select class="form-select" id="reportYear">
+                                    <option value="2025">2025</option>
+                                    <option value="2024">2024</option>
+                                    <option value="2023">2023</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <!-- Generate Button -->
+                        <div style="display: flex; gap: 12px; align-items: center;">
+                            <button class="refresh-btn" onclick="generateReport()" style="font-size: 16px; padding: 12px 32px;">
+                                Generate Report
+                            </button>
+                            <button class="export-btn" onclick="exportReportCSV()" id="exportReportBtn" style="display: none;">
+                                Export to CSV
+                            </button>
+                            <span id="reportLoadingIndicator" style="display: none; color: #1a73e8; font-size: 14px;">
+                                ⏳ Generating report...
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <!-- Report Results -->
+                    <div id="reportResults" style="display: none;">
+                        <!-- User Activity Report Table -->
+                        <div id="userActivityResults" style="display: none; background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                            <h3 style="font-size: 20px; margin-bottom: 16px; color: #202124;">User Activity Report</h3>
+                            <p style="color: #5f6368; margin-bottom: 16px;" id="userActivityCount"></p>
+                            <div style="overflow-x: auto;">
+                                <table class="sheet-table">
+                                    <thead>
+                                        <tr>
+                                            <th onclick="sortReportTable(0)">Account ID</th>
+                                            <th onclick="sortReportTable(1)">Email</th>
+                                            <th onclick="sortReportTable(2)">Signup Date</th>
+                                            <th onclick="sortReportTable(3)">Last Active</th>
+                                            <th onclick="sortReportTable(4)">License Type</th>
+                                            <th onclick="sortReportTable(5)">Status</th>
+                                            <th onclick="sortReportTable(6)">API Calls</th>
+                                            <th onclick="sortReportTable(7)">Trades</th>
+                                            <th onclick="sortReportTable(8)">Total P&L</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="userActivityTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- Revenue Report -->
+                        <div id="revenueResults" style="display: none; background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                            <h3 style="font-size: 20px; margin-bottom: 24px; color: #202124;">Revenue Analysis Report</h3>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                                <div style="padding: 16px; background: #e3f2fd; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #1976d2; margin-bottom: 4px;">New Subscriptions</div>
+                                    <div style="font-size: 28px; font-weight: bold; color: #1565c0;" id="revNewSubs">-</div>
+                                    <div style="font-size: 12px; color: #1976d2; margin-top: 4px;" id="revNewRev">-</div>
+                                </div>
+                                <div style="padding: 16px; background: #e8f5e9; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #388e3c; margin-bottom: 4px;">Monthly Recurring Revenue</div>
+                                    <div style="font-size: 28px; font-weight: bold; color: #2e7d32;" id="revMRR">-</div>
+                                    <div style="font-size: 12px; color: #388e3c; margin-top: 4px;" id="revARPU">-</div>
+                                </div>
+                                <div style="padding: 16px; background: #fff3e0; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #f57c00; margin-bottom: 4px;">Cancellations</div>
+                                    <div style="font-size: 28px; font-weight: bold; color: #e65100;" id="revCancellations">-</div>
+                                    <div style="font-size: 12px; color: #f57c00; margin-top: 4px;" id="revLostRev">-</div>
+                                </div>
+                                <div style="padding: 16px; background: #fce4ec; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #c2185b; margin-bottom: 4px;">Churn Rate</div>
+                                    <div style="font-size: 28px; font-weight: bold; color: #ad1457;" id="revChurnRate">-</div>
+                                    <div style="font-size: 12px; color: #c2185b; margin-top: 4px;">vs. last period</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Performance Report -->
+                        <div id="performanceResults" style="display: none; background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                            <h3 style="font-size: 20px; margin-bottom: 24px; color: #202124;">Trading Performance Report</h3>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                                <div style="padding: 16px; background: #f5f5f5; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #5f6368;">Total Trades</div>
+                                    <div style="font-size: 24px; font-weight: bold;" id="perfTotalTrades">-</div>
+                                </div>
+                                <div style="padding: 16px; background: #f5f5f5; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #5f6368;">Win Rate</div>
+                                    <div style="font-size: 24px; font-weight: bold;" id="perfWinRate">-</div>
+                                </div>
+                                <div style="padding: 16px; background: #f5f5f5; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #5f6368;">Total P&L</div>
+                                    <div style="font-size: 24px; font-weight: bold;" id="perfTotalPnL">-</div>
+                                </div>
+                                <div style="padding: 16px; background: #f5f5f5; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #5f6368;">Avg Duration</div>
+                                    <div style="font-size: 24px; font-weight: bold;" id="perfAvgDuration">-</div>
+                                </div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                <div style="padding: 16px; background: #e8f5e9; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #388e3c; margin-bottom: 8px;">Best Performing Day</div>
+                                    <div style="font-size: 20px; font-weight: bold; color: #2e7d32;" id="perfBestDay">-</div>
+                                    <div style="font-size: 16px; color: #388e3c; margin-top: 4px;" id="perfBestDayPnL">-</div>
+                                </div>
+                                <div style="padding: 16px; background: #ffebee; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #d32f2f; margin-bottom: 8px;">Worst Performing Day</div>
+                                    <div style="font-size: 20px; font-weight: bold; color: #c62828;" id="perfWorstDay">-</div>
+                                    <div style="font-size: 16px; color: #d32f2f; margin-top: 4px;" id="perfWorstDayPnL">-</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Retention Report -->
+                        <div id="retentionResults" style="display: none; background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                            <h3 style="font-size: 20px; margin-bottom: 24px; color: #202124;">Retention & Churn Report</h3>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+                                <div style="padding: 16px; background: #e3f2fd; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #1976d2;">Active Users</div>
+                                    <div style="font-size: 28px; font-weight: bold; color: #1565c0;" id="retActiveUsers">-</div>
+                                </div>
+                                <div style="padding: 16px; background: #fff3e0; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #f57c00;">Expired This Month</div>
+                                    <div style="font-size: 28px; font-weight: bold; color: #e65100;" id="retExpired">-</div>
+                                </div>
+                                <div style="padding: 16px; background: #e8f5e9; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #388e3c;">Retention Rate</div>
+                                    <div style="font-size: 28px; font-weight: bold; color: #2e7d32;" id="retRetentionRate">-</div>
+                                </div>
+                                <div style="padding: 16px; background: #fce4ec; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #c2185b;">Churn Rate</div>
+                                    <div style="font-size: 28px; font-weight: bold; color: #ad1457;" id="retChurnRate">-</div>
+                                </div>
+                                <div style="padding: 16px; background: #f5f5f5; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #5f6368;">Avg Subscription</div>
+                                    <div style="font-size: 28px; font-weight: bold;" id="retAvgDays">-</div>
+                                </div>
+                                <div style="padding: 16px; background: #f3e5f5; border-radius: 8px;">
+                                    <div style="font-size: 14px; color: #7b1fa2;">Lifetime Value</div>
+                                    <div style="font-size: 28px; font-weight: bold; color: #6a1b9a;" id="retLTV">-</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Cohort Analysis -->
+                            <h4 style="font-size: 18px; margin: 24px 0 16px; color: #202124;">Cohort Analysis</h4>
+                            <table class="sheet-table">
+                                <thead>
+                                    <tr>
+                                        <th>Cohort Month</th>
+                                        <th>Total Users</th>
+                                        <th>Still Active</th>
+                                        <th>Retention %</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="cohortTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add User Modal -->
+    <div class="modal" id="addUserModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Add New User</h2>
+            </div>
+            <div class="modal-body">
+                <div class="success-message" id="successMessage"></div>
+                <form id="addUserForm" onsubmit="createUser(event)">
+                    <div class="form-group">
+                        <label class="form-label">Account ID *</label>
+                        <input type="text" class="form-input" id="accountId" required placeholder="e.g., USER001">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Email *</label>
+                        <input type="email" class="form-input" id="email" required placeholder="user@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">License Type *</label>
+                        <select class="form-select" id="licenseType" required>
+                            <option value="TRIAL">Trial (7 days)</option>
+                            <option value="BETA" selected>Beta (90 days)</option>
+                            <option value="MONTHLY">Monthly (30 days)</option>
+                            <option value="ANNUAL">Annual (365 days)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Days Valid</label>
+                        <input type="number" class="form-input" id="daysValid" value="90" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Notes (optional)</label>
+                        <input type="text" class="form-input" id="notes" placeholder="Any additional notes...">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-cancel" onclick="closeAddUserModal()">Cancel</button>
+                <button class="btn-primary" onclick="document.getElementById('addUserForm').requestSubmit()">Create User</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://quotrading-flask-api.azurewebsites.net';
+        const ADMIN_KEY = 'ADMIN-DEV-KEY-2024';
+
+        let allUsers = [];
+        let currentFilter = 'all';
+
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            loadDashboard();
+        }, 30000);
+
+        // Health check every 30 seconds
+        setInterval(() => {
+            loadSystemHealth();
+        }, 30000);
+
+        // Load on page load
+        loadDashboard();
+        loadSystemHealth();
+
+        async function loadSystemHealth() {
+            try {
+                const response = await fetch(`${API_URL}/api/admin/system-health?admin_key=${ADMIN_KEY}`);
+                const data = await response.json();
+                
+                // Update DB status
+                const dbDot = document.getElementById('dbHealthDot');
+                const dbTime = document.getElementById('dbResponseTime');
+                dbDot.className = 'health-dot ' + data.database.status;
+                dbTime.textContent = data.database.response_time_ms > 0 
+                    ? `${Math.round(data.database.response_time_ms)}ms` 
+                    : 'offline';
+                
+                // Update RL status
+                const rlDot = document.getElementById('rlHealthDot');
+                const rlCount = document.getElementById('rlExperienceCount');
+                rlDot.className = 'health-dot ' + data.rl_engine.status;
+                rlCount.textContent = data.rl_engine.total_experiences > 0 
+                    ? `${data.rl_engine.total_experiences.toLocaleString()} exp` 
+                    : 'offline';
+                
+                // Show error toast if unhealthy
+                if (data.overall_status === 'unhealthy') {
+                    console.error('System health check failed:', data);
+                }
+            } catch (error) {
+                console.error('Failed to load system health:', error);
+                document.getElementById('dbHealthDot').className = 'health-dot unhealthy';
+                document.getElementById('rlHealthDot').className = 'health-dot unhealthy';
+                document.getElementById('dbResponseTime').textContent = 'error';
+                document.getElementById('rlExperienceCount').textContent = 'error';
+            }
+        }
+
+        async function loadDashboard() {
+            await Promise.all([
+                loadStats(),
+                loadUsers(),
+                loadActivity(),
+                loadOnlineUsers(),
+                loadRLStats()
+            ]);
+            
+            document.getElementById('lastUpdate').textContent = 
+                'Updated ' + new Date().toLocaleString();
+        }
+
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_URL}/api/admin/dashboard-stats?license_key=${ADMIN_KEY}`);
+                const data = await response.json();
+                
+                document.getElementById('totalUsers').textContent = data.users.total;
+                document.getElementById('activeUsers').textContent = data.users.active;
+                document.getElementById('onlineUsers').textContent = data.users.online_now;
+                document.getElementById('apiCalls').textContent = data.api_calls.last_24h.toLocaleString();
+                document.getElementById('totalTrades').textContent = data.trades.total;
+                
+                const pnl = data.trades.total_pnl;
+                const pnlEl = document.getElementById('totalPnl');
+                pnlEl.textContent = '$' + pnl.toFixed(2);
+                pnlEl.className = 'stat-value ' + (pnl >= 0 ? 'profit' : 'loss');
+                
+                // Update RL experience count from database
+                const dbSignalExp = data.rl_experiences?.total_signal_experiences || 0;
+                
+                document.getElementById('signalExpCount').textContent = 
+                    dbSignalExp.toLocaleString();
+                document.getElementById('signalExp24h').textContent = 
+                    (data.rl_experiences?.signal_experiences_24h || 0).toLocaleString();
+            } catch (error) {
+                console.error('Failed to load stats:', error);
+            }
+        }
+
+        async function loadUsers() {
+            try {
+                const response = await fetch(`${API_URL}/api/admin/users?license_key=${ADMIN_KEY}`);
+                const data = await response.json();
+                allUsers = data.users;
+                
+                renderUsers(allUsers);
+            } catch (error) {
+                console.error('Failed to load users:', error);
+            }
+        }
+
+        function renderUsers(users) {
+            const tbody = document.getElementById('usersTableBody');
+            
+            if (users.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="9" class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <div class="empty-state-text">No users found</div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            // Calculate expiring users count
+            const now = new Date();
+            const expiringCount = users.filter(user => {
+                if (!user.license_expiration || user.license_status !== 'ACTIVE') return false;
+                const expDate = new Date(user.license_expiration);
+                const daysUntilExpiry = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));
+                return daysUntilExpiry >= 0 && daysUntilExpiry <= 7;
+            }).length;
+            document.getElementById('expiringUsers').textContent = expiringCount;
+            
+            tbody.innerHTML = users.map(user => {
+                const expirationInfo = getExpirationInfo(user.license_expiration, user.license_status);
+                
+                return `
+                <tr class="${expirationInfo.rowClass}">
+                    <td><strong>${user.account_id}</strong></td>
+                    <td>${user.email}</td>
+                    <td><span class="badge badge-${user.license_type.toLowerCase()}">${user.license_type}</span></td>
+                    <td><span class="badge badge-${user.license_status.toLowerCase()}">${user.license_status}</span></td>
+                    <td>
+                        ${formatDate(user.license_expiration)}
+                        ${expirationInfo.badge ? `<br><span class="badge ${expirationInfo.badgeClass}">${expirationInfo.badge}</span>` : ''}
+                    </td>
+                    <td>${user.last_active ? formatDateTime(user.last_active) : 'Never'}</td>
+                    <td>${user.api_call_count || 0}</td>
+                    <td>${user.trade_count || 0}</td>
+                    <td>
+                        ${user.license_status === 'ACTIVE' 
+                            ? `<button class="action-btn danger" onclick="suspendUser('${user.account_id}')">Suspend</button>`
+                            : `<button class="action-btn success" onclick="activateUser('${user.account_id}')">Activate</button>`
+                        }
+                        <button class="action-btn" onclick="extendLicense('${user.account_id}')">Extend</button>
+                        <button class="action-btn" onclick="viewDetails('${user.account_id}')">Details</button>
+                    </td>
+                </tr>
+            `}).join('');
+        }
+
+        function getExpirationInfo(expirationDate, status) {
+            if (!expirationDate) {
+                return { badge: null, badgeClass: '', rowClass: '' };
+            }
+            
+            const now = new Date();
+            const expDate = new Date(expirationDate);
+            const daysUntilExpiry = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));
+            
+            if (daysUntilExpiry < 0 || status === 'EXPIRED') {
+                return {
+                    badge: 'EXPIRED',
+                    badgeClass: 'badge-expires-expired',
+                    rowClass: 'license-expired'
+                };
+            } else if (daysUntilExpiry >= 0 && daysUntilExpiry <= 3) {
+                return {
+                    badge: `EXPIRES IN ${daysUntilExpiry} DAY${daysUntilExpiry !== 1 ? 'S' : ''}`,
+                    badgeClass: 'badge-expires-critical',
+                    rowClass: 'license-critical'
+                };
+            } else if (daysUntilExpiry >= 4 && daysUntilExpiry <= 7) {
+                return {
+                    badge: `Expires Soon (${daysUntilExpiry} days)`,
+                    badgeClass: 'badge-expires-warning',
+                    rowClass: 'license-warning'
+                };
+            } else if (daysUntilExpiry >= 8 && daysUntilExpiry <= 14) {
+                return {
+                    badge: `Expires in ${daysUntilExpiry} days`,
+                    badgeClass: 'badge-expires-caution',
+                    rowClass: 'license-caution'
+                };
+            } else {
+                return {
+                    badge: null,
+                    badgeClass: '',
+                    rowClass: ''
+                };
+            }
+        }
+
+        async function loadActivity() {
+            try {
+                const response = await fetch(`${API_URL}/api/admin/recent-activity?license_key=${ADMIN_KEY}&limit=50`);
+                const data = await response.json();
+                
+                const tbody = document.getElementById('activityTableBody');
+                
+                if (data.activity.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="7" class="empty-state">
+                                <div class="empty-state-icon">📊</div>
+                                <div class="empty-state-text">No recent activity</div>
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+                
+                tbody.innerHTML = data.activity.map(act => `
+                    <tr>
+                        <td>${formatDateTime(act.timestamp)}</td>
+                        <td><strong>${act.account_id}</strong></td>
+                        <td><code>${act.endpoint}</code></td>
+                        <td><span class="badge">${act.method}</span></td>
+                        <td><span class="badge ${act.status_code < 400 ? 'badge-active' : 'badge-suspended'}">${act.status_code}</span></td>
+                        <td>${act.response_time_ms}ms</td>
+                        <td>${act.ip_address}</td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load activity:', error);
+            }
+        }
+
+        async function loadOnlineUsers() {
+            try {
+                const response = await fetch(`${API_URL}/api/admin/online-users?license_key=${ADMIN_KEY}`);
+                const data = await response.json();
+                
+                const tbody = document.getElementById('onlineTableBody');
+                
+                if (data.users.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="10" class="empty-state">
+                                <div class="empty-state-icon">🟢</div>
+                                <div class="empty-state-text">No users online</div>
+                            </td>
+                        </tr>
+                    `;
+                    return;
+                }
+                
+                tbody.innerHTML = data.users.map(user => {
+                    const pnl = user.session_pnl || 0;
+                    const pnlColor = pnl >= 0 ? '#34a853' : '#d93025';
+                    const pnlBg = pnl >= 0 ? '#e6f4ea' : '#fce8e6';
+                    
+                    const posPnl = user.position_pnl || 0;
+                    const posPnlColor = posPnl >= 0 ? '#34a853' : '#d93025';
+                    
+                    const winRate = user.win_rate || 0;
+                    const winRateColor = winRate >= 60 ? '#34a853' : winRate >= 40 ? '#ea8600' : '#d93025';
+                    
+                    // License status indicators
+                    const licenseExpired = user.license_expired || false;
+                    const gracePeriod = user.license_grace_period || false;
+                    const nearExpiry = user.near_expiry_mode || false;
+                    const hoursLeft = user.hours_until_expiration;
+                    const daysLeft = user.days_until_expiration;
+                    
+                    let statusColor = '#34a853';
+                    let statusBg = '#e6f4ea';
+                    let statusText = user.status;
+                    let statusIcon = '🟢';
+                    
+                    // Override status based on license state
+                    if (licenseExpired) {
+                        statusColor = '#d93025';
+                        statusBg = '#fce8e6';
+                        statusText = gracePeriod ? 'Grace Period' : 'Expired';
+                        statusIcon = gracePeriod ? '⏳' : '❌';
+                    } else if (nearExpiry && hoursLeft !== null && hoursLeft <= 2) {
+                        statusColor = '#ea8600';
+                        statusBg = '#fef7e0';
+                        statusText = `${hoursLeft.toFixed(1)}h left`;
+                        statusIcon = '⚠️';
+                    } else if (daysLeft !== null && daysLeft <= 7) {
+                        statusColor = '#ea8600';
+                        statusBg = '#fef7e0';
+                        statusText = user.shadow_mode ? '👁️ Shadow' : user.status;
+                        statusIcon = '⚠️';
+                    } else if (user.shadow_mode) {
+                        statusText = '👁️ Shadow';
+                    }
+                    
+                    return `
+                        <tr style="${licenseExpired ? 'background: #fff5f5;' : ''}">
+                            <td><strong>${user.account_id.substring(0, 10)}</strong></td>
+                            <td>${user.email}</td>
+                            <td><span class="badge" style="background: #e8f0fe; color: #1967d2;">${user.symbol}</span></td>
+                            <td>
+                                <span class="badge" style="background: ${statusBg}; color: ${statusColor};">
+                                    ${statusIcon} ${statusText}
+                                </span>
+                                ${nearExpiry && hoursLeft !== null && hoursLeft <= 24 ? 
+                                    `<div style="font-size: 11px; color: #ea8600; margin-top: 2px;">Expires in ${hoursLeft < 1 ? Math.round(hoursLeft * 60) + 'm' : hoursLeft.toFixed(1) + 'h'}</div>` : 
+                                    daysLeft !== null && daysLeft <= 7 ? 
+                                        `<div style="font-size: 11px; color: #ea8600; margin-top: 2px;">Expires in ${daysLeft}d</div>` : ''}
+                            </td>
+                            <td>
+                                <strong style="color: ${pnlColor}; background: ${pnlBg}; padding: 4px 8px; border-radius: 4px; display: inline-block;">
+                                    $${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
+                                </strong>
+                            </td>
+                            <td><strong>${user.total_trades || 0}</strong> <span style="color: #5f6368; font-size: 12px;">(${user.winning_trades || 0}W/${user.losing_trades || 0}L)</span></td>
+                            <td><strong style="color: ${winRateColor};">${winRate.toFixed(1)}%</strong></td>
+                            <td>
+                                <span class="badge" style="background: ${user.current_position !== 0 ? '#fef7e0' : '#f1f3f4'}; color: ${user.current_position !== 0 ? '#c17900' : '#5f6368'};">
+                                    ${user.current_position > 0 ? `+${user.current_position} Long` : user.current_position < 0 ? `${user.current_position} Short` : 'Flat'}
+                                </span>
+                            </td>
+                            <td><strong style="color: ${posPnlColor};">${posPnl >= 0 ? '+' : ''}$${posPnl.toFixed(2)}</strong></td>
+                            <td style="font-size: 13px; color: #5f6368;">${timeAgo(user.last_active)}</td>
+                        </tr>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('Failed to load online users:', error);
+            }
+        }
+
+        async function loadRLStats() {
+            try {
+                // Load recent experiences - the experience count is already displayed from loadStats()
+                await loadRLExperiences();
+            } catch (error) {
+                console.error('Failed to load RL stats:', error);
+            }
+        }
+
+        let allRLExperiences = [];
+        let rlFilter = 'all';
+
+        async function loadRLExperiences() {
+            try {
+                // Get recent experiences from the API
+                const response = await fetch(`${API_URL}/api/admin/rl-experiences?admin_key=${ADMIN_KEY}&limit=100`);
+                const data = await response.json();
+                
+                allRLExperiences = data.experiences || [];
+                renderRLExperiences(allRLExperiences);
+            } catch (error) {
+                console.error('Failed to load RL experiences:', error);
+                document.getElementById('rlExperiencesTable').innerHTML = `
+                    <tr>
+                        <td colspan="13" class="empty-state">
+                            <div class="empty-state-icon">⚠️</div>
+                            <div class="empty-state-text">Failed to load RL experiences</div>
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function renderRLExperiences(experiences) {
+            const tbody = document.getElementById('rlExperiencesTable');
+            
+            if (!experiences || experiences.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="13" class="empty-state">
+                            <div class="empty-state-icon">🧠</div>
+                            <div class="empty-state-text">No RL experiences yet</div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            tbody.innerHTML = experiences.map(exp => {
+                const state = exp.state || {};
+                const action = exp.action || {};
+                const reward = exp.reward || 0;
+                const isWinning = reward > 0;
+                
+                return `
+                    <tr>
+                        <td>${formatDateTime(exp.timestamp)}</td>
+                        <td><strong>${state.symbol || 'ES'}</strong></td>
+                        <td><span class="badge ${state.side === 'long' ? 'badge-active' : 'badge-expired'}">${state.side || '-'}</span></td>
+                        <td>$${(state.price || 0).toFixed(2)}</td>
+                        <td>${state.rsi || '-'}</td>
+                        <td>${(state.vwap_distance || 0).toFixed(4)}</td>
+                        <td>${(state.atr || 0).toFixed(2)}</td>
+                        <td>${(state.volume_ratio || 0).toFixed(2)}</td>
+                        <td style="color: ${(state.recent_pnl || 0) >= 0 ? '#34a853' : '#ea4335'};">$${(state.recent_pnl || 0).toFixed(2)}</td>
+                        <td>${state.streak || 0}</td>
+                        <td>${action.took_trade ? '✓ Yes' : '✗ No'}</td>
+                        <td style="color: ${isWinning ? '#34a853' : '#ea4335'}; font-weight: 600;">$${reward.toFixed(2)}</td>
+                        <td>${(exp.duration / 60).toFixed(1)} min</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function filterRLExperiences(filter) {
+            rlFilter = filter;
+            let filtered = allRLExperiences;
+            
+            if (filter === 'winning') {
+                filtered = allRLExperiences.filter(exp => (exp.reward || 0) > 0);
+            } else if (filter === 'losing') {
+                filtered = allRLExperiences.filter(exp => (exp.reward || 0) < 0);
+            }
+            
+            renderRLExperiences(filtered);
+        }
+
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Update content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(tabName + '-tab').classList.add('active');
+        }
+
+        async function testLicenseKey() {
+            const licenseKey = document.getElementById('testLicenseKey').value.trim();
+            const resultDiv = document.getElementById('testResult');
+            
+            if (!licenseKey) {
+                resultDiv.innerHTML = `
+                    <div style="background: #fef7e0; border: 1px solid #ea8600; color: #c17900; padding: 16px; border-radius: 8px;">
+                        ⚠️ Please enter a license key
+                    </div>
+                `;
+                resultDiv.style.display = 'block';
+                return;
+            }
+            
+            resultDiv.innerHTML = `
+                <div style="text-align: center; padding: 20px; color: #5f6368;">
+                    <div style="font-size: 32px; margin-bottom: 8px;">⏳</div>
+                    Testing license key...
+                </div>
+            `;
+            resultDiv.style.display = 'block';
+            
+            try {
+                const response = await fetch(`${API_URL}/api/main`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ license_key: licenseKey })
+                });
+                
+                const data = await response.json();
+                
+                if (data.license_valid) {
+                    const expiresAt = data.license_expiration ? new Date(data.license_expiration).toLocaleDateString() : 'Never';
+                    const daysLeft = data.days_until_expiration || 'Unlimited';
+                    
+                    resultDiv.innerHTML = `
+                        <div style="background: #e6f4ea; border: 2px solid #34a853; border-radius: 12px; padding: 24px;">
+                            <div style="font-size: 48px; text-align: center; margin-bottom: 16px;">✅</div>
+                            <h3 style="color: #1e8e3e; margin: 0 0 16px 0; text-align: center; font-size: 24px;">Valid License!</h3>
+                            <div style="background: white; padding: 16px; border-radius: 8px; margin-bottom: 12px;">
+                                <div style="color: #5f6368; font-size: 13px; margin-bottom: 4px;">Message</div>
+                                <div style="color: #202124; font-weight: 500; font-size: 16px;">${data.message}</div>
+                            </div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                <div style="background: white; padding: 16px; border-radius: 8px;">
+                                    <div style="color: #5f6368; font-size: 13px; margin-bottom: 4px;">Expires</div>
+                                    <div style="color: #202124; font-weight: 500;">${expiresAt}</div>
+                                </div>
+                                <div style="background: white; padding: 16px; border-radius: 8px;">
+                                    <div style="color: #5f6368; font-size: 13px; margin-bottom: 4px;">Days Remaining</div>
+                                    <div style="color: #202124; font-weight: 500;">${daysLeft}</div>
+                                </div>
+                            </div>
+                            <div style="margin-top: 16px; padding: 12px; background: rgba(255,255,255,0.5); border-radius: 8px; font-size: 14px; color: #1e8e3e;">
+                                <strong>✓ Bot will start successfully with this key</strong>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div style="background: #fce8e6; border: 2px solid #d93025; border-radius: 12px; padding: 24px;">
+                            <div style="font-size: 48px; text-align: center; margin-bottom: 16px;">❌</div>
+                            <h3 style="color: #c5221f; margin: 0 0 16px 0; text-align: center; font-size: 24px;">Invalid License</h3>
+                            <div style="background: white; padding: 16px; border-radius: 8px; margin-bottom: 12px;">
+                                <div style="color: #5f6368; font-size: 13px; margin-bottom: 4px;">Reason</div>
+                                <div style="color: #d93025; font-weight: 500; font-size: 16px;">${data.message}</div>
+                            </div>
+                            ${data.license_expiration ? `
+                                <div style="background: white; padding: 16px; border-radius: 8px; margin-bottom: 12px;">
+                                    <div style="color: #5f6368; font-size: 13px; margin-bottom: 4px;">Expired On</div>
+                                    <div style="color: #202124; font-weight: 500;">${new Date(data.license_expiration).toLocaleDateString()}</div>
+                                </div>
+                            ` : ''}
+                            <div style="margin-top: 16px; padding: 12px; background: rgba(255,255,255,0.5); border-radius: 8px; font-size: 14px; color: #c5221f;">
+                                <strong>⚠ Bot will NOT start with this key</strong>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div style="background: #fef7e0; border: 1px solid #ea8600; color: #c17900; padding: 16px; border-radius: 8px;">
+                        <strong>⚠️ Test Failed</strong><br>
+                        Error: ${error.message}<br><br>
+                        Make sure the API server is running.
+                    </div>
+                `;
+            }
+        }
+
+        function filterUsers() {
+            const search = document.getElementById('userSearch').value.toLowerCase();
+            let filtered = allUsers;
+            
+            if (currentFilter !== 'all') {
+                filtered = filtered.filter(u => u.license_status === currentFilter);
+            }
+            
+            if (search) {
+                filtered = filtered.filter(u => 
+                    u.account_id.toLowerCase().includes(search) ||
+                    u.email.toLowerCase().includes(search)
+                );
+            }
+            
+            renderUsers(filtered);
+        }
+
+        function filterByStatus(status) {
+            currentFilter = status;
+            filterUsers();
+        }
+
+        async function suspendUser(accountId) {
+            if (!confirm(`Are you sure you want to suspend ${accountId}?`)) return;
+            
+            try {
+                const response = await fetch(
+                    `${API_URL}/api/admin/suspend-user/${accountId}?license_key=${ADMIN_KEY}`,
+                    { method: 'PUT' }
+                );
+                
+                if (response.ok) {
+                    await loadDashboard();
+                    alert('User suspended successfully');
+                }
+            } catch (error) {
+                alert('Failed to suspend user: ' + error.message);
+            }
+        }
+
+        async function activateUser(accountId) {
+            try {
+                const response = await fetch(
+                    `${API_URL}/api/admin/activate-user/${accountId}?license_key=${ADMIN_KEY}`,
+                    { method: 'PUT' }
+                );
+                
+                if (response.ok) {
+                    await loadDashboard();
+                    alert('User activated successfully');
+                }
+            } catch (error) {
+                alert('Failed to activate user: ' + error.message);
+            }
+        }
+
+        async function extendLicense(accountId) {
+            const days = prompt('Extend license by how many days?', '30');
+            if (!days) return;
+            
+            try {
+                const response = await fetch(
+                    `${API_URL}/api/admin/extend-license/${accountId}?license_key=${ADMIN_KEY}&days=${days}`,
+                    { method: 'PUT' }
+                );
+                
+                if (response.ok) {
+                    await loadDashboard();
+                    alert('License extended successfully');
+                }
+            } catch (error) {
+                alert('Failed to extend license: ' + error.message);
+            }
+        }
+
+        async function viewDetails(accountId) {
+            try {
+                const response = await fetch(`${API_URL}/api/admin/user/${accountId}?license_key=${ADMIN_KEY}`);
+                if (!response.ok) {
+                    throw new Error('Failed to fetch user details');
+                }
+                const data = await response.json();
+                
+                // Create modal HTML
+                const modalHtml = `
+                    <div class="modal active" id="detailsModal">
+                        <div class="modal-content" style="max-width: 700px;">
+                            <div class="modal-header">
+                                <h2>📊 User Details: ${data.user.account_id}</h2>
+                                <button class="close-btn" onclick="closeDetailsModal()">×</button>
+                            </div>
+                            <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                                    <div>
+                                        <h3 style="margin-bottom: 10px; color: #2c3e50;">User Information</h3>
+                                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                            <p><strong>Account ID:</strong> ${data.user.account_id}</p>
+                                            <p><strong>Email:</strong> ${data.user.email}</p>
+                                            <p><strong>License Key:</strong> <code style="background: #fff; padding: 2px 6px; border-radius: 4px;">${data.user.license_key}</code></p>
+                                            <p><strong>License Type:</strong> <span class="badge badge-${data.user.license_type === 'ADMIN' ? 'pending' : 'active'}">${data.user.license_type}</span></p>
+                                            <p><strong>Status:</strong> <span class="badge badge-${data.user.license_status === 'ACTIVE' ? 'active' : 'suspended'}">${data.user.license_status}</span></p>
+                                            <p><strong>Expires:</strong> ${data.user.license_expiration ? formatDateTime(data.user.license_expiration) : 'Never'}</p>
+                                            <p><strong>Created:</strong> ${formatDateTime(data.user.created_at)}</p>
+                                            <p><strong>Last Active:</strong> ${formatDateTime(data.user.last_active)}</p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <h3 style="margin-bottom: 10px; color: #2c3e50;">Activity Stats</h3>
+                                        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                                            <p><strong>Recent API Calls:</strong> ${data.recent_api_calls || 0}</p>
+                                            <p><strong>Total Trades:</strong> ${data.trade_stats.total_trades || 0}</p>
+                                            <p><strong>Total P&L:</strong> <span style="color: ${(data.trade_stats.total_pnl || 0) >= 0 ? '#27ae60' : '#e74c3c'};">$${(data.trade_stats.total_pnl || 0).toFixed(2)}</span></p>
+                                            <p><strong>Average P&L:</strong> $${(data.trade_stats.avg_pnl || 0).toFixed(2)}</p>
+                                            <p><strong>Win Rate:</strong> ${data.trade_stats.total_trades > 0 ? ((data.trade_stats.winning_trades / data.trade_stats.total_trades) * 100).toFixed(1) : 0}%</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                ${data.user.notes ? `
+                                <div style="margin-bottom: 20px;">
+                                    <h3 style="margin-bottom: 10px; color: #2c3e50;">Notes</h3>
+                                    <div style="background: #fff3cd; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107;">
+                                        ${data.user.notes}
+                                    </div>
+                                </div>
+                                ` : ''}
+                                <div>
+                                    <h3 style="margin-bottom: 10px; color: #2c3e50;">Recent Activity</h3>
+                                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; max-height: 300px; overflow-y: auto;">
+                                        ${data.recent_activity && data.recent_activity.length > 0 ? `
+                                            <table style="width: 100%; font-size: 12px;">
+                                                <thead>
+                                                    <tr style="background: #e9ecef;">
+                                                        <th style="padding: 8px; text-align: left;">Time</th>
+                                                        <th style="padding: 8px; text-align: left;">Endpoint</th>
+                                                        <th style="padding: 8px; text-align: left;">Status</th>
+                                                        <th style="padding: 8px; text-align: right;">Response</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    ${data.recent_activity.map(act => `
+                                                        <tr style="border-bottom: 1px solid #dee2e6;">
+                                                            <td style="padding: 8px;">${new Date(act.timestamp).toLocaleTimeString()}</td>
+                                                            <td style="padding: 8px;"><code style="font-size: 11px;">${act.endpoint}</code></td>
+                                                            <td style="padding: 8px;"><span class="badge ${act.status_code < 400 ? 'badge-active' : 'badge-suspended'}">${act.status_code}</span></td>
+                                                            <td style="padding: 8px; text-align: right;">${act.response_time_ms}ms</td>
+                                                        </tr>
+                                                    `).join('')}
+                                                </tbody>
+                                            </table>
+                                        ` : '<p style="text-align: center; color: #6c757d; padding: 20px;">No recent activity</p>'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Add modal to page
+                const existingModal = document.getElementById('detailsModal');
+                if (existingModal) {
+                    existingModal.remove();
+                }
+                document.body.insertAdjacentHTML('beforeend', modalHtml);
+                
+            } catch (error) {
+                console.error('Failed to load user details:', error);
+                alert('Failed to load user details. Please try again.');
+            }
+        }
+
+        function closeDetailsModal() {
+            const modal = document.getElementById('detailsModal');
+            if (modal) {
+                modal.remove();
+            }
+        }
+
+        function openAddUserModal() {
+            document.getElementById('addUserModal').classList.add('active');
+        }
+
+        function closeAddUserModal() {
+            document.getElementById('addUserModal').classList.remove('active');
+            document.getElementById('addUserForm').reset();
+            document.getElementById('successMessage').classList.remove('show');
+        }
+
+        async function createUser(event) {
+            event.preventDefault();
+            
+            const accountId = document.getElementById('accountId').value;
+            const email = document.getElementById('email').value;
+            const licenseType = document.getElementById('licenseType').value;
+            const daysValid = document.getElementById('daysValid').value;
+            const notes = document.getElementById('notes').value;
+            
+            try {
+                const response = await fetch(
+                    `${API_URL}/api/admin/add-user?license_key=${ADMIN_KEY}`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            account_id: accountId,
+                            email: email,
+                            license_type: licenseType,
+                            days_valid: parseInt(daysValid),
+                            notes: notes
+                        })
+                    }
+                );
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const msg = document.getElementById('successMessage');
+                    msg.innerHTML = `✅ User created successfully!<br><strong>License Key:</strong> ${data.license_key}`;
+                    msg.classList.add('show');
+                    
+                    setTimeout(() => {
+                        closeAddUserModal();
+                        loadDashboard();
+                    }, 3000);
+                } else {
+                    alert('Failed to create user: ' + data.detail);
+                }
+            } catch (error) {
+                alert('Failed to create user: ' + error.message);
+            }
+        }
+
+        function exportToCSV() {
+            const csv = [
+                ['Account ID', 'Email', 'License Type', 'Status', 'Expires', 'Last Active'].join(','),
+                ...allUsers.map(u => [
+                    u.account_id,
+                    u.email,
+                    u.license_type,
+                    u.license_status,
+                    u.license_expiration,
+                    u.last_active || 'Never'
+                ].join(','))
+            ].join('\n');
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `quotrading-users-${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return 'N/A';
+            const date = new Date(dateStr);
+            return date.toLocaleDateString();
+        }
+
+        function formatDateTime(dateStr) {
+            if (!dateStr) return 'N/A';
+            const date = new Date(dateStr);
+            return date.toLocaleString();
+        }
+
+        function timeAgo(dateStr) {
+            if (!dateStr) return 'Never';
+            const seconds = Math.floor((new Date() - new Date(dateStr)) / 1000);
+            
+            if (seconds < 60) return seconds + 's ago';
+            if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+            if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+            return Math.floor(seconds / 86400) + 'd ago';
+        }
+
+        // Close modal on outside click
+        document.getElementById('addUserModal').addEventListener('click', function(e) {
+            if (e.target === this) closeAddUserModal();
+        });
+
+        // ========== PHASE 2: CHARTS & GRAPHS ==========
+        // Chart.js will be loaded from CDN in production
+        // Charts functionality ready for integration
+        
+        // Chart loading functions
+        async function loadChartData(endpoint) {
+            try {
+                const response = await fetch(`${API_URL}/api/admin/charts/${endpoint}?admin_key=${API_KEY}`);
+                if (!response.ok) throw new Error('Chart data fetch failed');
+                return await response.json();
+            } catch (error) {
+                console.error(`Chart data error for ${endpoint}:`, error);
+                return null;
+            }
+        }
+
+        // Initialize charts when Chart.js is loaded
+        function initializeCharts() {
+            console.log('📊 Chart endpoints ready:');
+            console.log('- /api/admin/charts/user-growth');
+            console.log('- /api/admin/charts/api-usage');
+            console.log('- /api/admin/charts/mrr');
+            console.log('- /api/admin/charts/collective-pnl');
+            console.log('- /api/admin/charts/win-rate-trend');
+            console.log('- /api/admin/charts/top-performers');
+            console.log('- /api/admin/charts/experience-growth');
+            console.log('- /api/admin/charts/confidence-dist');
+            console.log('- /api/admin/charts/confidence-winrate');
+        }
+
+        // Call on page load
+        setTimeout(initializeCharts, 1000);
+
+        // ==================== REPORTS FUNCTIONS ====================
+        
+        let currentReportData = null;
+        
+        function updateReportFilters() {
+            const reportType = document.getElementById('reportType').value;
+            
+            // Show/hide filter groups based on report type
+            document.getElementById('startDateGroup').style.display = ['user-activity', 'performance'].includes(reportType) ? 'block' : 'none';
+            document.getElementById('endDateGroup').style.display = ['user-activity', 'performance'].includes(reportType) ? 'block' : 'none';
+            document.getElementById('quickFiltersGroup').style.display = ['user-activity', 'performance'].includes(reportType) ? 'block' : 'none';
+            document.getElementById('licenseTypeGroup').style.display = ['user-activity', 'revenue'].includes(reportType) ? 'block' : 'none';
+            document.getElementById('statusGroup').style.display = reportType === 'user-activity' ? 'block' : 'none';
+            document.getElementById('symbolGroup').style.display = reportType === 'performance' ? 'block' : 'none';
+            document.getElementById('monthGroup').style.display = reportType === 'revenue' ? 'block' : 'none';
+            document.getElementById('yearGroup').style.display = reportType === 'revenue' ? 'block' : 'none';
+            
+            // Set default month/year for revenue report
+            if (reportType === 'revenue') {
+                const now = new Date();
+                document.getElementById('reportMonth').value = now.getMonth() + 1;
+                document.getElementById('reportYear').value = now.getFullYear();
+            }
+        }
+        
+        function setQuickDateRange(range) {
+            const now = new Date();
+            let startDate, endDate;
+            
+            if (typeof range === 'number') {
+                // Last N days
+                startDate = new Date(now.getTime() - range * 24 * 60 * 60 * 1000);
+                endDate = now;
+            } else if (range === 'month') {
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                endDate = now;
+            } else if (range === 'lastMonth') {
+                startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+            } else if (range === 'quarter') {
+                const quarter = Math.floor(now.getMonth() / 3);
+                startDate = new Date(now.getFullYear(), quarter * 3, 1);
+                endDate = now;
+            } else if (range === 'year') {
+                startDate = new Date(now.getFullYear(), 0, 1);
+                endDate = now;
+            }
+            
+            document.getElementById('reportStartDate').value = startDate.toISOString().split('T')[0];
+            document.getElementById('reportEndDate').value = endDate.toISOString().split('T')[0];
+        }
+        
+        async function generateReport() {
+            const reportType = document.getElementById('reportType').value;
+            const loadingIndicator = document.getElementById('reportLoadingIndicator');
+            const exportBtn = document.getElementById('exportReportBtn');
+            
+            // Show loading
+            loadingIndicator.style.display = 'inline';
+            exportBtn.style.display = 'none';
+            
+            // Hide all result sections
+            document.getElementById('userActivityResults').style.display = 'none';
+            document.getElementById('revenueResults').style.display = 'none';
+            document.getElementById('performanceResults').style.display = 'none';
+            document.getElementById('retentionResults').style.display = 'none';
+            
+            try {
+                let url = `${API_URL}/api/admin/reports/${reportType}`;
+                let params = [];
+                
+                // Build query params based on report type
+                if (reportType === 'user-activity') {
+                    const startDate = document.getElementById('reportStartDate').value;
+                    const endDate = document.getElementById('reportEndDate').value;
+                    const licenseType = document.getElementById('reportLicenseType').value;
+                    const status = document.getElementById('reportStatus').value;
+                    
+                    if (startDate) params.push(`start_date=${startDate}`);
+                    if (endDate) params.push(`end_date=${endDate}`);
+                    if (licenseType !== 'all') params.push(`license_type=${licenseType}`);
+                    if (status !== 'all') params.push(`status=${status}`);
+                } else if (reportType === 'performance') {
+                    const startDate = document.getElementById('reportStartDate').value;
+                    const endDate = document.getElementById('reportEndDate').value;
+                    const symbol = document.getElementById('reportSymbol').value;
+                    
+                    if (startDate) params.push(`start_date=${startDate}`);
+                    if (endDate) params.push(`end_date=${endDate}`);
+                    if (symbol !== 'all') params.push(`symbol=${symbol}`);
+                } else if (reportType === 'revenue') {
+                    const month = document.getElementById('reportMonth').value;
+                    const year = document.getElementById('reportYear').value;
+                    const licenseType = document.getElementById('reportLicenseType').value;
+                    
+                    params.push(`month=${month}`);
+                    params.push(`year=${year}`);
+                    if (licenseType !== 'all') params.push(`license_type=${licenseType}`);
+                }
+                
+                if (params.length > 0) {
+                    url += '?' + params.join('&');
+                }
+                
+                const response = await fetch(url, {
+                    headers: {
+                        'X-API-Key': ADMIN_API_KEY
+                    }
+                });
+                
+                const data = await response.json();
+                currentReportData = data;
+                
+                // Display results based on report type
+                if (reportType === 'user-activity') {
+                    displayUserActivityReport(data);
+                } else if (reportType === 'revenue') {
+                    displayRevenueReport(data);
+                } else if (reportType === 'performance') {
+                    displayPerformanceReport(data);
+                } else if (reportType === 'retention') {
+                    displayRetentionReport(data);
+                }
+                
+                // Show export button and results
+                document.getElementById('reportResults').style.display = 'block';
+                exportBtn.style.display = 'inline-block';
+                
+            } catch (error) {
+                console.error('Report generation error:', error);
+                alert('Error generating report. Please try again.');
+            } finally {
+                loadingIndicator.style.display = 'none';
+            }
+        }
+        
+        function displayUserActivityReport(data) {
+            const tbody = document.getElementById('userActivityTableBody');
+            const countEl = document.getElementById('userActivityCount');
+            
+            countEl.textContent = `${data.count || 0} users found`;
+            tbody.innerHTML = '';
+            
+            if (!data.data || data.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="empty-state"><div class="empty-state-text">No data found</div></td></tr>';
+            } else {
+                data.data.forEach(row => {
+                    const tr = document.createElement('tr');
+                    const pnlClass = row.total_pnl > 0 ? 'profit' : row.total_pnl < 0 ? 'loss' : '';
+                    tr.innerHTML = `
+                        <td>${row.account_id}</td>
+                        <td>${row.email}</td>
+                        <td>${row.signup_date}</td>
+                        <td>${row.last_active}</td>
+                        <td><span class="badge badge-${row.license_type.toLowerCase()}">${row.license_type}</span></td>
+                        <td><span class="badge badge-${row.status.toLowerCase()}">${row.status}</span></td>
+                        <td>${row.api_calls.toLocaleString()}</td>
+                        <td>${row.trades.toLocaleString()}</td>
+                        <td class="${pnlClass}">$${row.total_pnl.toFixed(2)}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+            
+            document.getElementById('userActivityResults').style.display = 'block';
+        }
+        
+        function displayRevenueReport(data) {
+            document.getElementById('revNewSubs').textContent = data.new_subscriptions || 0;
+            document.getElementById('revNewRev').textContent = `Revenue: $${(data.new_revenue || 0).toFixed(2)}`;
+            document.getElementById('revMRR').textContent = `$${(data.net_mrr || 0).toFixed(2)}`;
+            document.getElementById('revARPU').textContent = `ARPU: $${(data.arpu || 0).toFixed(2)}`;
+            document.getElementById('revCancellations').textContent = data.cancellations || 0;
+            document.getElementById('revLostRev').textContent = `Lost: $${(data.lost_revenue || 0).toFixed(2)}`;
+            document.getElementById('revChurnRate').textContent = `${(data.churn_rate || 0).toFixed(2)}%`;
+            
+            document.getElementById('revenueResults').style.display = 'block';
+        }
+        
+        function displayPerformanceReport(data) {
+            document.getElementById('perfTotalTrades').textContent = (data.total_trades || 0).toLocaleString();
+            document.getElementById('perfWinRate').textContent = `${(data.win_rate || 0).toFixed(2)}%`;
+            
+            const pnl = data.total_pnl || 0;
+            const pnlClass = pnl > 0 ? 'profit' : pnl < 0 ? 'loss' : '';
+            document.getElementById('perfTotalPnL').innerHTML = `<span class="${pnlClass}">$${pnl.toFixed(2)}</span>`;
+            
+            document.getElementById('perfAvgDuration').textContent = `${(data.avg_duration_minutes || 0).toFixed(1)} min`;
+            document.getElementById('perfBestDay').textContent = data.best_day?.date || 'N/A';
+            document.getElementById('perfBestDayPnL').textContent = data.best_day ? `$${data.best_day.pnl.toFixed(2)}` : '';
+            document.getElementById('perfWorstDay').textContent = data.worst_day?.date || 'N/A';
+            document.getElementById('perfWorstDayPnL').textContent = data.worst_day ? `$${data.worst_day.pnl.toFixed(2)}` : '';
+            
+            document.getElementById('performanceResults').style.display = 'block';
+        }
+        
+        function displayRetentionReport(data) {
+            document.getElementById('retActiveUsers').textContent = (data.active_users || 0).toLocaleString();
+            document.getElementById('retExpired').textContent = (data.expired_this_month || 0).toLocaleString();
+            document.getElementById('retRetentionRate').textContent = `${(data.retention_rate || 0).toFixed(2)}%`;
+            document.getElementById('retChurnRate').textContent = `${(data.churn_rate || 0).toFixed(2)}%`;
+            document.getElementById('retAvgDays').textContent = `${Math.round(data.avg_subscription_days || 0)} days`;
+            document.getElementById('retLTV').textContent = `$${(data.lifetime_value || 0).toFixed(2)}`;
+            
+            // Cohort table
+            const cohortTbody = document.getElementById('cohortTableBody');
+            cohortTbody.innerHTML = '';
+            
+            if (data.cohorts && data.cohorts.length > 0) {
+                data.cohorts.forEach(cohort => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${cohort.month}</td>
+                        <td>${cohort.users}</td>
+                        <td>${cohort.still_active}</td>
+                        <td>${cohort.retention.toFixed(2)}%</td>
+                    `;
+                    cohortTbody.appendChild(tr);
+                });
+            } else {
+                cohortTbody.innerHTML = '<tr><td colspan="4" class="empty-state"><div class="empty-state-text">No cohort data</div></td></tr>';
+            }
+            
+            document.getElementById('retentionResults').style.display = 'block';
+        }
+        
+        function sortReportTable(columnIndex) {
+            const tbody = document.getElementById('userActivityTableBody');
+            const rows = Array.from(tbody.getElementsByTagName('tr'));
+            
+            rows.sort((a, b) => {
+                const aValue = a.cells[columnIndex].textContent.trim();
+                const bValue = b.cells[columnIndex].textContent.trim();
+                
+                // Try to parse as number
+                const aNum = parseFloat(aValue.replace(/[^0-9.-]/g, ''));
+                const bNum = parseFloat(bValue.replace(/[^0-9.-]/g, ''));
+                
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    return bNum - aNum;  // Descending for numbers
+                }
+                
+                return aValue.localeCompare(bValue);  // Ascending for strings
+            });
+            
+            rows.forEach(row => tbody.appendChild(row));
+        }
+        
+        function exportReportCSV() {
+            const reportType = document.getElementById('reportType').value;
+            
+            if (!currentReportData) {
+                alert('No report data to export');
+                return;
+            }
+            
+            let csv = '';
+            let filename = `${reportType}-report-${new Date().toISOString().split('T')[0]}.csv`;
+            
+            if (reportType === 'user-activity' && currentReportData.data) {
+                csv = 'Account ID,Email,Signup Date,Last Active,License Type,Status,API Calls,Trades,Total P&L\n';
+                currentReportData.data.forEach(row => {
+                    csv += `${row.account_id},"${row.email}",${row.signup_date},${row.last_active},${row.license_type},${row.status},${row.api_calls},${row.trades},${row.total_pnl}\n`;
+                });
+            } else if (reportType === 'revenue') {
+                csv = 'Metric,Value\n';
+                csv += `New Subscriptions,${currentReportData.new_subscriptions}\n`;
+                csv += `New Revenue,$${currentReportData.new_revenue}\n`;
+                csv += `Net MRR,$${currentReportData.net_mrr}\n`;
+                csv += `ARPU,$${currentReportData.arpu}\n`;
+                csv += `Cancellations,${currentReportData.cancellations}\n`;
+                csv += `Lost Revenue,$${currentReportData.lost_revenue}\n`;
+                csv += `Churn Rate,${currentReportData.churn_rate}%\n`;
+            } else if (reportType === 'performance') {
+                csv = 'Metric,Value\n';
+                csv += `Total Trades,${currentReportData.total_trades}\n`;
+                csv += `Win Rate,${currentReportData.win_rate}%\n`;
+                csv += `Total P&L,$${currentReportData.total_pnl}\n`;
+                csv += `Avg Confidence,${currentReportData.avg_confidence}\n`;
+                csv += `Avg Duration,${currentReportData.avg_duration_minutes} min\n`;
+                csv += `Best Day,${currentReportData.best_day?.date}\n`;
+                csv += `Best Day P&L,$${currentReportData.best_day?.pnl}\n`;
+                csv += `Worst Day,${currentReportData.worst_day?.date}\n`;
+                csv += `Worst Day P&L,$${currentReportData.worst_day?.pnl}\n`;
+            } else if (reportType === 'retention') {
+                csv = 'Metric,Value\n';
+                csv += `Active Users,${currentReportData.active_users}\n`;
+                csv += `Expired This Month,${currentReportData.expired_this_month}\n`;
+                csv += `Retention Rate,${currentReportData.retention_rate}%\n`;
+                csv += `Churn Rate,${currentReportData.churn_rate}%\n`;
+                csv += `Avg Subscription Days,${currentReportData.avg_subscription_days}\n`;
+                csv += `Lifetime Value,$${currentReportData.lifetime_value}\n\n`;
+                
+                if (currentReportData.cohorts) {
+                    csv += 'Cohort Month,Users,Still Active,Retention %\n';
+                    currentReportData.cohorts.forEach(c => {
+                        csv += `${c.month},${c.users},${c.still_active},${c.retention}%\n`;
+                    });
+                }
+            }
+            
+            // Download
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+        
+        // Initialize report filters on load
+        updateReportFilters();
+    </script>
+    
+    <!-- Chart.js Library (Phase 2) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</body>
+</html>

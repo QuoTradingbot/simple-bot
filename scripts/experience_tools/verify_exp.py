@@ -1,6 +1,11 @@
 import json
+from pathlib import Path
 
-data = json.load(open('experiences/ES/signal_experience.json'))
+# Get project root (2 levels up from this file)
+PROJECT_ROOT = Path(__file__).parent.parent.parent
+EXP_FILE = PROJECT_ROOT / 'experiences' / 'ES' / 'signal_experience.json'
+
+data = json.load(open(EXP_FILE))
 exps = data['experiences']
 
 print(f'Total experiences: {len(exps)}')

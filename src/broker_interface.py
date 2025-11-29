@@ -417,8 +417,17 @@ class BrokerSDKImplementation(BrokerInterface):
         return False
     
     def disconnect(self) -> None:
-        """Disconnect from TopStep SDK."""
+        """Disconnect from TopStep SDK and WebSocket."""
         try:
+            # Disconnect WebSocket streamer first
+            if self.websocket_streamer:
+                try:
+                    self.websocket_streamer.disconnect()
+                    self.websocket_streamer = None
+                except Exception as e:
+                    logger.debug(f"Error disconnecting WebSocket: {e}")
+            
+            # Close SDK connections
             if self.trading_suite:
                 # Close any active connections
                 self.trading_suite = None

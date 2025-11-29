@@ -32,7 +32,7 @@ DB_PORT = os.environ.get("DB_PORT", "5432")
 # Whop configuration
 WHOP_API_KEY = os.environ.get("WHOP_API_KEY", "")
 WHOP_WEBHOOK_SECRET = os.environ.get("WHOP_WEBHOOK_SECRET", "")
-ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "ADMIN-DEV-KEY-2024")  # For creating licenses
+ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "ADMIN-DEV-KEY-2026")  # For creating licenses
 WHOP_API_BASE_URL = "https://api.whop.com/api/v5"
 
 # Email configuration (for SendGrid or SMTP)
@@ -43,61 +43,96 @@ SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 FROM_EMAIL = os.environ.get("FROM_EMAIL", "noreply@quotrading.com")
 
-# Download link for the bot EXE
-BOT_DOWNLOAD_URL = os.environ.get("BOT_DOWNLOAD_URL", "https://your-download-link.com/QuoTrading_Bot.exe")
+# Download link for the bot EXE (Azure Blob Storage)
+BOT_DOWNLOAD_URL = os.environ.get("BOT_DOWNLOAD_URL", "https://quotradingfiles.blob.core.windows.net/bot-downloads/QuoTrading_Bot.exe")
 
 # Connection pool for PostgreSQL (reuse connections)
 _db_pool = None
 
 def send_license_email(email, license_key):
     try:
-        subject = "Your QuoTrading AI License Key & Download Link"
+        subject = "Your QuoTrading AI License Key"
         
         html_body = f"""
         <html>
         <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h1 style="color: #667eea;">Welcome to QuoTrading AI! 🎉</h1>
             
-            <p>Thank you for your purchase! Here's everything you need to get started:</p>
+            <p>Thank you for your purchase! Check your email from Whop for the bot download link.</p>
             
             <div style="background: #f3f4f6; padding: 20px; border-radius: 10px; margin: 20px 0;">
                 <h2 style="margin-top: 0;">Your License Key:</h2>
                 <p style="font-size: 24px; font-weight: bold; color: #667eea; letter-spacing: 2px;">{license_key}</p>
+                <p style="font-size: 14px; color: #6b7280; margin-top: 10px;">⚠️ Save this key - you'll need it to activate the bot!</p>
             </div>
             
-            <h2>Getting Started:</h2>
+            <h2>Setup Instructions:</h2>
             <ol>
-                <li><strong>Download the Bot:</strong> <a href="{BOT_DOWNLOAD_URL}" style="color: #667eea;">Click here to download</a></li>
-                <li><strong>Run the EXE file</strong> on your Windows computer</li>
-                <li><strong>Enter your license key</strong> when prompted: <code>{license_key}</code></li>
-                <li><strong>Configure your broker</strong> settings in the bot</li>
-                <li><strong>Start trading!</strong> The AI will begin analyzing markets</li>
+                <li><strong>Download the bot files</strong> from the link in your Whop email</li>
+                <li><strong>Extract the ZIP file</strong> to a folder on your Windows PC</li>
+                <li><strong>Run QuoTrading_Launcher.exe</strong> from the extracted folder</li>
+                <li><strong>Enter your license key</strong> when prompted: <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">{license_key}</code></li>
+                <li><strong>Configure your TopStep account</strong> credentials in the bot</li>
+                <li><strong>Start trading!</strong> The AI will analyze markets and execute trades</li>
             </ol>
             
-            <h2>Need Help?</h2>
-            <p>Join our Discord community or email support@quotrading.com</p>
+            <h2>📌 Important Notes:</h2>
+            <ul>
+                <li>✅ Keep this email - you'll need your license key to activate the bot</li>
+                <li>🔐 Your license key is unique to you - do not share it</li>
+                <li>💻 The bot requires a Windows PC to run</li>
+                <li>📂 If you can't find the Whop download email, check your spam folder</li>
+            </ul>
             
-            <p style="color: #6b7280; font-size: 12px; margin-top: 40px;">
+            <h2>Need Help?</h2>
+            <p>📧 Email: <a href="mailto:support@quotrading.com" style="color: #667eea;">support@quotrading.com</a></p>
+            <p>💬 Discord: Join our community for support and updates</p>
+            
+            <p style="color: #6b7280; font-size: 12px; margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 20px;">
                 Your subscription will auto-renew monthly. You can manage your subscription anytime from your Whop dashboard.
             </p>
         </body>
         </html>
         """
         
-        # Create message
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = subject
-        msg['From'] = FROM_EMAIL
-        msg['To'] = email
-        msg.attach(MIMEText(html_body, 'html'))
+        # Try SendGrid first (preferred), fall back to SMTP
+        if SENDGRID_API_KEY:
+            try:
+                response = requests.post(
+                    "https://api.sendgrid.com/v3/mail/send",
+                    headers={
+                        "Authorization": f"Bearer {SENDGRID_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "personalizations": [{"to": [{"email": email}]}],
+                        "from": {"email": FROM_EMAIL, "name": "QuoTrading"},
+                        "subject": subject,
+                        "content": [{"type": "text/html", "value": html_body}]
+                    },
+                    timeout=10
+                )
+                if response.status_code == 202:
+                    logging.info(f"📧 SendGrid email sent to {email}")
+                    return True
+                else:
+                    logging.warning(f"SendGrid failed ({response.status_code}), trying SMTP fallback")
+            except Exception as e:
+                logging.warning(f"SendGrid error: {e}, trying SMTP fallback")
         
-        # Send via SMTP
+        # Fallback to SMTP (Gmail, etc.)
         if SMTP_USERNAME and SMTP_PASSWORD:
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['From'] = FROM_EMAIL
+            msg['To'] = email
+            msg.attach(MIMEText(html_body, 'html'))
+            
             with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
                 server.starttls()
                 server.login(SMTP_USERNAME, SMTP_PASSWORD)
                 server.send_message(msg)
-            logging.info(f"📧 Email sent to {email}")
+            logging.info(f"📧 SMTP email sent to {email}")
             return True
         else:
             logging.warning(f"⚠️ Email not configured - would send license {license_key} to {email}")
@@ -228,6 +263,12 @@ def validate_license(license_key: str):
     if not license_key:
         return False, "License key required", None
     
+    # Check if it's the admin development key (server-side only, never exposed to client)
+    if license_key == ADMIN_API_KEY:
+        logging.info(f"✅ Admin key validated")
+        # Return valid with no expiration for admin key
+        return True, "Valid Admin License", None
+    
     conn = get_db_connection()
     if not conn:
         return False, "Database connection failed", None
@@ -284,6 +325,14 @@ def load_experiences(symbol='ES'):
     logging.warning("⚠️ load_experiences() is DEPRECATED - bots use local files")
     return []
 
+def calculate_confidence(signal_type, regime, vix_level, experiences):
+    """
+    DEPRECATED: Bots calculate confidence locally.
+    This returns a neutral value for backward compatibility.
+    """
+    logging.warning("⚠️ calculate_confidence() is DEPRECATED - bots calculate locally")
+    return 0.5
+
 @app.route('/api/hello', methods=['GET'])
 def hello():
     """Health check endpoint"""
@@ -297,6 +346,57 @@ def hello():
         "database_configured": bool(DB_PASSWORD),
         "note": "Bots make decisions locally using their own RL brain"
     }), 200
+
+@app.route('/api/heartbeat', methods=['POST'])
+def heartbeat():
+    """Record bot heartbeat for online status tracking"""
+    try:
+        data = request.get_json()
+        license_key = data.get('license_key')
+        
+        if not license_key:
+            return jsonify({"status": "error", "message": "License key required"}), 400
+        
+        # Validate license
+        is_valid, message, _ = validate_license(license_key)
+        if not is_valid:
+            return jsonify({"status": "error", "message": message}), 403
+        
+        # Record heartbeat
+        conn = get_db_connection()
+        if conn:
+            try:
+                with conn.cursor() as cursor:
+                    # Update last heartbeat time in users table
+                    cursor.execute("""
+                        UPDATE users 
+                        SET last_heartbeat = NOW(), 
+                            metadata = %s
+                        WHERE license_key = %s
+                    """, (json.dumps(data.get('metadata', {})), license_key))
+                    
+                    # Also insert into heartbeats table for history
+                    cursor.execute("""
+                        INSERT INTO heartbeats (license_key, bot_version, status, metadata)
+                        VALUES (%s, %s, %s, %s)
+                    """, (
+                        license_key,
+                        data.get('bot_version', 'unknown'),
+                        data.get('status', 'online'),
+                        json.dumps(data.get('metadata', {}))
+                    ))
+                    
+                    conn.commit()
+                    
+                return jsonify({"status": "success", "message": "Heartbeat recorded"}), 200
+            finally:
+                return_connection(conn)
+        
+        return jsonify({"status": "error", "message": "Database error"}), 500
+        
+    except Exception as e:
+        logging.error(f"Heartbeat error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/main', methods=['POST'])
 def main():
@@ -478,6 +578,7 @@ def create_license():
             return jsonify({"status": "error", "message": "Email required"}), 400
         
         license_key = generate_license_key()
+        account_id = f"ACC-{secrets.token_hex(8).upper()}"
         expiration = datetime.now() + timedelta(days=duration_days)
         
         conn = get_db_connection()
@@ -487,13 +588,14 @@ def create_license():
         try:
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    INSERT INTO users (license_key, email, license_type, license_status, license_expiration)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (license_key, email, license_type, 'active', expiration))
+                    INSERT INTO users (account_id, license_key, email, license_type, license_status, license_expiration)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (account_id, license_key, email, license_type, 'active', expiration))
                 conn.commit()
                 
             return jsonify({
                 "status": "success",
+                "account_id": account_id,
                 "license_key": license_key,
                 "email": email,
                 "license_type": license_type,
@@ -925,7 +1027,7 @@ def admin_recent_activity():
 
 @app.route('/api/admin/online-users', methods=['GET'])
 def admin_online_users():
-    """Get currently online users"""
+    """Get currently online users with real-time performance data"""
     admin_key = request.args.get('license_key') or request.args.get('admin_key')
     if admin_key != ADMIN_API_KEY:
         return jsonify({"error": "Unauthorized"}), 401
@@ -936,26 +1038,47 @@ def admin_online_users():
     
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            # Get online users with latest heartbeat data
             cursor.execute("""
                 SELECT u.id, u.email, u.license_key, u.license_type, 
-                       MAX(a.created_at) as last_active
+                       u.last_heartbeat, u.metadata
                 FROM users u
-                INNER JOIN api_logs a ON u.license_key = a.license_key
-                WHERE a.created_at > NOW() - INTERVAL '5 minutes'
+                WHERE u.last_heartbeat > NOW() - INTERVAL '2 minutes'
                 AND UPPER(u.license_status) = 'ACTIVE'
-                GROUP BY u.id, u.email, u.license_key, u.license_type
-                ORDER BY last_active DESC
+                ORDER BY u.last_heartbeat DESC
             """)
             online = cursor.fetchall()
             
             formatted = []
             for user in online:
+                metadata = user.get('metadata', {})
+                if isinstance(metadata, str):
+                    import json
+                    metadata = json.loads(metadata)
+                
                 formatted.append({
                     "account_id": str(user['id']),
                     "email": user['email'],
                     "license_key": user['license_key'],
                     "license_type": user['license_type'],
-                    "last_active": user['last_active'].isoformat() if user['last_active'] else None
+                    "last_active": user['last_heartbeat'].isoformat() if user['last_heartbeat'] else None,
+                    # Real-time performance from heartbeat metadata
+                    "symbol": metadata.get('symbol', 'N/A'),
+                    "session_pnl": metadata.get('session_pnl', 0),
+                    "total_trades": metadata.get('total_trades', 0),
+                    "winning_trades": metadata.get('winning_trades', 0),
+                    "losing_trades": metadata.get('losing_trades', 0),
+                    "win_rate": metadata.get('win_rate', 0),
+                    "current_position": metadata.get('current_position', 0),
+                    "position_pnl": metadata.get('position_pnl', 0),
+                    "status": metadata.get('status', 'unknown'),
+                    "shadow_mode": metadata.get('shadow_mode', False),
+                    # License status indicators
+                    "license_expired": metadata.get('license_expired', False),
+                    "license_grace_period": metadata.get('license_grace_period', False),
+                    "near_expiry_mode": metadata.get('near_expiry_mode', False),
+                    "days_until_expiration": metadata.get('days_until_expiration'),
+                    "hours_until_expiration": metadata.get('hours_until_expiration')
                 })
             
             return jsonify({"users": formatted}), 200
@@ -1352,9 +1475,29 @@ def submit_outcome():
         data = request.get_json()
         license_key = data.get('license_key')
         
-        # Validate license key
-        if not license_key:
-            return jsonify({"error": "Missing license_key"}), 401
+        # 1. Validate License
+        is_valid, msg, _ = validate_license(license_key)
+        if not is_valid:
+            return jsonify({"success": False, "message": f"Invalid license: {msg}"}), 403
+
+        # 2. Sanity Checks (Prevent fake data injection)
+        pnl = data.get('pnl', 0.0)
+        duration = data.get('duration', 0.0)
+        
+        # Check P&L limits (e.g., max $10k per trade to prevent pollution)
+        if abs(pnl) > 10000:
+            logging.warning(f"⚠️ Rejected suspicious P&L: ${pnl} from {license_key}")
+            return jsonify({"success": False, "message": "P&L out of realistic range"}), 400
+            
+        # Check duration (must be positive)
+        if duration <= 0:
+            logging.warning(f"⚠️ Rejected invalid duration: {duration} from {license_key}")
+            return jsonify({"success": False, "message": "Duration must be positive"}), 400
+            
+        # Check required fields
+        if 'symbol' not in data or 'price' not in data:
+             return jsonify({"success": False, "message": "Missing required fields"}), 400
+
         
         conn = get_db_connection()
         if not conn:

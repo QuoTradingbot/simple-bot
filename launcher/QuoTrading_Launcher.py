@@ -466,8 +466,53 @@ class QuoTradingLauncher:
         thread = threading.Thread(target=api_call, daemon=True)
         thread.start()
     
-        # Run validation in background thread
-        threading.Thread(target=validate, daemon=True).start()
+    def validate_license_key(self, api_key, success_callback, error_callback):
+        """Validate QuoTrading license key with cloud API.
+        
+        Args:
+            api_key: The QuoTrading license key to validate
+            success_callback: Function to call on successful validation (receives license data)
+            error_callback: Function to call on validation failure (receives error message)
+        """
+        import requests
+        import os
+        
+        def validate_in_thread():
+            try:
+                api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-signals.icymeadow-86b2969e.eastus.azurecontainerapps.io")
+                
+                # Call cloud API to validate license
+                response = requests.post(
+                    f"{api_url}/api/v1/license/validate",
+                    json={"license_key": api_key},
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    license_data = response.json()
+                    # Save subscription info to config
+                    self.config["max_contract_size"] = license_data.get("max_contract_size", 3)
+                    self.config["max_accounts"] = license_data.get("max_accounts", 1)
+                    self.config["subscription_tier"] = license_data.get("subscription_tier", "basic")
+                    self.config["subscription_end"] = license_data.get("subscription_end")
+                    self.save_config()
+                    
+                    self.root.after(0, lambda: success_callback(license_data))
+                else:
+                    error_data = response.json()
+                    error_msg = error_data.get("detail", "License validation failed")
+                    self.root.after(0, lambda: error_callback(error_msg))
+            
+            except requests.exceptions.Timeout:
+                self.root.after(0, lambda: error_callback("Connection timeout - please check your internet connection"))
+            except requests.exceptions.ConnectionError:
+                self.root.after(0, lambda: error_callback("Cannot connect to QuoTrading servers - please check your internet"))
+            except Exception as e:
+                self.root.after(0, lambda: error_callback(f"API error: {str(e)}"))
+        
+        # Start validation in background thread
+        thread = threading.Thread(target=validate_in_thread, daemon=True)
+        thread.start()
     
     def setup_broker_screen(self):
         """Screen 0: Broker Connection Setup with QuoTrading API Key and Account Size."""
@@ -717,13 +762,6 @@ class QuoTradingLauncher:
         # Get account size - will be replaced by real data from broker anyway
         account_size = "50000"  # Default starting point, real data will override
         
-        # Remove placeholder if present (but not if it's the admin key)
-        if quotrading_api_key == self.config.get("quotrading_api_key", "") and quotrading_api_key != "QUOTRADING_ADMIN_MASTER_2025":
-            quotrading_api_key = ""
-        
-        # Check if using admin master key
-        is_admin = (quotrading_api_key == "QUOTRADING_ADMIN_MASTER_2025")
-        
         # Validation
         if not token or not username:
             messagebox.showerror(
@@ -732,39 +770,35 @@ class QuoTradingLauncher:
             )
             return
         
-        # Require quo key unless using admin key
-        if not is_admin and not quotrading_api_key:
+        # Require QuoTrading license key
+        if not quotrading_api_key:
             messagebox.showerror(
                 "Missing License Key",
                 "Please enter your QuoTrading License Key."
             )
             return
         
-        # Validate license key with Azure (unless admin key)
-        if not is_admin:
-            self.show_loading("Validating license...")
-            
-            def on_license_success(license_data):
-                self.hide_loading()
-                # License valid - proceed with broker validation
-                self._continue_broker_validation(broker, token, username, quotrading_api_key, account_size)
-            
-            def on_license_error(error_msg):
-                self.hide_loading()
-                messagebox.showerror(
-                    "License Validation Failed",
-                    f"Invalid license key: {error_msg}\n\n"
-                    f"Please check your license key and try again.\n\n"
-                    f"If you need a license, visit:\n"
-                    f"https://quotrading.com/subscribe"
-                )
-            
-            # Validate license with Azure
-            self.validate_license_key(quotrading_api_key, on_license_success, on_license_error)
-            return
+        # Validate license key with Azure server (server will check if it's admin or regular)
+        self.show_loading("Validating license...")
         
-        # Admin key - skip license validation and proceed directly
-        self._continue_broker_validation(broker, token, username, quotrading_api_key, account_size)
+        def on_license_success(license_data):
+            self.hide_loading()
+            # License valid - proceed with broker validation
+            self._continue_broker_validation(broker, token, username, quotrading_api_key, account_size)
+        
+        def on_license_error(error_msg):
+            self.hide_loading()
+            messagebox.showerror(
+                "License Validation Failed",
+                f"Invalid license key: {error_msg}\n\n"
+                f"Please check your license key and try again.\n\n"
+                f"If you need a license, visit:\n"
+                f"https://quotrading.com/subscribe"
+            )
+        
+        # Validate license with Azure (server handles admin vs regular keys)
+        self.validate_license_key(quotrading_api_key, on_license_success, on_license_error)
+    
     
     def _continue_broker_validation(self, broker, token, username, quotrading_api_key, account_size):
         """Continue broker validation after license is confirmed valid."""
@@ -772,7 +806,7 @@ class QuoTradingLauncher:
         def validate_in_thread():
             import traceback
             print(f"[DEBUG] validate_in_thread started")
-            print(f"[DEBUG] broker={broker}, username={username}, is_admin={quotrading_api_key == 'QUOTRADING_ADMIN_MASTER_2025'}")
+            print(f"[DEBUG] broker={broker}, username={username}")
             try:
                 # Import broker interface
                 import sys
@@ -782,9 +816,6 @@ class QuoTradingLauncher:
                     sys.path.insert(0, str(src_path))
                 
                 accounts = []
-                
-                # Check if using admin key - still fetch accounts but bypass if connection fails
-                is_admin = (quotrading_api_key == "QUOTRADING_ADMIN_MASTER_2025")
                 
                 # Connect to broker API
                 if broker == "TopStep":
@@ -854,22 +885,8 @@ class QuoTradingLauncher:
                         
                         ts_broker.disconnect()
                     else:
-                        # If connection fails and using admin key, create dummy accounts
-                        if is_admin:
-                            try:
-                                user_account_size = int(account_size)
-                            except:
-                                user_account_size = 50000
-                            
-                            accounts = [{
-                                "id": "ADMIN_DEMO",
-                                "name": f"Admin Test Account ({username})",
-                                "balance": user_account_size,
-                                "equity": user_account_size,
-                                "type": "demo"
-                            }]
-                        else:
-                            raise Exception("Failed to connect to TopStep API. Check your API token and username.")
+                        # Connection failed - always require valid broker connection
+                        raise Exception("Failed to connect to TopStep API. Check your API token and username.")
                 
                 elif broker == "Tradovate":
                     raise Exception("Tradovate API integration coming soon. Please use TopStep for now.")

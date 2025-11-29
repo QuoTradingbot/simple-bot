@@ -2,9 +2,12 @@
 """Fix corrupted signal_experience.json file"""
 import json
 import os
+from pathlib import Path
 
 def fix_experience_file():
-    filepath = 'experiences/ES/signal_experience.json'
+    # Get project root (2 levels up from this file)
+    PROJECT_ROOT = Path(__file__).parent.parent.parent
+    filepath = PROJECT_ROOT / 'experiences' / 'ES' / 'signal_experience.json'
     
     # Read the file
     with open(filepath, 'r') as f:

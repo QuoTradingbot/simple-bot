@@ -3110,8 +3110,7 @@ def handle_partial_fill(symbol: str, side: str, expected_qty: int, timeout_secon
     Returns:
         Tuple of (actual_filled_qty, is_complete_fill)
     """
-    import time
-    time.sleep(timeout_seconds)
+    time_module.sleep(timeout_seconds)
     
     # Get actual position
     current_position = get_position_quantity(symbol)
@@ -3168,8 +3167,6 @@ def place_entry_order_with_retry(symbol: str, side: str, contracts: int,
     Returns:
         Tuple of (order, fill_price, order_type_used)
     """
-    import time
-    
     order_side = "BUY" if side == "long" else "SELL"
     tick_size = CONFIG["tick_size"]
     
@@ -3221,7 +3218,7 @@ def place_entry_order_with_retry(symbol: str, side: str, contracts: int,
                                 elif queue_reason == "price_moved_away" and attempt < max_retries:
                                     # Price moved - retry with new price
                                     logger.info(f"  [RETRY] Reassessing entry with updated quote")
-                                    time.sleep(0.5)
+                                    time_module.sleep(0.5)
                                     continue
                                 
                                 # Failed - move to retry
@@ -3267,7 +3264,7 @@ def place_entry_order_with_retry(symbol: str, side: str, contracts: int,
                             order_params['limit_price'] -= tick_size
                         
                         logger.info(f"  [RETRY] Retry with improved price: ${order_params['limit_price']:.2f}")
-                        time.sleep(0.5)  # Brief pause before retry
+                        time_module.sleep(0.5)  # Brief pause before retry
                         continue
                 
                 # Order placement failed
@@ -3281,7 +3278,7 @@ def place_entry_order_with_retry(symbol: str, side: str, contracts: int,
                 
                 if order is not None:
                     # Aggressive orders usually fill immediately
-                    time.sleep(1)  # Brief wait to confirm fill
+                    time_module.sleep(1)  # Brief wait to confirm fill
                     actual_filled = get_position_quantity(symbol)
                     if abs(actual_filled) >= contracts:
                         logger.info(f"  [FILLED] Aggressive fill at ${limit_price:.2f}")
@@ -3315,12 +3312,12 @@ def place_entry_order_with_retry(symbol: str, side: str, contracts: int,
             if attempt < max_retries:
                 backoff_time = 0.5 * attempt  # Exponential backoff
                 logger.warning(f"  [WAIT] Retrying in {backoff_time:.1f}s...")
-                time.sleep(backoff_time)
+                time_module.sleep(backoff_time)
             
         except Exception as e:
             logger.error(f"  [FAIL] Attempt {attempt} exception: {e}")
             if attempt < max_retries:
-                time.sleep(0.5 * attempt)
+                time_module.sleep(0.5 * attempt)
                 continue
     
     # All retries exhausted
@@ -5505,7 +5502,7 @@ def handle_exit_orders(symbol: str, position: Dict[str, Any], exit_price: float,
             if attempt < max_attempts:
                 wait_time = attempt * retry_backoff_base  # 1s, 2s, 3s, 4s delays
                 logger.error(f"  Retrying in {wait_time} seconds with increased urgency...")
-                time.sleep(wait_time)
+                time_module.sleep(wait_time)
         
         # ALL RETRIES FAILED - CRITICAL ALERT!
         logger.critical("=" * 80)
@@ -5582,17 +5579,27 @@ def handle_exit_orders(symbol: str, position: Dict[str, Any], exit_price: float,
                 
                 if order and strategy.get('timeout', 0) > 0:
                     # Wait for fill with timeout
-                    import time
-                    time.sleep(strategy['timeout'])
+                    time_module.sleep(strategy['timeout'])
                     
-                    # Check if filled
-                    current_position = get_position_quantity(symbol)
+                    # Check if filled (handle partial fills)
+                    current_position = abs(get_position_quantity(symbol))
                     if current_position == 0:
-                        logger.info(" Passive exit filled")
+                        logger.info("✓ Passive exit filled completely")
                         return
+                    elif current_position < abs(position["quantity"]):
+                        # Partial fill detected
+                        filled = abs(position["quantity"]) - current_position
+                        logger.warning(f"  [PARTIAL FILL] {filled} of {contracts} contracts filled")
+                        logger.warning(f"  [REMAINING] {current_position} contracts - using aggressive for remainder")
+                        contracts = current_position
+                        # Place aggressive order for remaining
+                        if 'fallback_price' in strategy:
+                            order = place_limit_order(symbol, order_side, contracts, strategy['fallback_price'])
+                        else:
+                            order = place_market_order(symbol, order_side, contracts)
                     else:
-                        # Not filled, use fallback
-                        logger.warning(" Passive exit not filled, using aggressive")
+                        # Not filled at all, use fallback
+                        logger.warning("✗ Passive exit not filled, using aggressive")
                         if 'fallback_price' in strategy:
                             order = place_limit_order(symbol, order_side, contracts, strategy['fallback_price'])
                         else:
@@ -5608,8 +5615,21 @@ def handle_exit_orders(symbol: str, position: Dict[str, Any], exit_price: float,
                 else:
                     order = place_market_order(symbol, order_side, contracts)
             
+            # Verify final fill for aggressive orders
             if order:
                 logger.info(f"Exit order placed: {order.get('order_id')}")
+                
+                # For aggressive/market orders, verify fill in live mode
+                if not is_backtest_mode() and strategy['order_type'] == 'aggressive':
+                    time_module.sleep(1)  # Brief wait for fill
+                    final_position = abs(get_position_quantity(symbol))
+                    if final_position > 0:
+                        logger.warning(f"  [WARN] Aggressive exit left {final_position} contracts unfilled")
+                        logger.warning(f"  Retrying with remaining {final_position} contracts")
+                        # Retry once more with market order
+                        retry_order = place_market_order(symbol, order_side, final_position)
+                        if retry_order:
+                            logger.info(f"  Retry order placed: {retry_order.get('order_id')}")
                 return
                 
         except Exception as e:
@@ -5626,10 +5646,22 @@ def handle_exit_orders(symbol: str, position: Dict[str, Any], exit_price: float,
         logger.info("Using aggressive limit order strategy for emergency exit")
         execute_flatten_with_limit_orders(symbol, order_side, contracts, exit_price, reason)
     else:
-        # Normal exit - use market order
+        # Normal exit - use market order with partial fill retry
+        logger.info(f"Placing market exit order for {contracts} contracts")
         order = place_market_order(symbol, order_side, contracts)
         if order:
             logger.info(f"Exit order placed: {order.get('order_id')}")
+            
+            # Verify fill in live mode and retry if needed
+            if not is_backtest_mode():
+                time_module.sleep(1)  # Wait for fill
+                remaining = abs(get_position_quantity(symbol))
+                if remaining > 0:
+                    logger.warning(f"  [PARTIAL FILL] {remaining} contracts still open")
+                    logger.info(f"  Retrying with market order for {remaining} contracts")
+                    retry_order = place_market_order(symbol, order_side, remaining)
+                    if retry_order:
+                        logger.info(f"  Retry order placed: {retry_order.get('order_id')}")
 
 
 def execute_exit(symbol: str, exit_price: float, reason: str) -> None:

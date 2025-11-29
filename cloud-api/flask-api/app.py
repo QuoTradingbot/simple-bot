@@ -57,49 +57,46 @@ def send_license_email(email, license_key):
     try:
         subject = "Your QuoTrading AI License Key"
         
-        html_body = f"""
-        <html>
-        <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h1 style="color: #667eea;">Welcome to QuoTrading AI! 🎉</h1>
-            
-            <p>Thank you for your purchase! Check your email from Whop for the bot download link.</p>
-            
-            <div style="background: #f3f4f6; padding: 20px; border-radius: 10px; margin: 20px 0;">
-                <h2 style="margin-top: 0;">Your License Key:</h2>
-                <p style="font-size: 24px; font-weight: bold; color: #667eea; letter-spacing: 2px;">{license_key}</p>
-                <p style="font-size: 14px; color: #6b7280; margin-top: 10px;">⚠️ Save this key - you'll need it to activate the bot!</p>
-            </div>
-            
-            <h2>Setup Instructions:</h2>
-            <ol>
-                <li><strong>Download the bot files</strong> from the link in your Whop email</li>
-                <li><strong>Extract the ZIP file</strong> to a folder on your Windows PC</li>
-                <li><strong>Run QuoTrading_Launcher.exe</strong> from the extracted folder</li>
-                <li><strong>Enter your license key</strong> when prompted: <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px;">{license_key}</code></li>
-                <li><strong>Configure your TopStep account</strong> credentials in the bot</li>
-                <li><strong>Start trading!</strong> The AI will analyze markets and execute trades</li>
-            </ol>
-            
-            <h2>📌 Important Notes:</h2>
-            <ul>
-                <li>✅ Keep this email - you'll need your license key to activate the bot</li>
-                <li>🔐 Your license key is unique to you - do not share it</li>
-                <li>💻 The bot requires a Windows PC to run</li>
-                <li>📂 If you can't find the Whop download email, check your spam folder</li>
-            </ul>
-            
-            <h2>Need Help?</h2>
-            <p>📧 Email: <a href="mailto:support@quotrading.com" style="color: #667eea;">support@quotrading.com</a></p>
-            <p>💬 Discord: Join our community for support and updates</p>
-            
-            <p style="color: #6b7280; font-size: 12px; margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 20px;">
-                Your subscription will auto-renew monthly. You can manage your subscription anytime from your Whop dashboard.
-            </p>
-        </body>
-        </html>
-        """
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h1 style="color: #667eea;">Welcome to QuoTrading AI</h1>
         
-        # Try SendGrid first (preferred), fall back to SMTP
+        <p>Thank you for your subscription! Your license key is below.</p>
+        
+        <div style="background: #f3f4f6; padding: 20px; border-radius: 10px; margin: 20px 0;">
+            <h2 style="margin-top: 0;">Your License Key:</h2>
+            <p style="font-size: 24px; font-weight: bold; color: #667eea; letter-spacing: 2px; font-family: monospace;">{license_key}</p>
+            <p style="font-size: 14px; color: #6b7280; margin-top: 10px;">⚠️ Save this key securely - you'll need it to activate the AI</p>
+        </div>
+        
+        <h2>Getting Started:</h2>
+        <ol>
+            <li><strong>Download the AI</strong> from your Whop dashboard or email</li>
+            <li><strong>Launch the application</strong> on your computer</li>
+            <li><strong>Enter your license key</strong> when prompted: <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: monospace;">{license_key}</code></li>
+            <li><strong>Connect your brokerage account</strong> and set your trading preferences</li>
+            <li><strong>Start trading</strong> with AI-powered market analysis</li>
+        </ol>
+        
+        <h2>📌 Important:</h2>
+        <ul>
+            <li>🔐 Your license key is unique and should not be shared</li>
+            <li>✅ This email contains everything you need to get started</li>
+            <li>📥 Check your spam folder if you haven't received your download link</li>
+            <li>💡 Join our community for tips, updates, and support</li>
+        </ul>
+        
+        <h2>Need Help?</h2>
+        <p>📧 Email: <a href="mailto:support@quotrading.com" style="color: #667eea;">support@quotrading.com</a></p>
+        <p>💬 Discord: Join our community for live support</p>
+        
+        <p style="color: #6b7280; font-size: 12px; margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 20px;">
+            Your subscription renews monthly. Manage your subscription anytime from your Whop dashboard.
+        </p>
+    </body>
+    </html>
+    """        # Try SendGrid first (preferred), fall back to SMTP
         if SENDGRID_API_KEY:
             logging.info(f"🔍 Attempting SendGrid email to {email}")
             try:

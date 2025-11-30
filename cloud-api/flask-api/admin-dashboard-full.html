@@ -1287,7 +1287,7 @@
 
     <script>
         const API_URL = 'https://quotrading-flask-api.azurewebsites.net';
-        const ADMIN_KEY = 'ADMIN-DEV-KEY-2024';
+        const ADMIN_KEY = 'ADMIN-DEV-KEY-2026';
         const API_KEY = 'ADMIN-DEV-KEY-2024';  // Same as ADMIN_KEY for compatibility
 
         let allUsers = [];
@@ -2193,46 +2193,47 @@
                 </div>
             `;
             
+            resultDiv.innerHTML = `
+                <div style="text-align: center; padding: 16px; color: #5f6368; font-size: 13px;">
+                    <div style="font-size: 24px; margin-bottom: 8px;">📧</div>
+                    Sending email...
+                </div>
+            `;
+            
             try {
-                // Use the add-user endpoint with send_email flag to resend license
-                // First verify the license exists
-                const verifyResponse = await fetch(`${API_URL}/api/main`, {
+                // Send email using the admin endpoint
+                const response = await fetch(`${API_URL}/api/admin/send-license-email?license_key=${ADMIN_KEY}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ license_key: licenseKey })
+                    body: JSON.stringify({
+                        email: email,
+                        license_key: licenseKey
+                    })
                 });
                 
-                if (!verifyResponse.ok) {
+                const data = await response.json();
+                
+                if (response.ok) {
                     resultDiv.innerHTML = `
-                        <div style="background: #fce8e6; border: 1px solid #d93025; color: #d93025; padding: 12px; border-radius: 6px; font-size: 13px;">
-                            ❌ License key not found or invalid
+                        <div style="background: #e6f4ea; border: 2px solid #34a853; border-radius: 8px; padding: 16px;">
+                            <div style="font-size: 32px; text-align: center; margin-bottom: 8px;">✅</div>
+                            <div style="font-weight: 600; color: #1e8e3e; text-align: center; margin-bottom: 8px; font-size: 15px;">Email Sent!</div>
+                            <div style="font-size: 12px; color: #5f6368; text-align: center;">
+                                License key sent to ${email}
+                            </div>
                         </div>
                     `;
-                    return;
-                }
-                
-                // Send email using a simple POST request to trigger SendGrid
-                // We'll use the create-license endpoint's email functionality
-                const emailData = {
-                    to_email: email,
-                    license_key: licenseKey,
-                    subject: 'Your QuoTrading License Key',
-                    message: `Your license key is: ${licenseKey}`
-                };
-                
-                resultDiv.innerHTML = `
-                    <div style="background: #e6f4ea; border: 2px solid #34a853; border-radius: 8px; padding: 16px;">
-                        <div style="font-size: 32px; text-align: center; margin-bottom: 8px;">📧</div>
-                        <div style="font-weight: 600; color: #1e8e3e; text-align: center; margin-bottom: 8px; font-size: 15px;">Email Sent!</div>
-                        <div style="font-size: 12px; color: #5f6368; text-align: center;">
-                            License key sent to ${email}
+                    
+                    // Clear form
+                    document.getElementById('emailLicenseKey').value = '';
+                    document.getElementById('emailAddress').value = '';
+                } else {
+                    resultDiv.innerHTML = `
+                        <div style="background: #fce8e6; border: 1px solid #d93025; color: #d93025; padding: 12px; border-radius: 6px; font-size: 13px;">
+                            ❌ Error: ${data.error || 'Failed to send email'}
                         </div>
-                    </div>
-                `;
-                
-                // Clear form
-                document.getElementById('emailLicenseKey').value = '';
-                document.getElementById('emailAddress').value = '';
+                    `;
+                }
             } catch (error) {
                 resultDiv.innerHTML = `
                     <div style="background: #fce8e6; border: 1px solid #d93025; color: #d93025; padding: 12px; border-radius: 6px; font-size: 13px;">

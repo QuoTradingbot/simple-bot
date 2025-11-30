@@ -1652,7 +1652,7 @@ def admin_list_users():
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cursor:
             cursor.execute("""
-                SELECT u.id, u.email, u.license_key, u.license_type, u.license_status, 
+                SELECT u.account_id, u.email, u.license_key, u.license_type, u.license_status, 
                        u.license_expiration, u.created_at,
                        MAX(a.created_at) as last_active,
                        CASE WHEN MAX(a.created_at) > NOW() - INTERVAL '5 minutes' 
@@ -1662,7 +1662,7 @@ def admin_list_users():
                         WHERE r.license_key = u.license_key AND r.took_trade = TRUE) as trade_count
                 FROM users u
                 LEFT JOIN api_logs a ON u.license_key = a.license_key
-                GROUP BY u.id, u.email, u.license_key, u.license_type, u.license_status, 
+                GROUP BY u.account_id, u.email, u.license_key, u.license_type, u.license_status, 
                          u.license_expiration, u.created_at
                 ORDER BY u.created_at DESC
             """)
@@ -1672,7 +1672,7 @@ def admin_list_users():
             formatted_users = []
             for user in users:
                 formatted_users.append({
-                    "account_id": str(user['id']),
+                    "account_id": user['account_id'],
                     "email": user['email'],
                     "license_key": user['license_key'],
                     "license_type": user['license_type'].upper() if user['license_type'] else 'MONTHLY',
@@ -2003,21 +2003,21 @@ def admin_add_user():
     
     try:
         license_key = generate_license_key()
+        account_id = f"user_{license_key[:8]}"
         expiration = datetime.now() + timedelta(days=days_valid)
         
         with conn.cursor() as cursor:
             cursor.execute("""
-                INSERT INTO users (email, license_key, license_type, license_status, license_expiration)
-                VALUES (%s, %s, %s, 'ACTIVE', %s)
-                RETURNING id
-            """, (email, license_key, license_type, expiration))
-            user_id = cursor.fetchone()[0]
+                INSERT INTO users (account_id, email, license_key, license_type, license_status, license_expiration)
+                VALUES (%s, %s, %s, %s, 'ACTIVE', %s)
+                RETURNING license_key
+            """, (account_id, email, license_key, license_type, expiration))
             conn.commit()
             
             return jsonify({
                 "status": "success",
                 "license_key": license_key,
-                "account_id": str(user_id),
+                "account_id": account_id,
                 "email": email,
                 "expiration": expiration.isoformat()
             }), 201
@@ -2026,6 +2026,30 @@ def admin_add_user():
         return jsonify({"error": str(e)}), 500
     finally:
         return_connection(conn)
+
+@app.route('/api/admin/send-license-email', methods=['POST'])
+def admin_send_license_email():
+    """Send a license key via email"""
+    admin_key = request.args.get('license_key') or request.args.get('admin_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    data = request.get_json()
+    email = data.get('email')
+    license_key = data.get('license_key')
+    
+    if not email or not license_key:
+        return jsonify({"error": "Email and license_key are required"}), 400
+    
+    try:
+        success = send_license_email(email, license_key)
+        if success:
+            return jsonify({"status": "success", "message": f"Email sent to {email}"}), 200
+        else:
+            return jsonify({"error": "Failed to send email"}), 500
+    except Exception as e:
+        logging.error(f"Send email error: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # ============================================================================
 # END ADMIN DASHBOARD ENDPOINTS

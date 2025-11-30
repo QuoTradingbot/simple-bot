@@ -2058,6 +2058,8 @@
             const email = document.getElementById('emailAddress').value.trim();
             const resultDiv = document.getElementById('emailResult');
             
+            console.log('Email function called - licenseKey:', licenseKey, 'email:', email);
+            
             if (!licenseKey || !email) {
                 resultDiv.innerHTML = `
                     <div style="background: #fef7e0; border: 1px solid #ea8600; color: #c17900; padding: 12px; border-radius: 6px; font-size: 13px;">

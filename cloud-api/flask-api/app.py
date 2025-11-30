@@ -2101,6 +2101,8 @@ def admin_send_license_email():
     email = data.get('email')
     license_key = data.get('license_key')
     
+    logging.info(f"📧 Send email request - email: {email}, license_key: {license_key}")
+    
     if not email or not license_key:
         return jsonify({"error": "Email and license_key are required"}), 400
     

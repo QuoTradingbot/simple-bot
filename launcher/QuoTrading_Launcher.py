@@ -958,7 +958,7 @@ class QuoTradingLauncher:
         
         sync_label = tk.Label(
             fetch_button_frame,
-            text="🔄 PING:",
+            text="🔄 Test Connection:",
             font=("Segoe UI", 8, "bold"),
             bg=self.colors['card'],
             fg=self.colors['success']
@@ -966,7 +966,7 @@ class QuoTradingLauncher:
         sync_label.pack(anchor=tk.W)
         
         # Button to ping RL server
-        button_text = "Ping"
+        button_text = "Ping Server"
         fetch_btn = self.create_button(fetch_button_frame, button_text, self.fetch_account_info, "next")
         fetch_btn.pack()
         
@@ -1088,7 +1088,7 @@ class QuoTradingLauncher:
         
         tk.Label(
             shadow_mode_frame,
-            text="Watch signals without executing",
+            text="Shadow trading - signals trades for manual execution",
             font=("Segoe UI", 7, "bold"),
             bg=self.colors['card'],
             fg=self.colors['text_light']
@@ -1412,20 +1412,20 @@ class QuoTradingLauncher:
     
     
     def fetch_account_info(self):
-        """Ping RL server to verify API connectivity."""
+        """Ping server to verify connectivity."""
         
         # Show loading spinner
-        self.show_loading("Pinging RL server...")
+        self.show_loading("Testing server connection...")
         
         def test_connection_thread():
-            """Ping RL server."""
+            """Ping server to test connectivity."""
             import traceback
             try:
                 import requests
                 
-                # Get RL server URL
-                rl_server_url = CLOUD_API_BASE_URL
-                health_endpoint = f"{rl_server_url}/health"
+                # Get server URL
+                server_url = CLOUD_API_BASE_URL
+                health_endpoint = f"{server_url}/health"
                 
                 # Ping with timeout
                 response = requests.get(health_endpoint, timeout=10)
@@ -1447,17 +1447,18 @@ class QuoTradingLauncher:
                         
                         # Update info label to show connection success
                         self.account_info_label.config(
-                            text=f"✓ Ping successful! RL Server is online",
+                            text=f"✓ Server ping successful! Connection is working.",
                             fg=self.colors['success']
                         )
                         
                         messagebox.showinfo(
                             "Ping Successful",
-                            f"✓ Connection Successful!\n\n"
-                            f"Server: {rl_server_url}\n"
+                            f"✓ Connection Test Passed!\n\n"
+                            f"Server: QuoTrading Server\n"
+                            f"URL: {server_url}\n"
                             f"Status: {status.upper()}\n"
                             f"Version: {version}\n\n"
-                            f"RL server is ready."
+                            f"Your connection to the server is working properly."
                         )
                     
                     self.root.after(0, show_success)
@@ -1465,18 +1466,18 @@ class QuoTradingLauncher:
                     raise Exception(f"Server returned status code {response.status_code}")
                 
             except requests.exceptions.Timeout:
-                error_msg = "Timeout - RL server not responding"
+                error_msg = "Timeout - Server not responding"
                 
                 def show_error():
                     self.hide_loading()
                     messagebox.showerror(
                         "Ping Failed",
                         f"❌ Connection Failed\n\n{error_msg}\n\n"
-                        f"Server: {rl_server_url}\n\n"
+                        f"Server: {server_url}\n\n"
                         f"Please check:\n"
                         f"• Internet connection\n"
                         f"• Firewall settings\n"
-                        f"• RL server status\n\n"
+                        f"• Server status\n\n"
                         f"Contact support if issue persists."
                     )
                 
@@ -1490,11 +1491,11 @@ class QuoTradingLauncher:
                     messagebox.showerror(
                         "Ping Failed",
                         f"❌ Connection Failed\n\n{error_msg}\n\n"
-                        f"Server: {rl_server_url}\n\n"
+                        f"Server: {server_url}\n\n"
                         f"Please check:\n"
                         f"• Internet connection\n"
                         f"• Firewall settings\n"
-                        f"• RL server status\n\n"
+                        f"• Server status\n\n"
                         f"Contact support if issue persists."
                     )
                 
@@ -1508,7 +1509,7 @@ class QuoTradingLauncher:
                     messagebox.showerror(
                         "Ping Failed",
                         f"❌ Connection Failed\n\n{error_msg}\n\n"
-                        f"Server: {rl_server_url}\n\n"
+                        f"Server: {server_url}\n\n"
                         f"Contact support if issue persists."
                     )
                 
@@ -1519,8 +1520,12 @@ class QuoTradingLauncher:
         thread.start()
     
     def auto_adjust_parameters(self):
-        """Auto-adjust trading parameters based on user-entered account size."""
-        # Get account size from user input
+        """Universal smart auto-configure for ALL account types.
+        
+        Uses intelligent math that works for prop firms and live brokers alike.
+        Max loss per trade values are rounded to nearest $50 for clean numbers.
+        """
+        # Get account size from user input or selected account
         try:
             account_size = float(self.account_entry.get() or "10000")
         except ValueError:
@@ -1537,46 +1542,70 @@ class QuoTradingLauncher:
             )
             return
         
-        # Simple auto-configuration based on account size
-        # Daily loss limit: 2% of account size (standard conservative rule)
-        daily_loss_limit = account_size * 0.02
+        # UNIVERSAL SMART FORMULA - Works for ALL account types
+        # Key principle: Simple percentage-based with clean $50 increments
         
-        # Max contracts: Scale based on account size
-        # Small accounts (< $25k): 1-2 contracts
-        # Medium accounts ($25k-$50k): 2-3 contracts  
-        # Large accounts ($50k-$100k): 3-5 contracts
-        # Very large accounts (> $100k): 5-10 contracts
-        if account_size < 25000:
-            max_contracts = 2
-        elif account_size < 50000:
-            max_contracts = 3
-        elif account_size < 100000:
-            max_contracts = 5
-        elif account_size < 250000:
-            max_contracts = 8
+        # Max loss per trade: Based on account size, rounded to nearest $50
+        # This is the main risk parameter - everything else scales from this
+        
+        if account_size <= 10000:
+            # Small accounts: $50-$100 per trade
+            max_loss_per_trade = 50
+        elif account_size <= 25000:
+            # Growing accounts: $150 per trade
+            max_loss_per_trade = 150
+        elif account_size <= 50000:
+            # Medium accounts: $300 per trade
+            max_loss_per_trade = 300
+        elif account_size <= 100000:
+            # Large accounts: $450 per trade
+            max_loss_per_trade = 450
+        elif account_size <= 150000:
+            # Very large accounts: $600 per trade
+            max_loss_per_trade = 600
         else:
-            max_contracts = 10
+            # Huge accounts: Cap at $750 per trade
+            max_loss_per_trade = 750
         
-        # Max trades per day: Scale based on account size
-        # Smaller accounts should trade less frequently
-        if account_size < 25000:
+        # DAILY LOSS LIMIT: Based on max_loss_per_trade with buffer
+        # Allow 3-4 losing trades before hitting daily limit
+        # This gives reasonable protection without being too restrictive
+        TRADES_BEFORE_DAILY_LIMIT = 3.5
+        daily_loss_limit = max_loss_per_trade * TRADES_BEFORE_DAILY_LIMIT
+        
+        # Round daily limit to nearest $50 for clean numbers
+        daily_loss_limit = round(daily_loss_limit / 50) * 50
+        
+        # MAX CONTRACTS: Conservative scaling based on max loss per trade
+        # 1 contract per $300 of max loss per trade
+        DOLLARS_PER_CONTRACT = 300
+        max_contracts = min(self.max_contracts_allowed, max(1, int(max_loss_per_trade / DOLLARS_PER_CONTRACT)))
+        
+        # MAX TRADES PER DAY: Based on account size
+        # Smaller accounts = fewer trades
+        if account_size <= 25000:
+            max_trades = 4
+        elif account_size <= 50000:
             max_trades = 5
-        elif account_size < 50000:
-            max_trades = 7
-        elif account_size < 100000:
-            max_trades = 10
+        elif account_size <= 100000:
+            max_trades = 6
         else:
-            max_trades = 15
+            max_trades = 7
         
         # Apply the calculated settings
         self.loss_entry.delete(0, tk.END)
-        self.loss_entry.insert(0, f"{daily_loss_limit:.2f}")
+        self.loss_entry.insert(0, f"{daily_loss_limit:.0f}")
+        
+        self.max_loss_per_trade_entry.delete(0, tk.END)
+        self.max_loss_per_trade_entry.insert(0, f"{max_loss_per_trade:.0f}")
+        
         self.contracts_var.set(max_contracts)
         self.trades_var.set(max_trades)
         
-        # Update info label with feedback
+        # Update info label with universal feedback
+        loss_trades_buffer = daily_loss_limit / max_loss_per_trade if max_loss_per_trade > 0 else 0
         self.auto_adjust_info_label.config(
-            text=f"✓ Optimized for ${account_size:,.2f} account - {max_contracts} contracts, ${daily_loss_limit:.0f} daily limit, {max_trades} trades/day",
+            text=f"✓ Smart config: {max_contracts} contracts • ${max_loss_per_trade:.0f}/trade • {max_trades} trades/day • ${daily_loss_limit:.0f} daily limit • {loss_trades_buffer:.1f}x buffer",
             fg=self.colors['success']
         )
     
@@ -1705,7 +1734,7 @@ class QuoTradingLauncher:
         
         # Only show enabled features
         if self.shadow_mode_var.get():
-            confirmation_text += f"\n✓ Shadow Mode: ON (paper trading - no real trades)\n"
+            confirmation_text += f"\n✓ Shadow Mode: ON (shadow trading - signals only, no executions)\n"
         
         confirmation_text += f"\nThis will open a PowerShell terminal with live logs.\n"
         confirmation_text += f"Use the window's close button to stop the bot.\n\n"
@@ -2725,8 +2754,9 @@ BOT_MAX_LOSS_PER_TRADE={self.config.get("max_loss_per_trade", 200)}
 BOT_CONFIDENCE_THRESHOLD={self.confidence_var.get()}
 # Bot only takes signals above this confidence threshold (user's minimum)
 
-# Trading Mode (Signal-Only Mode for manual trading)
+# Trading Mode (Shadow Trading / Shadow Mode)
 BOT_SHADOW_MODE={'true' if self.shadow_mode_var.get() else 'false'}
+# When true: Bot provides signals only, no automatic trade execution (manual trading)
 
 # Account Selection
 SELECTED_ACCOUNT={self.config.get("selected_account", "Default Account")}

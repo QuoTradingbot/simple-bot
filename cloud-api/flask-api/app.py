@@ -217,8 +217,12 @@ def send_license_email(email, license_key, whop_user_id=None, whop_membership_id
                             <p style="color: #64748b; font-size: 13px; line-height: 1.6; margin: 0 0 8px 0;">
                                 Your subscription renews monthly and can be managed anytime from your Whop dashboard.
                             </p>
-                            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                            <p style="color: #94a3b8; font-size: 12px; margin: 0 0 12px 0;">
                                 © 2025 QuoTrading. All rights reserved.
+                            </p>
+                            <p style="color: #94a3b8; font-size: 11px; margin: 0;">
+                                This is a transactional email for your license purchase. To manage your subscription, visit 
+                                <a href="https://whop.com/hub/memberships" style="color: #667eea; text-decoration: none;">Whop Dashboard</a>
                             </p>
                         </td>
                     </tr>
@@ -238,8 +242,17 @@ def send_license_email(email, license_key, whop_user_id=None, whop_membership_id
                 payload = {
                     "personalizations": [{"to": [{"email": email}]}],
                     "from": {"email": FROM_EMAIL, "name": "QuoTrading"},
+                    "reply_to": {"email": "support@quotrading.com", "name": "QuoTrading Support"},
                     "subject": subject,
-                    "content": [{"type": "text/html", "value": html_body}]
+                    "content": [{"type": "text/html", "value": html_body}],
+                    "tracking_settings": {
+                        "click_tracking": {"enable": True},
+                        "open_tracking": {"enable": True}
+                    },
+                    "mail_settings": {
+                        "bypass_list_management": {"enable": False},
+                        "footer": {"enable": False}
+                    }
                 }
                 logging.info(f"🔍 SendGrid payload: {payload}")
                 

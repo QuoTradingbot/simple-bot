@@ -2168,12 +2168,17 @@
                     { method: 'PUT' }
                 );
                 
+                const data = await response.json();
+                
                 if (response.ok) {
                     await loadDashboard();
-                    alert('User suspended successfully');
+                    alert(`✅ ${data.message || 'User suspended successfully'}`);
+                } else {
+                    alert(`❌ Failed: ${data.error || data.detail || 'Unknown error'}`);
                 }
             } catch (error) {
-                alert('Failed to suspend user: ' + error.message);
+                console.error('Suspend error:', error);
+                alert('❌ Failed to suspend user: ' + error.message);
             }
         }
 
@@ -2184,18 +2189,23 @@
                     { method: 'PUT' }
                 );
                 
+                const data = await response.json();
+                
                 if (response.ok) {
                     await loadDashboard();
-                    alert('User activated successfully');
+                    alert(`✅ ${data.message || 'User activated successfully'}`);
+                } else {
+                    alert(`❌ Failed: ${data.error || data.detail || 'Unknown error'}`);
                 }
             } catch (error) {
-                alert('Failed to activate user: ' + error.message);
+                console.error('Activate error:', error);
+                alert('❌ Failed to activate user: ' + error.message);
             }
         }
 
         async function extendLicense(accountId) {
             const days = prompt('Extend license by how many days?', '30');
-            if (!days) return;
+            if (!days || isNaN(days) || parseInt(days) <= 0) return;
             
             try {
                 const response = await fetch(
@@ -2203,51 +2213,73 @@
                     { method: 'PUT' }
                 );
                 
+                const data = await response.json();
+                
                 if (response.ok) {
                     await loadDashboard();
-                    alert('License extended successfully');
+                    alert(`✅ Added ${days} days. New expiration: ${data.new_expiration ? new Date(data.new_expiration).toLocaleDateString() : 'Unknown'}`);
+                } else {
+                    alert(`❌ Failed: ${data.error || data.detail || 'Unknown error'}`);
                 }
             } catch (error) {
-                alert('Failed to extend license: ' + error.message);
+                console.error('Extend error:', error);
+                alert('❌ Failed to extend license: ' + error.message);
             }
         }
 
         async function deleteUser(accountId) {
+            console.log('deleteUser called for:', accountId);
+            
             if (!confirm(`⚠️ Are you sure you want to DELETE user ${accountId}?\n\nThis will permanently remove:\n- User account\n- License\n- All trading data\n- Activity history\n\nThis action CANNOT be undone!`)) {
+                console.log('Delete cancelled by user');
                 return;
             }
             
             const confirmText = prompt(`Type "DELETE" to confirm permanent deletion of ${accountId}:`, '');
             if (confirmText !== 'DELETE') {
                 alert('❌ Deletion cancelled - confirmation text did not match');
+                console.log('Delete cancelled - wrong confirmation text:', confirmText);
                 return;
             }
             
             try {
-                const response = await fetch(
-                    `${API_URL}/api/admin/delete-user/${accountId}?license_key=${ADMIN_KEY}`,
-                    { method: 'DELETE' }
-                );
+                const url = `${API_URL}/api/admin/delete-user/${accountId}?license_key=${ADMIN_KEY}`;
+                console.log('Deleting user:', url);
+                
+                const response = await fetch(url, { method: 'DELETE' });
+                console.log('Delete response status:', response.status);
+                
+                const data = await response.json();
+                console.log('Delete response data:', data);
                 
                 if (response.ok) {
                     await loadDashboard();
                     alert(`✅ User ${accountId} has been permanently deleted`);
                 } else {
-                    const data = await response.json();
                     alert(`❌ Failed to delete user: ${data.detail || data.error || 'Unknown error'}`);
                 }
             } catch (error) {
+                console.error('Delete error:', error);
                 alert('❌ Failed to delete user: ' + error.message);
             }
         }
 
         async function viewDetails(accountId) {
+            console.log('viewDetails called for:', accountId);
             try {
-                const response = await fetch(`${API_URL}/api/admin/user/${accountId}?license_key=${ADMIN_KEY}`);
+                const url = `${API_URL}/api/admin/user/${accountId}?license_key=${ADMIN_KEY}`;
+                console.log('Fetching:', url);
+                
+                const response = await fetch(url);
+                console.log('Response status:', response.status);
+                
                 if (!response.ok) {
-                    throw new Error('Failed to fetch user details');
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || errorData.detail || `HTTP ${response.status}`);
                 }
+                
                 const data = await response.json();
+                console.log('User data received:', data);
                 
                 // Create modal HTML
                 const modalHtml = `
@@ -2329,10 +2361,11 @@
                     existingModal.remove();
                 }
                 document.body.insertAdjacentHTML('beforeend', modalHtml);
+                console.log('Modal added to page');
                 
             } catch (error) {
                 console.error('Failed to load user details:', error);
-                alert('Failed to load user details. Please try again.');
+                alert(`❌ Failed to load user details: ${error.message}`);
             }
         }
 

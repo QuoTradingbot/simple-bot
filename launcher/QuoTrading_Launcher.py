@@ -1545,12 +1545,12 @@ class QuoTradingLauncher:
         
         # Max contracts: Scale intelligently based on account size
         # Use a logarithmic-style scaling to avoid over-leveraging small accounts
-        # Formula: min(max_allowed, max(1, floor(account_size / 12500)))
+        # Formula: min(max_allowed, max(1, int(account_size / 12500)))
         # This gives roughly 1 contract per $12.5k of account size
         max_contracts = min(self.max_contracts_allowed, max(1, int(account_size / 12500)))
         
         # Max loss per trade: Should be proportional to daily loss limit
-        # Use 20-25% of daily loss limit for single trade risk (allows 4-5 losing trades)
+        # Use 20% of daily loss limit for single trade risk (allows 5 losing trades)
         # This prevents one bad trade from consuming entire daily limit
         max_loss_per_trade = daily_loss_limit * 0.2
         

@@ -125,7 +125,7 @@ def send_license_email(email, license_key, whop_user_id=None, whop_membership_id
                                 <p style="color: #64748b; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 12px 0;">
                                     Your License Key
                                 </p>
-                                <p style="font-size: 26px; font-weight: 900; color: #1e293b !important; letter-spacing: 2px; font-family: 'Courier New', monospace; margin: 0; word-break: break-all; line-height: 1.4; background: #ffffff !important; padding: 16px; border-radius: 6px; border: 3px solid #667eea;">
+                                <p style="font-size: 26px; font-weight: 900; color: #667eea; letter-spacing: 2px; font-family: 'Courier New', monospace; margin: 0; word-break: break-all; line-height: 1.4; background: #f1f5f9; padding: 16px; border-radius: 6px; border: 3px solid #667eea;">
                                     {license_key}
                                 </p>
                             </div>

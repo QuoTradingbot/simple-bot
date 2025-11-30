@@ -1573,10 +1573,8 @@ class QuoTradingLauncher:
         self.loss_entry.delete(0, tk.END)
         self.loss_entry.insert(0, f"{daily_loss_limit:.2f}")
         
-        # Update max loss per trade if field exists
-        if hasattr(self, 'max_loss_per_trade_entry'):
-            self.max_loss_per_trade_entry.delete(0, tk.END)
-            self.max_loss_per_trade_entry.insert(0, f"{max_loss_per_trade:.2f}")
+        self.max_loss_per_trade_entry.delete(0, tk.END)
+        self.max_loss_per_trade_entry.insert(0, f"{max_loss_per_trade:.2f}")
         
         self.contracts_var.set(max_contracts)
         self.trades_var.set(max_trades)

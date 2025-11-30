@@ -233,10 +233,6 @@ DAILY_LOSS_APPROACHING_THRESHOLD = 0.80  # Stop trading at 80% of daily loss lim
 # Idle Mode Configuration
 IDLE_STATUS_MESSAGE_INTERVAL = 300  # Show status message every 5 minutes (300 seconds) during idle
 
-# Profit-Based Trade Limit Configuration
-PROFIT_PER_BONUS_TRADE = 100.0  # Dollars of profit required to earn 1 bonus trade
-MAX_BONUS_TRADE_PERCENTAGE = 0.5  # Maximum bonus trades as percentage of base limit (50%)
-
 # Regime Detection Constants
 DEFAULT_FALLBACK_ATR = 5.0  # Default ATR when calculation not possible (ES futures typical value)
 
@@ -2388,65 +2384,42 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
         return False, "Position active"
     
     # Check daily trade limit (skip in backtest mode)
-    # If trader is profitable for the day, allow bonus trades based on profit
-    # NOTE: This calculation is lightweight (simple arithmetic) and only runs when evaluating signals,
-    # not continuously. Performance impact is negligible.
-    if not is_backtest_mode():
-        base_trade_limit = CONFIG["max_trades_per_day"]
-        current_pnl = state[symbol]["daily_pnl"]
+    if not is_backtest_mode() and state[symbol]["daily_trade_count"] >= CONFIG["max_trades_per_day"]:
+        logger.debug(f"Daily trade limit reached ({CONFIG['max_trades_per_day']}), stopping for the day")
         
-        # Calculate bonus trades based on profit
-        # For every $X in profit, allow 1 additional trade (capped at Y% more trades)
-        if current_pnl > 0:
-            profit_bonus_trades = int(current_pnl / PROFIT_PER_BONUS_TRADE)
-            max_bonus = int(base_trade_limit * MAX_BONUS_TRADE_PERCENTAGE)
-            bonus_trades = min(profit_bonus_trades, max_bonus)
-            effective_trade_limit = base_trade_limit + bonus_trades
-            
-            if state[symbol]["daily_trade_count"] >= effective_trade_limit:
-                logger.debug(f"Daily trade limit reached ({effective_trade_limit}), stopping for the day")
-                logger.debug(f"  Base limit: {base_trade_limit}, Profit bonus: +{bonus_trades} (${current_pnl:.2f} profit)")
-                
-                # Send max trades reached alert (only once)
-                if state[symbol]["daily_trade_count"] == effective_trade_limit:
-                    try:
-                        notifier = get_notifier()
-                        notifier.send_error_alert(
-                            error_message=f"Max trades per day reached! Count: {state[symbol]['daily_trade_count']} / Limit: {effective_trade_limit} (base {base_trade_limit} + {bonus_trades} profit bonus). No more trades today.",
-                            error_type="Max Trades Reached"
-                        )
-                    except Exception as e:
-                        logger.debug(f"Failed to send max trades alert: {e}")
-                
-                return False, "Daily trade limit"
-        else:
-            # No profit, use base limit
-            if state[symbol]["daily_trade_count"] >= base_trade_limit:
-                logger.debug(f"Daily trade limit reached ({base_trade_limit}), stopping for the day")
-                
-                # Send max trades reached alert (only once)
-                if state[symbol]["daily_trade_count"] == base_trade_limit:
-                    try:
-                        notifier = get_notifier()
-                        notifier.send_error_alert(
-                            error_message=f"Max trades per day reached! Count: {state[symbol]['daily_trade_count']} / Limit: {base_trade_limit}. No more trades today.",
-                            error_type="Max Trades Reached"
-                        )
-                    except Exception as e:
-                        logger.debug(f"Failed to send max trades alert: {e}")
-                
-                return False, "Daily trade limit"
+        # Send max trades reached alert (only once)
+        if state[symbol]["daily_trade_count"] == CONFIG["max_trades_per_day"]:
+            try:
+                notifier = get_notifier()
+                notifier.send_error_alert(
+                    error_message=f"Max trades per day reached! Count: {state[symbol]['daily_trade_count']} / Limit: {CONFIG['max_trades_per_day']}. No more trades today.",
+                    error_type="Max Trades Reached"
+                )
+            except Exception as e:
+                logger.debug(f"Failed to send max trades alert: {e}")
+        
+        return False, "Daily trade limit"
     
-    # Daily loss limit - ENABLED for safety
-    if state[symbol]["daily_pnl"] <= -CONFIG["daily_loss_limit"]:
+    # Daily loss limit - Adjusted by current profit
+    # If daily limit is $1000 and trader made $300 profit, effective limit becomes $1300
+    # This means they can lose up to $1300 before hitting the limit
+    current_pnl = state[symbol]["daily_pnl"]
+    base_loss_limit = CONFIG["daily_loss_limit"]
+    
+    # Adjust loss limit by adding current profit (if positive)
+    # Example: $1000 limit + $300 profit = can lose up to $1300 total before stopping
+    effective_loss_limit = base_loss_limit + max(0, current_pnl)
+    
+    if state[symbol]["daily_pnl"] <= -effective_loss_limit:
         logger.warning(f"Daily loss limit hit (${state[symbol]['daily_pnl']:.2f}), stopping for the day")
+        logger.warning(f"  Base limit: ${base_loss_limit:.2f}, Profit cushion: ${max(0, current_pnl):.2f}, Effective limit: ${effective_loss_limit:.2f}")
         
         # Send alert once when limit hit
         if not state[symbol].get("loss_limit_alerted", False):
             try:
                 notifier = get_notifier()
                 notifier.send_error_alert(
-                    error_message=f"≡ƒÆ░ Daily Loss Limit Reached: ${state[symbol]['daily_pnl']:.2f} / -${CONFIG['daily_loss_limit']:.2f}. Bot stopped trading for today. Will auto-resume tomorrow.",
+                    error_message=f"Daily Loss Limit Reached: ${state[symbol]['daily_pnl']:.2f} / -${effective_loss_limit:.2f}. Bot stopped trading for today. Will auto-resume tomorrow.",
                     error_type="Daily Loss Limit"
                 )
                 state[symbol]["loss_limit_alerted"] = True
@@ -6107,12 +6080,11 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
         except Exception as e:
             pass  # Silent disconnect
         
-        # Exit the bot completely
-        logger.critical("Bot shutdown complete.")
-        import sys
-        import time
-        time.sleep(2)  # Give user time to read message
-        sys.exit(0)
+        # Bot stays ON but IDLE - never exits unless user presses Ctrl+C
+        logger.critical("Bot will remain ON but IDLE (no trading)")
+        logger.critical("Press Ctrl+C to stop bot")
+        # NOTE: Bot does NOT exit - it stays running in idle mode
+        # sys.exit(0)  # COMMENTED OUT - bot should never exit unless user stops it
     logger.info("  Γ£ô Position state saved to disk (FLAT)")
 
 
@@ -6396,6 +6368,8 @@ def perform_daily_reset(symbol: str, new_date: Any) -> None:
 def check_daily_loss_limit(symbol: str) -> Tuple[bool, Optional[str]]:
     """
     Check if daily loss limit has been exceeded.
+    Loss limit is adjusted by current profit - if trader made $300 and limit is $1000,
+    they can lose up to $1300 before hitting the limit.
     
     Args:
         symbol: Instrument symbol
@@ -6403,9 +6377,16 @@ def check_daily_loss_limit(symbol: str) -> Tuple[bool, Optional[str]]:
     Returns:
         Tuple of (is_safe, reason)
     """
-    if state[symbol]["daily_pnl"] <= -CONFIG["daily_loss_limit"]:
+    current_pnl = state[symbol]["daily_pnl"]
+    base_loss_limit = CONFIG["daily_loss_limit"]
+    
+    # Adjust loss limit by adding current profit (if positive)
+    effective_loss_limit = base_loss_limit + max(0, current_pnl)
+    
+    if state[symbol]["daily_pnl"] <= -effective_loss_limit:
         if bot_status["trading_enabled"]:
             logger.critical(f"DAILY LOSS LIMIT BREACHED: ${state[symbol]['daily_pnl']:.2f}")
+            logger.critical(f"  Base limit: ${base_loss_limit:.2f}, Profit cushion: ${max(0, current_pnl):.2f}, Effective limit: ${effective_loss_limit:.2f}")
             logger.critical("Trading STOPPED for the day")
             bot_status["trading_enabled"] = False
             bot_status["stop_reason"] = "daily_loss_limit"
@@ -6414,7 +6395,7 @@ def check_daily_loss_limit(symbol: str) -> Tuple[bool, Optional[str]]:
             try:
                 notifier = get_notifier()
                 notifier.send_error_alert(
-                    error_message=f"DAILY LOSS LIMIT HIT! Trading stopped. Loss: ${state[symbol]['daily_pnl']:.2f} / Limit: ${-CONFIG['daily_loss_limit']:.2f}",
+                    error_message=f"DAILY LOSS LIMIT HIT! Trading stopped. Loss: ${state[symbol]['daily_pnl']:.2f} / Limit: ${-effective_loss_limit:.2f} (base ${base_loss_limit:.2f} + ${max(0, current_pnl):.2f} profit cushion)",
                     error_type="Daily Loss Limit Breached"
                 )
             except Exception as e:
@@ -7859,12 +7840,11 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
                     except Exception as e:
                         pass  # Silent disconnect
                     
-                    # Exit the bot completely - no more logs
-                    logger.critical("Bot shutdown complete.")
-                    import sys
-                    import time
-                    time.sleep(2)  # Give user time to read message
-                    sys.exit(0)
+                    # Bot stays ON but IDLE - never exits unless user presses Ctrl+C
+                    logger.critical("Bot will remain ON but IDLE (no trading)")
+                    logger.critical("Press Ctrl+C to stop bot")
+                    # NOTE: Bot does NOT exit - it stays running in idle mode
+                    # sys.exit(0)  # COMMENTED OUT - bot should never exit unless user stops it
             else:
                 # License is still valid
                 logger.debug("Γ£à License validation successful")

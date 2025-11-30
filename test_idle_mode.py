@@ -11,36 +11,31 @@ import pytz
 # Add src to path
 sys.path.insert(0, 'src')
 
-def test_profit_based_trade_limit():
-    """Test the profit-based trade limit calculation"""
+def test_profit_adjusted_loss_limit():
+    """Test the profit-adjusted daily loss limit calculation"""
     print("=" * 80)
-    print("TEST: Profit-Based Trade Limit")
+    print("TEST: Profit-Adjusted Daily Loss Limit")
     print("=" * 80)
+    print("\nConcept: If daily loss limit is $1000 and trader makes $300 profit,")
+    print("the effective loss limit becomes $1300 (base + profit cushion)")
+    print()
     
-    base_limit = 10
+    base_loss_limit = 1000.0
     test_cases = [
         (0, "No profit - use base limit"),
-        (50, "Small profit - no bonus yet"),
-        (100, "1 trade bonus for $100 profit"),
-        (250, "2 trade bonus for $250 profit"),
-        (500, "5 trade bonus for $500 profit (capped at 50% = 5)"),
-        (1000, "10 trade bonus but capped at 50% = 5"),
+        (100, "$100 profit - can lose $1100 total"),
+        (300, "$300 profit - can lose $1300 total"),
+        (500, "$500 profit - can lose $1500 total"),
+        (1000, "$1000 profit - can lose $2000 total"),
     ]
     
-    for pnl, description in test_cases:
-        if pnl > 0:
-            profit_bonus_trades = int(pnl / 100.0)
-            max_bonus = int(base_limit * 0.5)
-            bonus_trades = min(profit_bonus_trades, max_bonus)
-            effective_limit = base_limit + bonus_trades
-        else:
-            bonus_trades = 0
-            effective_limit = base_limit
+    for profit, description in test_cases:
+        effective_loss_limit = base_loss_limit + max(0, profit)
         
-        print(f"\n${pnl:>6.2f} profit: {description}")
-        print(f"  Base limit: {base_limit}")
-        print(f"  Bonus trades: +{bonus_trades}")
-        print(f"  Effective limit: {effective_limit}")
+        print(f"\n${profit:>6.2f} profit: {description}")
+        print(f"  Base loss limit: ${base_loss_limit:.2f}")
+        print(f"  Profit cushion: ${max(0, profit):.2f}")
+        print(f"  Effective loss limit: ${effective_loss_limit:.2f}")
     
     print("\n" + "=" * 80)
 
@@ -132,7 +127,7 @@ if __name__ == "__main__":
     print("║" + " " * 15 + "MAINTENANCE/WEEKEND IDLE MODE TEST SUITE" + " " * 23 + "║")
     print("╚" + "═" * 78 + "╝")
     
-    test_profit_based_trade_limit()
+    test_profit_adjusted_loss_limit()
     test_time_windows()
     test_daily_reset_timing()
     
@@ -141,9 +136,10 @@ if __name__ == "__main__":
     print("=" * 80)
     print("\nKey Features Verified:")
     print("  ✓ Bot stays ON during maintenance/weekend (only Ctrl+C stops it)")
-    print("  ✓ Profit-based trade limit bonus (1 trade per $100 profit)")
+    print("  ✓ Profit-adjusted loss limit (profit increases limit)")
     print("  ✓ Maintenance window detection (Mon-Thu 4:45-6:00 PM ET)")
     print("  ✓ Weekend detection (Fri 4:45 PM - Sun 6:00 PM ET)")
     print("  ✓ Daily reset at 6:00 PM ET (P&L, trade count, VWAP)")
     print("  ✓ Server time from Azure cloud API")
+    print("  ✓ Bot NEVER exits unless user presses Ctrl+C")
     print("\n")

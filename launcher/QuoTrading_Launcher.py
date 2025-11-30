@@ -1521,7 +1521,13 @@ class QuoTradingLauncher:
         thread.start()
     
     def auto_adjust_parameters(self):
-        """Auto-adjust trading parameters based on user-entered account size using smart math."""
+        """Auto-adjust trading parameters using intelligent risk management for all account types.
+        
+        Handles:
+        - Prop firm accounts (TopStep, etc.) with strict drawdown rules
+        - Live broker accounts with flexible risk management
+        - Different account sizes and risk profiles
+        """
         # Get account size from user input or selected account
         try:
             account_size = float(self.account_entry.get() or "10000")
@@ -1539,35 +1545,70 @@ class QuoTradingLauncher:
             )
             return
         
-        # Smart auto-configuration based on account size and risk management principles
-        # Daily loss limit: 2% of account size (standard conservative rule for prop firms)
-        daily_loss_limit = account_size * 0.02
+        # Detect account type and apply intelligent risk rules
+        account_type = self.config.get("fetched_account_type", "live_broker")
+        selected_account_display = self.account_dropdown_var.get()
         
-        # Max contracts: Scale intelligently based on account size
-        # Use a logarithmic-style scaling to avoid over-leveraging small accounts
-        # Formula: min(max_allowed, max(1, int(account_size / 12500)))
-        # This gives roughly 1 contract per $12.5k of account size
-        max_contracts = min(self.max_contracts_allowed, max(1, int(account_size / 12500)))
+        # Parse prop firm account details from account name (e.g., "50KTC-V2-398684-33989413")
+        is_prop_firm = account_type == "prop_firm"
+        prop_firm_size = None
         
-        # Max loss per trade: Should be proportional to daily loss limit
-        # Use 20% of daily loss limit for single trade risk (allows 5 losing trades)
-        # This prevents one bad trade from consuming entire daily limit
+        if is_prop_firm and "KTC" in selected_account_display.upper():
+            # Extract account size from TopStep account name (e.g., "50KTC" = $50k)
+            import re
+            match = re.search(r'(\d+)KTC', selected_account_display.upper())
+            if match:
+                prop_firm_size = int(match.group(1)) * 1000  # Convert 50 to 50000
+        
+        # INTELLIGENT DAILY LOSS LIMIT CALCULATION
+        if is_prop_firm:
+            # Prop firms have strict drawdown rules that are NOT simply 2% of account
+            # Common prop firm rules:
+            # - $50k account: $2k daily loss, $2.5k trailing drawdown
+            # - $100k account: $3k daily loss, $4k trailing drawdown
+            # - $150k account: $4.5k daily loss, $6k trailing drawdown
+            
+            if prop_firm_size:
+                # Use actual prop firm rules based on account size
+                if prop_firm_size <= 50000:
+                    daily_loss_limit = 2000  # $50k TopStep = $2k daily limit
+                elif prop_firm_size <= 100000:
+                    daily_loss_limit = 3000  # $100k TopStep = $3k daily limit
+                elif prop_firm_size <= 150000:
+                    daily_loss_limit = 4500  # $150k TopStep = $4.5k daily limit
+                else:
+                    daily_loss_limit = prop_firm_size * 0.03  # 3% for larger accounts
+            else:
+                # Fallback: Use conservative 2% for unknown prop firm accounts
+                # But cap at typical prop firm daily limits
+                daily_loss_limit = min(account_size * 0.02, 5000)
+        else:
+            # Live broker accounts: Use standard 2% risk rule
+            daily_loss_limit = account_size * 0.02
+        
+        # MAX LOSS PER TRADE: 20% of daily limit (allows 5 losing trades)
+        # This is universal across all account types
         max_loss_per_trade = daily_loss_limit * 0.2
         
-        # Max trades per day: Scale based on account size and risk per trade
-        # Larger accounts can handle more trades, but cap based on practical limits
-        # Formula: Allow enough trades to reach daily limit with average losses
-        # Minimum 5 trades, maximum 20 trades
-        if account_size < 25000:
-            max_trades = 6  # Conservative for small accounts
-        elif account_size < 50000:
-            max_trades = 8  # Moderate activity
-        elif account_size < 100000:
-            max_trades = 12  # Good activity for medium accounts
-        elif account_size < 250000:
-            max_trades = 15  # Active trading for larger accounts
+        # MAX CONTRACTS: Scale based on daily loss limit, not account size
+        # This ensures proper position sizing relative to risk tolerance
+        # Formula: 1 contract per $500 of daily loss limit
+        max_contracts = min(self.max_contracts_allowed, max(1, int(daily_loss_limit / 500)))
+        
+        # MAX TRADES PER DAY: Scale based on risk capacity
+        # More daily loss capacity = more trades allowed
+        if daily_loss_limit < 1000:
+            max_trades = 5  # Very conservative
+        elif daily_loss_limit < 2000:
+            max_trades = 8  # Conservative
+        elif daily_loss_limit < 3000:
+            max_trades = 10  # Moderate
+        elif daily_loss_limit < 4000:
+            max_trades = 12  # Active
+        elif daily_loss_limit < 5000:
+            max_trades = 15  # Very active
         else:
-            max_trades = 20  # Maximum activity for very large accounts
+            max_trades = 20  # Maximum activity
         
         # Apply the calculated settings
         self.loss_entry.delete(0, tk.END)
@@ -1579,9 +1620,10 @@ class QuoTradingLauncher:
         self.contracts_var.set(max_contracts)
         self.trades_var.set(max_trades)
         
-        # Update info label with concise feedback
+        # Update info label with account-specific feedback
+        account_label = "Prop firm" if is_prop_firm else "Live broker"
         self.auto_adjust_info_label.config(
-            text=f"✓ Auto-configured: {max_contracts} contracts • ${max_loss_per_trade:.0f}/trade • {max_trades} trades/day",
+            text=f"✓ {account_label}: {max_contracts} contracts • ${max_loss_per_trade:.0f}/trade • {max_trades} trades/day • ${daily_loss_limit:.0f} daily limit",
             fg=self.colors['success']
         )
     

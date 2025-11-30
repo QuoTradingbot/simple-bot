@@ -5960,8 +5960,6 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
         logger.critical("Bot will remain ON but IDLE (no trading)")
         logger.critical("LICENSE EXPIRED - Please renew your license")
         logger.critical("Press Ctrl+C to stop bot")
-        # NOTE: Bot does NOT exit - it stays running in idle mode
-        # sys.exit(0)  # COMMENTED OUT - bot should never exit unless user stops it
     logger.info("  Γ£ô Position state saved to disk (FLAT)")
 
 
@@ -7726,8 +7724,6 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
                     logger.critical("Bot will remain ON but IDLE (no trading)")
                     logger.critical("LICENSE EXPIRED - Please renew your license")
                     logger.critical("Press Ctrl+C to stop bot")
-                    # NOTE: Bot does NOT exit - it stays running in idle mode
-                    # sys.exit(0)  # COMMENTED OUT - bot should never exit unless user stops it
             else:
                 # License is still valid
                 logger.debug("Γ£à License validation successful")
@@ -7961,7 +7957,6 @@ def send_heartbeat() -> None:
                 # Bot stays ON but IDLE - never exits
                 logger.critical("Bot will remain ON but IDLE (no trading)")
                 logger.critical("Press Ctrl+C to stop bot")
-                # sys.exit(1)  # COMMENTED OUT - bot should never exit unless user stops it
             
             logger.debug("Heartbeat sent successfully")
         elif response.status_code == 403:
@@ -7985,7 +7980,6 @@ def send_heartbeat() -> None:
             # Bot stays ON but IDLE - never exits
             logger.critical("Bot will remain ON but IDLE (no trading)")
             logger.critical("Press Ctrl+C to stop bot")
-            # sys.exit(1)  # COMMENTED OUT - bot should never exit unless user stops it
         else:
             logger.debug(f"Heartbeat returned HTTP {response.status_code}")
     

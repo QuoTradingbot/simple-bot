@@ -1088,7 +1088,7 @@ class QuoTradingLauncher:
         
         tk.Label(
             shadow_mode_frame,
-            text="Ghost trading - signals only, manual execution",
+            text="Shadow trading - signals trades for manual execution",
             font=("Segoe UI", 7, "bold"),
             bg=self.colors['card'],
             fg=self.colors['text_light']
@@ -1710,7 +1710,7 @@ class QuoTradingLauncher:
         
         # Only show enabled features
         if self.shadow_mode_var.get():
-            confirmation_text += f"\n✓ Shadow Mode: ON (ghost trading - signals only, no executions)\n"
+            confirmation_text += f"\n✓ Shadow Mode: ON (shadow trading - signals only, no executions)\n"
         
         confirmation_text += f"\nThis will open a PowerShell terminal with live logs.\n"
         confirmation_text += f"Use the window's close button to stop the bot.\n\n"
@@ -2730,7 +2730,7 @@ BOT_MAX_LOSS_PER_TRADE={self.config.get("max_loss_per_trade", 200)}
 BOT_CONFIDENCE_THRESHOLD={self.confidence_var.get()}
 # Bot only takes signals above this confidence threshold (user's minimum)
 
-# Trading Mode (Ghost Trading / Shadow Mode)
+# Trading Mode (Shadow Trading / Shadow Mode)
 BOT_SHADOW_MODE={'true' if self.shadow_mode_var.get() else 'false'}
 # When true: Bot provides signals only, no automatic trade execution (manual trading)
 

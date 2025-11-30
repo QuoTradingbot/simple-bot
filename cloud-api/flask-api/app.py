@@ -3,6 +3,7 @@ QuoTrading Flask API with RL Brain + PostgreSQL License Validation
 Simple, reliable API that works everywhere
 """
 from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 import os
 import json
 import psycopg2
@@ -18,9 +19,23 @@ from email.mime.multipart import MIMEMultipart
 import hmac
 import hashlib
 import requests
+import traceback
 
 app = Flask(__name__)
-logging.basicConfig(level=logging.INFO)
+
+# Security: Request size limit (prevent memory exhaustion attacks)
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB max request size
+
+# Security: CORS protection - only allow your dashboard domain
+CORS(app, resources={
+    r"/api/*": {"origins": "*"},  # Bot clients need access
+    r"/admin-dashboard-full.html": {"origins": ["https://quotrading-flask-api.azurewebsites.net"]}
+})
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 # PostgreSQL configuration
 DB_HOST = os.environ.get("DB_HOST", "quotrading-db.postgres.database.azure.com")
@@ -933,7 +948,7 @@ def init_db_pool():
         return None
 
 def get_db_connection():
-    """Get PostgreSQL database connection from pool"""
+    """Get PostgreSQL database connection from pool with timeout protection"""
     global _db_pool
     
     # Initialize pool if not exists
@@ -944,6 +959,14 @@ def get_db_connection():
         if _db_pool:
             conn = _db_pool.getconn()
             if conn:
+                # Set statement timeout to prevent slow queries from hanging
+                try:
+                    cur = conn.cursor()
+                    cur.execute("SET statement_timeout = '30s'")  # 30 second query timeout
+                    conn.commit()
+                    cur.close()
+                except:
+                    pass
                 return conn
         
         # Fallback to direct connection if pool fails
@@ -4233,6 +4256,44 @@ def admin_retention_metrics():
 def serve_admin_dashboard():
     """Serve the admin dashboard HTML file"""
     return send_from_directory('.', 'admin-dashboard-full.html')
+
+
+# Global error handlers for production safety
+@app.errorhandler(413)
+def request_too_large(error):
+    """Handle requests that exceed size limit"""
+    logging.warning(f"Request too large from {request.remote_addr}")
+    return jsonify({"error": "Request size exceeds 10MB limit"}), 413
+
+
+@app.errorhandler(429)
+def rate_limit_exceeded(error):
+    """Handle rate limit errors"""
+    return jsonify({"error": "Rate limit exceeded. Please try again later."}), 429
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle internal server errors gracefully"""
+    logging.error(f"Internal server error: {error}")
+    logging.error(traceback.format_exc())
+    return jsonify({
+        "error": "Internal server error. Please try again later.",
+        "support": "Contact support if this persists"
+    }), 500
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(error):
+    """Catch-all error handler to prevent crashes"""
+    logging.error(f"Unexpected error: {type(error).__name__}: {str(error)}")
+    logging.error(traceback.format_exc())
+    
+    # Don't expose internal details to clients
+    return jsonify({
+        "error": "An unexpected error occurred",
+        "type": type(error).__name__
+    }), 500
 
 
 if __name__ == '__main__':

@@ -813,6 +813,34 @@ def generate_license_key():
         segments.append(segment)
     return '-'.join(segments)  # Format: XXXX-XXXX-XXXX-XXXX
 
+# Rate limiting: track submissions per license key
+_rate_limit_cache = {}  # {license_key: [timestamp1, timestamp2, ...]}
+_RATE_LIMIT_WINDOW = 60  # seconds
+_RATE_LIMIT_MAX = 100  # max submissions per window
+
+def check_rate_limit(license_key):
+    """Check if license key is within rate limits. Returns (allowed: bool, message: str)"""
+    import time
+    current_time = time.time()
+    
+    # Clean old entries
+    if license_key in _rate_limit_cache:
+        _rate_limit_cache[license_key] = [
+            ts for ts in _rate_limit_cache[license_key] 
+            if current_time - ts < _RATE_LIMIT_WINDOW
+        ]
+    else:
+        _rate_limit_cache[license_key] = []
+    
+    # Check limit
+    submission_count = len(_rate_limit_cache[license_key])
+    if submission_count >= _RATE_LIMIT_MAX:
+        return False, f"Rate limit exceeded: {submission_count} submissions in last {_RATE_LIMIT_WINDOW}s (max {_RATE_LIMIT_MAX})"
+    
+    # Add current submission
+    _rate_limit_cache[license_key].append(current_time)
+    return True, "OK"
+
 def log_webhook_event(event_type, status, whop_id=None, user_id=None, email=None, details=None, error=None, payload=None):
     """Log webhook event to database for debugging"""
     try:
@@ -1040,6 +1068,11 @@ def heartbeat():
         
         if not device_fingerprint:
             return jsonify({"status": "error", "message": "Device fingerprint required"}), 400
+        
+        # Rate limiting
+        allowed, rate_msg = check_rate_limit(license_key)
+        if not allowed:
+            return jsonify({"status": "error", "message": rate_msg}), 429
         
         # Validate license
         is_valid, message, _ = validate_license(license_key)
@@ -2458,7 +2491,13 @@ def submit_outcome():
         if not is_valid:
             return jsonify({"success": False, "message": f"Invalid license: {msg}"}), 403
 
-        # 2. Sanity Checks (Prevent fake data injection)
+        # 2. Rate Limiting (Prevent DoS attacks)
+        allowed, rate_msg = check_rate_limit(license_key)
+        if not allowed:
+            logging.warning(f"⚠️ Rate limit exceeded: {license_key}")
+            return jsonify({"success": False, "message": rate_msg}), 429
+
+        # 3. Sanity Checks (Prevent fake data injection)
         pnl = data.get('pnl', 0.0)
         duration = data.get('duration', 0.0)
         

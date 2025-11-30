@@ -397,16 +397,10 @@ class QuoTradingLauncher:
             try:
                 api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
                 
-                # Call cloud API to validate license using the /api/main endpoint
-                # This endpoint validates the license and returns signal confidence
+                # Call cloud API to validate license - server validates key, checks status and expiration
                 response = requests.post(
                     f"{api_url}/api/main",
-                    json={
-                        "license_key": api_key,
-                        "signal_type": "NEUTRAL",  # Dummy data for validation
-                        "regime": "RANGING",
-                        "vix_level": 15.0
-                    },
+                    json={"license_key": api_key},
                     timeout=10
                 )
                 
@@ -419,12 +413,22 @@ class QuoTradingLauncher:
                         self.root.after(0, lambda: error_callback(error_msg))
                         return
                     
-                    # Save subscription info to config (extract from message if available)
-                    # Default to basic tier
-                    self.config["max_contract_size"] = 3
-                    self.config["max_accounts"] = 1
-                    self.config["subscription_tier"] = "basic"
-                    self.config["subscription_end"] = license_data.get("license_expiration")
+                    # Extract license type from server message (e.g., "Valid standard license")
+                    message = license_data.get("message", "")
+                    license_type = "standard"  # default
+                    if "admin" in message.lower():
+                        license_type = "admin"
+                    elif "pro" in message.lower():
+                        license_type = "pro"
+                    elif "premium" in message.lower():
+                        license_type = "premium"
+                    
+                    # Server-side subscription configuration (no hardcoded limits)
+                    # These values come from license_type in database
+                    self.config["license_type"] = license_type
+                    self.config["license_expiration"] = license_data.get("license_expiration")
+                    self.config["days_until_expiration"] = license_data.get("days_until_expiration")
+                    self.config["hours_until_expiration"] = license_data.get("hours_until_expiration")
                     self.save_config()
                     
                     self.root.after(0, lambda: success_callback(license_data))

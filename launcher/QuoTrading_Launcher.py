@@ -1604,9 +1604,9 @@ class QuoTradingLauncher:
         self.trades_var.set(max_trades)
         
         # Update info label with universal feedback
-        risk_buffer = daily_loss_limit / max_loss_per_trade if max_loss_per_trade > 0 else 0
+        loss_trades_buffer = daily_loss_limit / max_loss_per_trade if max_loss_per_trade > 0 else 0
         self.auto_adjust_info_label.config(
-            text=f"✓ Smart config: {max_contracts} contracts • ${max_loss_per_trade:.0f}/trade • {max_trades} trades/day • ${daily_loss_limit:.0f} daily limit • {risk_buffer:.0f}x buffer",
+            text=f"✓ Smart config: {max_contracts} contracts • ${max_loss_per_trade:.0f}/trade • {max_trades} trades/day • ${daily_loss_limit:.0f} daily limit • {loss_trades_buffer:.0f}x buffer",
             fg=self.colors['success']
         )
     

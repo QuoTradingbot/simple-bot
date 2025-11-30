@@ -759,7 +759,7 @@ def check_broker_connection() -> None:
                 reopen_msg = "Will auto-reconnect at 6:00 PM ET"
             
             logger.critical(SEPARATOR_LINE)
-            logger.critical(f"≡ƒöº {idle_type} - GOING IDLE")
+            logger.critical(f"[IDLE MODE] {idle_type} - GOING IDLE")
             logger.critical(f"Time: {eastern_time.strftime('%H:%M:%S %Z')}")
             logger.critical(f"  Reason: {idle_msg}")
             logger.critical(f"  Disconnecting broker to save resources")
@@ -770,15 +770,15 @@ def check_broker_connection() -> None:
             try:
                 if broker is not None and broker.connected:
                     broker.disconnect()
-                    logger.critical("  Γ£à Broker disconnected - Bot is IDLE")
+                    logger.critical("  [OK] Broker disconnected - Bot is IDLE")
             except Exception as e:
-                logger.error(f"  Γ¥î Error disconnecting: {e}")
+                logger.error(f"  [ERROR] Error disconnecting: {e}")
             
             bot_status["maintenance_idle"] = True
             bot_status["idle_type"] = idle_type  # Store for status message
             bot_status["trading_enabled"] = False
             bot_status["last_idle_message_time"] = eastern_time
-            logger.critical(f"  Bot stays ON but IDLE - checking every 30s for market reopen...")
+            logger.critical(f"  Bot stays ON but IDLE - checking periodically for market reopen...")
             logger.critical(f"  Press Ctrl+C to stop bot")
             return  # Skip broker health check since we just disconnected
     
@@ -794,7 +794,7 @@ def check_broker_connection() -> None:
         
         # Show status message every 5 minutes
         if last_msg_time is None or (eastern_time - last_msg_time).total_seconds() >= 300:
-            logger.info(f"Γ¢ïêÔ∏è  {idle_type} IN PROGRESS - Bot idle, will resume when market reopens")
+            logger.info(f"[IDLE] {idle_type} IN PROGRESS - Bot idle, will resume when market reopens")
             bot_status["last_idle_message_time"] = eastern_time
         return  # Skip broker health check during idle period
     
@@ -802,7 +802,7 @@ def check_broker_connection() -> None:
     elif trading_state == "entry_window" and bot_status.get("maintenance_idle", False):
         idle_type = bot_status.get("idle_type", "MAINTENANCE")
         logger.critical(SEPARATOR_LINE)
-        logger.critical(f"Γ£à {idle_type} COMPLETE - MARKET REOPENED - AUTO-RECONNECTING")
+        logger.critical(f"[RECONNECT] {idle_type} COMPLETE - MARKET REOPENED - AUTO-RECONNECTING")
         logger.critical(f"Time: {current_time.strftime('%H:%M:%S %Z')}")
         logger.critical(SEPARATOR_LINE)
         
@@ -812,14 +812,14 @@ def check_broker_connection() -> None:
                 logger.critical("  [RECONNECT] Connecting to broker...")
                 success = broker.connect(max_retries=3)
                 if success:
-                    logger.critical("  [RECONNECT] Γ£à Broker connected - Data feed active")
+                    logger.critical("  [RECONNECT] [OK] Broker connected - Data feed active")
                     bot_status["maintenance_idle"] = False
                     bot_status["idle_type"] = None
                     bot_status["trading_enabled"] = True
-                    logger.critical("  [RECONNECT] Γ£à Trading enabled. Bot fully operational.")
-                    logger.critical("  [RECONNECT] Γ£à Daily limits and VWAP reset at 6:00 PM ET")
+                    logger.critical("  [RECONNECT] [OK] Trading enabled. Bot fully operational.")
+                    logger.critical("  [RECONNECT] [OK] Daily limits and VWAP reset at 6:00 PM ET")
                 else:
-                    logger.error("  [RECONNECT] Γ¥î Connection failed - Will retry in 30s")
+                    logger.error("  [RECONNECT] [ERROR] Connection failed - Will retry periodically")
         except Exception as e:
             logger.error(f"  [RECONNECT] Error: {e}")
         
@@ -6297,9 +6297,9 @@ def perform_vwap_reset(symbol: str, new_date: Any, reset_time: datetime) -> None
     state[symbol]["vwap_day"] = new_date
     
     # Note: 15-minute trend bars continue running - trend carries from overnight
-    logger.info("Γ£à VWAP data cleared - starting fresh daily VWAP calculation")
-    logger.info("Γ£à 1-minute bars cleared")
-    logger.info(f"Γ£à 15-minute trend bars continue ({len(state[symbol]['bars_15min'])} bars)")
+    logger.info("[OK] VWAP data cleared - starting fresh daily VWAP calculation")
+    logger.info("[OK] 1-minute bars cleared")
+    logger.info(f"[OK] 15-minute trend bars continue ({len(state[symbol]['bars_15min'])} bars)")
     logger.info(SEPARATOR_LINE)
 
 
@@ -6373,12 +6373,12 @@ def perform_daily_reset(symbol: str, new_date: Any) -> None:
     if bot_status["stop_reason"] in ["daily_loss_limit", "daily_limits_reached"]:
         bot_status["trading_enabled"] = True
         bot_status["stop_reason"] = None
-        logger.info("≡ƒÜï Trading re-enabled for new day - daily limits reset")
+        logger.info("[OK] Trading re-enabled for new day - daily limits reset")
     
     logger.info("Daily reset complete - Ready for trading")
-    logger.info("  Γ£à Daily P&L reset to $0.00")
-    logger.info("  Γ£à Trade count reset to 0")
-    logger.info("  Γ£à VWAP bands will recalculate from live data")
+    logger.info("  [OK] Daily P&L reset to $0.00")
+    logger.info("  [OK] Trade count reset to 0")
+    logger.info("  [OK] VWAP bands will recalculate from live data")
     logger.info(SEPARATOR_LINE)
 
 

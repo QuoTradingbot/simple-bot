@@ -1611,7 +1611,15 @@
                     <td>${position}</td>
                     <td style="font-size: 12px; color: #5f6368;">${user.last_active ? timeAgo(user.last_active) : 'Never'}</td>
                     <td>
-                        <button class="action-btn" onclick="compensateUser('${user.account_id}')" style="background: #ea8600; color: white; font-size: 11px; padding: 4px 8px;">+Days</button>
+                        <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                            <button class="action-btn" onclick="viewDetails('${user.account_id}')" style="background: #1a73e8; color: white; font-size: 11px; padding: 4px 8px;">👁️ View</button>
+                            ${user.license_status === 'ACTIVE' 
+                                ? `<button class="action-btn" onclick="suspendUser('${user.account_id}')" style="background: #d93025; color: white; font-size: 11px; padding: 4px 8px;">⏸️ Suspend</button>`
+                                : `<button class="action-btn" onclick="activateUser('${user.account_id}')" style="background: #34a853; color: white; font-size: 11px; padding: 4px 8px;">▶️ Activate</button>`
+                            }
+                            <button class="action-btn" onclick="extendLicense('${user.account_id}')" style="background: #ea8600; color: white; font-size: 11px; padding: 4px 8px;">⏱️ Extend</button>
+                            <button class="action-btn" onclick="deleteUser('${user.account_id}')" style="background: #5f6368; color: white; font-size: 11px; padding: 4px 8px;">🗑️ Delete</button>
+                        </div>
                     </td>
                 </tr>
             `}).join('');
@@ -2201,6 +2209,35 @@
                 }
             } catch (error) {
                 alert('Failed to extend license: ' + error.message);
+            }
+        }
+
+        async function deleteUser(accountId) {
+            if (!confirm(`⚠️ Are you sure you want to DELETE user ${accountId}?\n\nThis will permanently remove:\n- User account\n- License\n- All trading data\n- Activity history\n\nThis action CANNOT be undone!`)) {
+                return;
+            }
+            
+            const confirmText = prompt(`Type "DELETE" to confirm permanent deletion of ${accountId}:`, '');
+            if (confirmText !== 'DELETE') {
+                alert('❌ Deletion cancelled - confirmation text did not match');
+                return;
+            }
+            
+            try {
+                const response = await fetch(
+                    `${API_URL}/api/admin/delete-user/${accountId}?license_key=${ADMIN_KEY}`,
+                    { method: 'DELETE' }
+                );
+                
+                if (response.ok) {
+                    await loadDashboard();
+                    alert(`✅ User ${accountId} has been permanently deleted`);
+                } else {
+                    const data = await response.json();
+                    alert(`❌ Failed to delete user: ${data.detail || data.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                alert('❌ Failed to delete user: ' + error.message);
             }
         }
 

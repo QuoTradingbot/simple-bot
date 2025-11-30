@@ -230,6 +230,9 @@ SEPARATOR_LINE = "=" * 60
 # Daily Loss Limit Threshold
 DAILY_LOSS_APPROACHING_THRESHOLD = 0.80  # Stop trading at 80% of daily loss limit
 
+# Idle Mode Configuration
+IDLE_STATUS_MESSAGE_INTERVAL = 300  # Show status message every 5 minutes (300 seconds) during idle
+
 # Regime Detection Constants
 DEFAULT_FALLBACK_ATR = 5.0  # Default ATR when calculation not possible (ES futures typical value)
 
@@ -448,8 +451,14 @@ def initialize_broker() -> None:
                 if data.get("license_valid"):
                     logger.info(f"Γ£à License validated - {data.get('message', 'Access Granted')}")
                 else:
-                    logger.error("Γ¥î INVALID LICENSE - Bot will not start")
-                    logger.error(f"Reason: {data.get('message', 'Unknown error')}")
+                    reason = data.get('message', 'Unknown error')
+                    logger.error("=" * 70)
+                    logger.error("INVALID OR EXPIRED LICENSE - Bot will not start")
+                    logger.error(f"Reason: {reason}")
+                    if "expired" in reason.lower():
+                        logger.error("Your license has expired. Please renew to continue trading.")
+                    logger.error("Contact: support@quotrading.com")
+                    logger.error("=" * 70)
                     sys.exit(1)
             else:
                 logger.error(f"Γ¥î License validation failed - HTTP {response.status_code}")
@@ -496,133 +505,6 @@ def initialize_broker() -> None:
         )
     except Exception as e:
         logger.debug(f"Failed to send startup alert: {e}")
-
-
-def check_cloud_kill_switch() -> None:
-    """
-    Check if cloud kill switch is active.
-    Called every 30 seconds as part of health check.
-    
-    KILL SWITCH BEHAVIOR:
-    1. ACTIVATE: Flatten positions ΓåÆ Disconnect broker (NO DATA) ΓåÆ Go idle
-    2. DEACTIVATE: Auto-reconnect broker ΓåÆ Resume trading
-    
-    This allows you to remotely pause ALL customer bots for:
-    - Scheduled maintenance
-    - Strategy updates
-    - Emergency situations
-    """
-    global broker
-    
-    # Skip in backtest mode - no cloud API access needed
-    if is_backtest_mode():
-        return
-    
-    try:
-        import requests
-        
-        cloud_api_url = CONFIG.get("cloud_api_url", "https://quotrading-flask-api.azurewebsites.net")
-        
-        response = requests.get(
-            f"{cloud_api_url}/api/main",
-            timeout=5
-        )
-        
-        if response.status_code == 200:
-            data = response.json()
-            kill_switch_active = data.get("kill_switch_active", False)
-            reason = data.get("reason", "Maintenance mode")
-            
-            # ===== ACTIVATE KILL SWITCH =====
-            if kill_switch_active and not bot_status.get("kill_switch_active", False):
-                logger.critical("=" * 80)
-                logger.critical("≡ƒ¢æ KILL SWITCH ACTIVATED - SHUTTING DOWN")
-                logger.critical("=" * 80)
-                logger.critical(f"  Reason: {reason}")
-                logger.critical(f"  Activated At: {data.get('activated_at', 'Unknown')}")
-                logger.critical("=" * 80)
-                
-                # Step 1: Flatten any active positions
-                for symbol in state.keys():
-                    if state[symbol]["position"]["active"]:
-                        logger.critical(f"  [KILL SWITCH] Flattening position in {symbol}...")
-                        try:
-                            current_price = state[symbol].get("last_price", 0)
-                            handle_exit_orders(
-                                symbol,
-                                state[symbol]["position"],
-                                current_price,
-                                "kill_switch_flatten"
-                            )
-                        except Exception as e:
-                            logger.error(f"  [KILL SWITCH] Failed to flatten {symbol}: {e}")
-                
-                # Step 2: DISCONNECT BROKER (stops all data)
-                try:
-                    if broker is not None and broker.connected:
-                        logger.critical("  [KILL SWITCH] Disconnecting from broker...")
-                        broker.disconnect()
-                        logger.critical("  [KILL SWITCH] Γ£à Broker disconnected - NO DATA RUNNING")
-                except Exception as e:
-                    logger.error(f"  [KILL SWITCH] Error disconnecting: {e}")
-                
-                # Step 3: Disable trading
-                bot_status["trading_enabled"] = False
-                bot_status["kill_switch_active"] = True
-                
-                # Step 4: Alert customer
-                try:
-                    notifier = get_notifier()
-                    notifier.send_error_alert(
-                        error_message=f"≡ƒ¢æ KILL SWITCH: {reason}. All positions closed, broker disconnected. Bot will auto-resume when maintenance completes.",
-                        error_type="Kill Switch Activated"
-                    )
-                except Exception as e:
-                    logger.debug(f"Failed to send alert: {e}")
-                
-                logger.critical("  [KILL SWITCH] Bot is IDLE. Checking every 30s for resume signal...")
-                logger.critical("=" * 80)
-            
-            # ===== DEACTIVATE KILL SWITCH (AUTO-RECONNECT) =====
-            elif not kill_switch_active and bot_status.get("kill_switch_active", False):
-                logger.critical("=" * 80)
-                logger.critical("Γ£à KILL SWITCH OFF - AUTO-RECONNECTING")
-                logger.critical("=" * 80)
-                
-                # Step 1: RECONNECT TO BROKER
-                try:
-                    if broker is not None:
-                        logger.critical("  [RECONNECT] Connecting to broker...")
-                        success = broker.connect(max_retries=3)
-                        if success:
-                            logger.critical("  [RECONNECT] Γ£à Broker connected - Data feed active")
-                        else:
-                            logger.error("  [RECONNECT] Γ¥î Connection failed - Will retry in 30s")
-                            return  # Don't resume trading yet
-                except Exception as e:
-                    logger.error(f"  [RECONNECT] Error: {e}")
-                    return
-                
-                # Step 2: Re-enable trading
-                bot_status["trading_enabled"] = True
-                bot_status["kill_switch_active"] = False
-                
-                # Step 3: Alert customer
-                try:
-                    notifier = get_notifier()
-                    notifier.send_error_alert(
-                        error_message="Γ£à Kill switch deactivated. Broker reconnected, trading resumed. Bot is back online.",
-                        error_type="Trading Resumed"
-                    )
-                except Exception as e:
-                    logger.debug(f"Failed to send alert: {e}")
-                
-                logger.critical("  [RECONNECT] Γ£à Trading enabled. Bot fully operational.")
-                logger.critical("=" * 80)
-                
-    except Exception as e:
-        # Non-critical - if cloud unreachable, bot continues normally
-        logger.debug(f"Kill switch check skipped (cloud unreachable): {e}")
 
 
 def check_azure_time_service() -> str:
@@ -705,12 +587,7 @@ def check_broker_connection() -> None:
     if is_backtest_mode():
         return
     
-    # CRITICAL: Check cloud services FIRST (kill switch + time service)
-    try:
-        check_cloud_kill_switch()
-    except Exception as e:
-        logger.debug(f"Kill switch check failed (non-critical): {e}")
-    
+    # CRITICAL: Check cloud time service
     try:
         check_azure_time_service()
     except Exception as e:
@@ -735,33 +612,74 @@ def check_broker_connection() -> None:
             current_time = eastern_tz.localize(current_time)
         eastern_time = current_time.astimezone(eastern_tz)
         
-        # Only go idle during maintenance, not weekend
-        # Maintenance is 5:00-6:00 PM ET on weekdays (Mon-Fri)
-        if "maintenance" in halt_reason.lower() or (eastern_time.weekday() < 5 and eastern_time.time() >= datetime_time(16, 45) and eastern_time.time() < datetime_time(18, 0)):
+        # Determine if maintenance or weekend
+        # Weekend: Friday 4:45 PM - Sunday 6:00 PM ET
+        # Maintenance: Mon-Thu 4:45 PM - 6:00 PM ET
+        is_friday_close = (eastern_time.weekday() == 4 and eastern_time.time() >= datetime_time(16, 45))
+        is_saturday = eastern_time.weekday() == 5
+        is_sunday_before_open = (eastern_time.weekday() == 6 and eastern_time.time() < datetime_time(18, 0))
+        is_weekend = is_friday_close or is_saturday or is_sunday_before_open
+        
+        is_maintenance = (eastern_time.weekday() < 4 and  # Mon-Thu only
+                         eastern_time.time() >= datetime_time(16, 45) and 
+                         eastern_time.time() < datetime_time(18, 0))
+        
+        if is_maintenance or is_weekend or "maintenance" in halt_reason.lower() or "weekend" in halt_reason.lower():
+            # Determine idle reason for clear messaging
+            if is_weekend:
+                idle_type = "WEEKEND"
+                idle_msg = "Weekend market closure (Fri 4:45 PM - Sun 6:00 PM ET)"
+                reopen_msg = "Will auto-reconnect Sunday at 6:00 PM ET"
+            else:
+                idle_type = "MAINTENANCE"
+                idle_msg = "Daily maintenance window (4:45 PM - 6:00 PM ET)"
+                reopen_msg = "Will auto-reconnect at 6:00 PM ET"
+            
             logger.critical(SEPARATOR_LINE)
-            logger.critical("≡ƒöº MAINTENANCE WINDOW - GOING IDLE")
+            logger.critical(f"[IDLE MODE] {idle_type} - GOING IDLE")
             logger.critical(f"Time: {eastern_time.strftime('%H:%M:%S %Z')}")
-            logger.critical("  Disconnecting broker to save resources during maintenance")
-            logger.critical("  Will auto-reconnect at 6:00 PM ET when market reopens")
+            logger.critical(f"  Reason: {idle_msg}")
+            logger.critical(f"  Disconnecting broker to save resources")
+            logger.critical(f"  {reopen_msg}")
             logger.critical(SEPARATOR_LINE)
             
             # Disconnect broker (stops all data feeds)
             try:
                 if broker is not None and broker.connected:
                     broker.disconnect()
-                    logger.critical("  Γ£à Broker disconnected - Bot is IDLE")
+                    logger.critical("  [OK] Broker disconnected - Bot is IDLE")
             except Exception as e:
-                logger.error(f"  Γ¥î Error disconnecting: {e}")
+                logger.error(f"  [ERROR] Error disconnecting: {e}")
             
             bot_status["maintenance_idle"] = True
+            bot_status["idle_type"] = idle_type  # Store for status message
             bot_status["trading_enabled"] = False
-            logger.critical("  Bot will check every 30s for market reopen...")
+            bot_status["last_idle_message_time"] = eastern_time
+            logger.critical(f"  Bot stays ON but IDLE - checking periodically for market reopen...")
+            logger.critical(f"  Press Ctrl+C to stop bot")
             return  # Skip broker health check since we just disconnected
+    
+    # Display idle status message every 5 minutes during maintenance/weekend
+    elif trading_state == "closed" and bot_status.get("maintenance_idle", False):
+        eastern_tz = pytz.timezone('US/Eastern')
+        if current_time.tzinfo is None:
+            current_time = eastern_tz.localize(current_time)
+        eastern_time = current_time.astimezone(eastern_tz)
+        
+        last_msg_time = bot_status.get("last_idle_message_time")
+        idle_type = bot_status.get("idle_type", "MAINTENANCE")
+        
+        # Show status message every 5 minutes
+        if last_msg_time is None or (eastern_time - last_msg_time).total_seconds() >= IDLE_STATUS_MESSAGE_INTERVAL:
+            logger.info(f"[IDLE] {idle_type} IN PROGRESS - Bot idle, will resume when market reopens")
+            bot_status["last_idle_message_time"] = eastern_time
+        return  # Skip broker health check during idle period
     
     # AUTO-RECONNECT: Reconnect broker when market reopens at 6:00 PM ET
     elif trading_state == "entry_window" and bot_status.get("maintenance_idle", False):
+        idle_type = bot_status.get("idle_type", "MAINTENANCE")
         logger.critical(SEPARATOR_LINE)
-        logger.critical("Γ£à MARKET REOPENED - AUTO-RECONNECTING")
+        logger.critical(f"[RECONNECT] {idle_type} COMPLETE - MARKET REOPENED - AUTO-RECONNECTING")
         logger.critical(f"Time: {current_time.strftime('%H:%M:%S %Z')}")
         logger.critical(SEPARATOR_LINE)
         
@@ -771,12 +689,14 @@ def check_broker_connection() -> None:
                 logger.critical("  [RECONNECT] Connecting to broker...")
                 success = broker.connect(max_retries=3)
                 if success:
-                    logger.critical("  [RECONNECT] Γ£à Broker connected - Data feed active")
+                    logger.critical("  [RECONNECT] [OK] Broker connected - Data feed active")
                     bot_status["maintenance_idle"] = False
+                    bot_status["idle_type"] = None
                     bot_status["trading_enabled"] = True
-                    logger.critical("  [RECONNECT] Γ£à Trading enabled. Bot fully operational.")
+                    logger.critical("  [RECONNECT] [OK] Trading enabled. Bot fully operational.")
+                    logger.critical("  [RECONNECT] [OK] Daily limits and VWAP reset at 6:00 PM ET")
                 else:
-                    logger.error("  [RECONNECT] Γ¥î Connection failed - Will retry in 30s")
+                    logger.error("  [RECONNECT] [ERROR] Connection failed - Will retry periodically")
         except Exception as e:
             logger.error(f"  [RECONNECT] Error: {e}")
         
@@ -2354,16 +2274,26 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
         
         return False, "Daily trade limit"
     
-    # Daily loss limit - ENABLED for safety
-    if state[symbol]["daily_pnl"] <= -CONFIG["daily_loss_limit"]:
+    # Daily loss limit - Adjusted by current profit
+    # If user sets daily limit to $X and trader makes $Y profit, effective limit becomes $X + $Y
+    # This means they can lose up to $X + $Y before hitting the limit
+    current_pnl = state[symbol]["daily_pnl"]
+    base_loss_limit = CONFIG["daily_loss_limit"]
+    
+    # Adjust loss limit by adding current profit (if positive)
+    # Profit acts as a buffer - the more profit made, the more can be lost before limit is hit
+    effective_loss_limit = base_loss_limit + max(0, current_pnl)
+    
+    if state[symbol]["daily_pnl"] <= -effective_loss_limit:
         logger.warning(f"Daily loss limit hit (${state[symbol]['daily_pnl']:.2f}), stopping for the day")
+        logger.warning(f"  Base limit: ${base_loss_limit:.2f}, Profit cushion: ${max(0, current_pnl):.2f}, Effective limit: ${effective_loss_limit:.2f}")
         
         # Send alert once when limit hit
         if not state[symbol].get("loss_limit_alerted", False):
             try:
                 notifier = get_notifier()
                 notifier.send_error_alert(
-                    error_message=f"≡ƒÆ░ Daily Loss Limit Reached: ${state[symbol]['daily_pnl']:.2f} / -${CONFIG['daily_loss_limit']:.2f}. Bot stopped trading for today. Will auto-resume tomorrow.",
+                    error_message=f"Daily Loss Limit Reached: ${state[symbol]['daily_pnl']:.2f} / -${effective_loss_limit:.2f}. Bot stopped trading for today. Will auto-resume tomorrow.",
                     error_type="Daily Loss Limit"
                 )
                 state[symbol]["loss_limit_alerted"] = True
@@ -6017,19 +5947,19 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
         
         # Disconnect broker cleanly
         logger.critical("Disconnecting from broker...")
+        logger.critical("LICENSE EXPIRED - Stopping all trading and market data")
         try:
             global broker
             if broker is not None:
                 broker.disconnect()
+                logger.critical("Websocket disconnected - No data streaming")
         except Exception as e:
             pass  # Silent disconnect
         
-        # Exit the bot completely
-        logger.critical("Bot shutdown complete.")
-        import sys
-        import time
-        time.sleep(2)  # Give user time to read message
-        sys.exit(0)
+        # Bot stays ON but IDLE - never exits unless user presses Ctrl+C
+        logger.critical("Bot will remain ON but IDLE (no trading)")
+        logger.critical("LICENSE EXPIRED - Please renew your license")
+        logger.critical("Press Ctrl+C to stop bot")
     logger.info("  Γ£ô Position state saved to disk (FLAT)")
 
 
@@ -6200,8 +6130,8 @@ def perform_vwap_reset(symbol: str, new_date: Any, reset_time: datetime) -> None
         reset_time: Time of the reset
     """
     logger.info(SEPARATOR_LINE)
-    logger.info(f"DAILY RESET at {reset_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-    logger.info(f"Futures trading day start (6:00 PM ET) - New trading day: {new_date}")
+    logger.info(f"VWAP RESET at {reset_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+    logger.info(f"Futures trading day start (6:00 PM ET) - New VWAP session: {new_date}")
     logger.info(SEPARATOR_LINE)
     
     # Clear accumulated 1-minute bars for VWAP calculation
@@ -6221,8 +6151,9 @@ def perform_vwap_reset(symbol: str, new_date: Any, reset_time: datetime) -> None
     state[symbol]["vwap_day"] = new_date
     
     # Note: 15-minute trend bars continue running - trend carries from overnight
-    logger.info("Market data cleared - 15-minute trend bars continue running")
-    logger.info(f"Current 15-min bars: {len(state[symbol]['bars_15min'])}")
+    logger.info("[OK] VWAP data cleared - starting fresh daily VWAP calculation")
+    logger.info("[OK] 1-minute bars cleared")
+    logger.info(f"[OK] 15-minute trend bars continue ({len(state[symbol]['bars_15min'])} bars)")
     logger.info(SEPARATOR_LINE)
 
 
@@ -6262,6 +6193,7 @@ def perform_daily_reset(symbol: str, new_date: Any) -> None:
     """
     logger.info(SEPARATOR_LINE)
     logger.info(f"DAILY RESET - New Trading Day: {new_date}")
+    logger.info(f"Resetting at 6:00 PM ET after maintenance window")
     logger.info(SEPARATOR_LINE)
     
     # Log session summary before reset
@@ -6271,6 +6203,7 @@ def perform_daily_reset(symbol: str, new_date: Any) -> None:
     state[symbol]["daily_trade_count"] = 0
     state[symbol]["daily_pnl"] = 0.0
     state[symbol]["trading_day"] = new_date
+    state[symbol]["loss_limit_alerted"] = False  # Reset alert flag
     
     # Reset session stats
     state[symbol]["session_stats"] = {
@@ -6294,10 +6227,12 @@ def perform_daily_reset(symbol: str, new_date: Any) -> None:
     if bot_status["stop_reason"] in ["daily_loss_limit", "daily_limits_reached"]:
         bot_status["trading_enabled"] = True
         bot_status["stop_reason"] = None
-        logger.info("Trading re-enabled for new day after maintenance hour reset")
+        logger.info("[OK] Trading re-enabled for new day - daily limits reset")
     
     logger.info("Daily reset complete - Ready for trading")
-    logger.info("(VWAP reset handled at market open 6:00 PM ET / 6 PM EST)")
+    logger.info("  [OK] Daily P&L reset to $0.00")
+    logger.info("  [OK] Trade count reset to 0")
+    logger.info("  [OK] VWAP bands will recalculate from live data")
     logger.info(SEPARATOR_LINE)
 
 
@@ -6308,6 +6243,8 @@ def perform_daily_reset(symbol: str, new_date: Any) -> None:
 def check_daily_loss_limit(symbol: str) -> Tuple[bool, Optional[str]]:
     """
     Check if daily loss limit has been exceeded.
+    Loss limit is adjusted by current profit - if trader made profit and limit is set by user,
+    they can lose [user's limit + profit] before hitting the limit.
     
     Args:
         symbol: Instrument symbol
@@ -6315,9 +6252,16 @@ def check_daily_loss_limit(symbol: str) -> Tuple[bool, Optional[str]]:
     Returns:
         Tuple of (is_safe, reason)
     """
-    if state[symbol]["daily_pnl"] <= -CONFIG["daily_loss_limit"]:
+    current_pnl = state[symbol]["daily_pnl"]
+    base_loss_limit = CONFIG["daily_loss_limit"]
+    
+    # Adjust loss limit by adding current profit (if positive)
+    effective_loss_limit = base_loss_limit + max(0, current_pnl)
+    
+    if state[symbol]["daily_pnl"] <= -effective_loss_limit:
         if bot_status["trading_enabled"]:
             logger.critical(f"DAILY LOSS LIMIT BREACHED: ${state[symbol]['daily_pnl']:.2f}")
+            logger.critical(f"  Base limit: ${base_loss_limit:.2f}, Profit cushion: ${max(0, current_pnl):.2f}, Effective limit: ${effective_loss_limit:.2f}")
             logger.critical("Trading STOPPED for the day")
             bot_status["trading_enabled"] = False
             bot_status["stop_reason"] = "daily_loss_limit"
@@ -6326,7 +6270,7 @@ def check_daily_loss_limit(symbol: str) -> Tuple[bool, Optional[str]]:
             try:
                 notifier = get_notifier()
                 notifier.send_error_alert(
-                    error_message=f"DAILY LOSS LIMIT HIT! Trading stopped. Loss: ${state[symbol]['daily_pnl']:.2f} / Limit: ${-CONFIG['daily_loss_limit']:.2f}",
+                    error_message=f"DAILY LOSS LIMIT HIT! Trading stopped. Loss: ${state[symbol]['daily_pnl']:.2f} / Limit: ${-effective_loss_limit:.2f} (base ${base_loss_limit:.2f} + ${max(0, current_pnl):.2f} profit cushion)",
                     error_type="Daily Loss Limit Breached"
                 )
             except Exception as e:
@@ -6350,8 +6294,11 @@ def check_approaching_failure(symbol: str) -> Tuple[bool, Optional[str], Optiona
         - reason: Description of what limit is being approached
         - severity_level: 0.0-1.0 indicating how close to failure (0.8 = at 80%, 1.0 = at 100%)
     """
-    daily_loss_limit = CONFIG.get("daily_loss_limit", 1000.0)
-    if daily_loss_limit > 0 and state[symbol]["daily_pnl"] <= -daily_loss_limit * DAILY_LOSS_APPROACHING_THRESHOLD:
+    daily_loss_limit = CONFIG.get("daily_loss_limit")
+    if daily_loss_limit is None or daily_loss_limit <= 0:
+        return False, None, 0.0
+    
+    if state[symbol]["daily_pnl"] <= -daily_loss_limit * DAILY_LOSS_APPROACHING_THRESHOLD:
         daily_loss_severity = abs(state[symbol]["daily_pnl"]) / daily_loss_limit
         reason = f"Daily loss at {daily_loss_severity*100:.1f}% of limit (${state[symbol]['daily_pnl']:.2f}/${-daily_loss_limit:.2f})"
         
@@ -7765,18 +7712,18 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
                     
                     # Disconnect broker cleanly
                     logger.critical("Disconnecting from broker...")
+                    logger.critical("LICENSE EXPIRED - Stopping all trading and market data")
                     try:
                         if broker is not None:
                             broker.disconnect()
+                            logger.critical("Websocket disconnected - No data streaming")
                     except Exception as e:
                         pass  # Silent disconnect
                     
-                    # Exit the bot completely - no more logs
-                    logger.critical("Bot shutdown complete.")
-                    import sys
-                    import time
-                    time.sleep(2)  # Give user time to read message
-                    sys.exit(0)
+                    # Bot stays ON but IDLE - never exits unless user presses Ctrl+C
+                    logger.critical("Bot will remain ON but IDLE (no trading)")
+                    logger.critical("LICENSE EXPIRED - Please renew your license")
+                    logger.critical("Press Ctrl+C to stop bot")
             else:
                 # License is still valid
                 logger.debug("Γ£à License validation successful")
@@ -7952,7 +7899,6 @@ def send_heartbeat() -> None:
             "metadata": {
                 "symbol": symbol,
                 "shadow_mode": CONFIG.get("shadow_mode", False),
-                "kill_switch_active": bot_status.get("kill_switch_active", False),
                 # Real-time performance metrics
                 "session_pnl": round(session_pnl, 2),
                 "total_trades": total_trades,
@@ -8008,11 +7954,9 @@ def send_heartbeat() -> None:
                     except:
                         pass
                 
-                # Exit
-                import sys
-                import time
-                time.sleep(3)
-                sys.exit(1)
+                # Bot stays ON but IDLE - never exits
+                logger.critical("Bot will remain ON but IDLE (no trading)")
+                logger.critical("Press Ctrl+C to stop bot")
             
             logger.debug("Heartbeat sent successfully")
         elif response.status_code == 403:
@@ -8028,14 +7972,14 @@ def send_heartbeat() -> None:
             logger.critical("")
             logger.critical("=" * 70)
             
-            # Force shutdown
+            # Disable trading but keep bot running
             bot_status["trading_enabled"] = False
             bot_status["emergency_stop"] = True
+            bot_status["stop_reason"] = "license_conflict"
             
-            import sys
-            import time
-            time.sleep(3)
-            sys.exit(1)
+            # Bot stays ON but IDLE - never exits
+            logger.critical("Bot will remain ON but IDLE (no trading)")
+            logger.critical("Press Ctrl+C to stop bot")
         else:
             logger.debug(f"Heartbeat returned HTTP {response.status_code}")
     

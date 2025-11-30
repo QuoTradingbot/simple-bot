@@ -262,6 +262,33 @@
 
         <div id="alerts"></div>
 
+        <!-- Server Health Status -->
+        <div class="section" id="serverHealth">
+            <h2>🏥 Server Health Status</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-top: 15px;">
+                <div style="padding: 15px; border-radius: 8px; background: #f8f9fa; border-left: 4px solid #6c757d;">
+                    <div style="font-size: 12px; color: #6c757d; text-transform: uppercase; margin-bottom: 5px;">Overall Status</div>
+                    <div id="overallStatus" style="font-size: 24px; font-weight: bold; color: #6c757d;">Checking...</div>
+                    <div id="lastCheck" style="font-size: 11px; color: #999; margin-top: 5px;">Last check: -</div>
+                </div>
+                <div style="padding: 15px; border-radius: 8px; background: #f8f9fa; border-left: 4px solid #6c757d;">
+                    <div style="font-size: 12px; color: #6c757d; text-transform: uppercase; margin-bottom: 5px;">Database</div>
+                    <div id="dbStatus" style="font-size: 18px; font-weight: bold; color: #6c757d;">-</div>
+                    <div id="dbDetails" style="font-size: 11px; color: #666; margin-top: 3px;">-</div>
+                </div>
+                <div style="padding: 15px; border-radius: 8px; background: #f8f9fa; border-left: 4px solid #6c757d;">
+                    <div style="font-size: 12px; color: #6c757d; text-transform: uppercase; margin-bottom: 5px;">Email Service</div>
+                    <div id="emailStatus" style="font-size: 18px; font-weight: bold; color: #6c757d;">-</div>
+                    <div id="emailDetails" style="font-size: 11px; color: #666; margin-top: 3px;">-</div>
+                </div>
+                <div style="padding: 15px; border-radius: 8px; background: #f8f9fa; border-left: 4px solid #6c757d;">
+                    <div style="font-size: 12px; color: #6c757d; text-transform: uppercase; margin-bottom: 5px;">Whop API</div>
+                    <div id="whopStatus" style="font-size: 18px; font-weight: bold; color: #6c757d;">-</div>
+                    <div id="whopDetails" style="font-size: 11px; color: #666; margin-top: 3px;">-</div>
+                </div>
+            </div>
+        </div>
+
         <!-- Stats -->
         <div class="grid">
             <div class="stat-card">
@@ -508,9 +535,92 @@
             document.getElementById('durationDays').value = durations[e.target.value];
         });
 
+        // Health check function
+        async function checkServerHealth() {
+            try {
+                const response = await fetch(`${API_URL}/api/health`);
+                const data = await response.json();
+                
+                // Update overall status
+                const overallDiv = document.getElementById('overallStatus');
+                const lastCheckDiv = document.getElementById('lastCheck');
+                
+                if (data.overall_status === 'healthy') {
+                    overallDiv.textContent = '✅ Healthy';
+                    overallDiv.style.color = '#28a745';
+                    overallDiv.parentElement.style.borderLeftColor = '#28a745';
+                } else if (data.overall_status === 'degraded') {
+                    overallDiv.textContent = '⚠️ Degraded';
+                    overallDiv.style.color = '#ffc107';
+                    overallDiv.parentElement.style.borderLeftColor = '#ffc107';
+                } else {
+                    overallDiv.textContent = '❌ Unhealthy';
+                    overallDiv.style.color = '#dc3545';
+                    overallDiv.parentElement.style.borderLeftColor = '#dc3545';
+                }
+                
+                lastCheckDiv.textContent = `Last check: ${new Date(data.timestamp).toLocaleTimeString()}`;
+                
+                // Update database status
+                updateComponentStatus('db', data.database);
+                
+                // Update email service status
+                updateComponentStatus('email', data.email_service);
+                
+                // Update Whop API status
+                updateComponentStatus('whop', data.whop_api);
+                
+            } catch (error) {
+                const overallDiv = document.getElementById('overallStatus');
+                overallDiv.textContent = '❌ Error';
+                overallDiv.style.color = '#dc3545';
+                document.getElementById('lastCheck').textContent = `Error: ${error.message}`;
+            }
+        }
+        
+        function updateComponentStatus(prefix, component) {
+            const statusDiv = document.getElementById(`${prefix}Status`);
+            const detailsDiv = document.getElementById(`${prefix}Details`);
+            
+            if (component.status === 'healthy') {
+                statusDiv.textContent = '✅ Healthy';
+                statusDiv.style.color = '#28a745';
+                statusDiv.parentElement.style.borderLeftColor = '#28a745';
+            } else if (component.status === 'degraded') {
+                statusDiv.textContent = '⚠️ Degraded';
+                statusDiv.style.color = '#ffc107';
+                statusDiv.parentElement.style.borderLeftColor = '#ffc107';
+            } else {
+                statusDiv.textContent = '❌ Unhealthy';
+                statusDiv.style.color = '#dc3545';
+                statusDiv.parentElement.style.borderLeftColor = '#dc3545';
+            }
+            
+            // Build details text
+            let details = '';
+            if (component.response_time_ms !== undefined) {
+                details += `${component.response_time_ms}ms`;
+            }
+            if (component.pool_available !== undefined) {
+                details += ` | Pool: ${component.pool_used}/${component.pool_available + component.pool_used}`;
+            }
+            if (component.provider) {
+                details += ` | ${component.provider}`;
+            }
+            if (component.error) {
+                details = `Error: ${component.error}`;
+            }
+            
+            detailsDiv.textContent = details || '-';
+        }
+
         // Load licenses on page load
         window.addEventListener('load', () => {
             loadLicenses();
+            checkServerHealth();
+            
+            // Auto-refresh health every 30 seconds
+            setInterval(checkServerHealth, 30000);
         });
     </script>
 </body>

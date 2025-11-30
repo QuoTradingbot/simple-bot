@@ -88,6 +88,48 @@ def get_application_path() -> 'Path':
     return application_path
 
 
+def get_device_fingerprint() -> str:
+    """
+    Generate a unique device fingerprint for session locking.
+    Prevents license key sharing across multiple computers.
+    
+    Components:
+    - Machine ID (from platform UUID)
+    - Username
+    - Platform name
+    
+    Returns:
+        Unique device fingerprint (hashed for privacy)
+    """
+    import hashlib
+    import platform
+    import getpass
+    import uuid
+    
+    # Get platform-specific machine ID
+    try:
+        machine_id = str(uuid.getnode())  # MAC address as unique ID
+    except:
+        machine_id = "unknown"
+    
+    # Get username
+    try:
+        username = getpass.getuser()
+    except:
+        username = "unknown"
+    
+    # Get platform info
+    platform_name = platform.system()  # Windows, Darwin (Mac), Linux
+    
+    # Combine all components
+    fingerprint_raw = f"{machine_id}:{username}:{platform_name}"
+    
+    # Hash for privacy (don't send raw MAC address to server)
+    fingerprint_hash = hashlib.sha256(fingerprint_raw.encode()).hexdigest()[:16]
+    
+    return fingerprint_hash
+
+
 def get_data_file_path(filename: str) -> 'Path':
     """
     Get full path to a data file, creating directory if needed.
@@ -395,9 +437,13 @@ def initialize_broker() -> None:
             api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
             
             # Validate with server (server handles both regular and admin keys)
+            # Include device fingerprint for session locking
             response = requests.post(
                 f"{api_url}/api/main",
-                json={"license_key": license_key},
+                json={
+                    "license_key": license_key,
+                    "device_fingerprint": get_device_fingerprint()  # Session locking
+                },
                 timeout=10
             )
             
@@ -747,25 +793,38 @@ def check_broker_connection() -> None:
     
     # Check if broker reports as connected
     if not broker.connected:
-        logger.warning("[HEALTH] Broker connection lost - attempting reconnection...")
+        logger.warning("[HEALTH] Broker disconnected - reconnecting immediately...")
         
         # Send connection error alert
         try:
             notifier = get_notifier()
             notifier.send_error_alert(
-                error_message="Broker connection lost. Bot is attempting to reconnect automatically.",
+                error_message="Broker connection lost. Reconnecting now...",
                 error_type="Connection Error"
             )
         except Exception as e:
             logger.debug(f"Failed to send connection error alert: {e}")
         
         try:
-            # Attempt to reconnect
-            success = broker.connect(max_retries=2)
+            # Immediate reconnect with 3 retries
+            logger.critical("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+            logger.critical("⚠️  RECONNECTING TO TOPSTEP")
+            success = broker.connect(max_retries=3)
             if success:
-                logger.info("[HEALTH] Reconnection successful!")
+                logger.critical("✅ Reconnection successful - Trading resumed")
+                logger.critical("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+                
+                # Send success notification
+                try:
+                    notifier.send_error_alert(
+                        error_message="✅ Reconnected to TopStep successfully. Bot is back online.",
+                        error_type="Connection Restored"
+                    )
+                except:
+                    pass
             else:
-                logger.error("[HEALTH] Reconnection failed - will retry in 30s")
+                logger.error("❌ Reconnection failed - will retry in 30s")
+                logger.critical("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
         except Exception as e:
             logger.error(f"[HEALTH] Reconnection error: {e}")
         return
@@ -773,12 +832,19 @@ def check_broker_connection() -> None:
     # Connection looks healthy - do a lightweight ping test
     # Only log if there's a problem (silent success to avoid spam)
     try:
-        # Try to get account equity as a connection health check
-        equity = broker.get_account_equity()
-        if equity is None or equity <= 0:
-            logger.warning("[HEALTH] Connection may be stale - got invalid equity response")
-            # Mark as disconnected to trigger reconnect on next check
-            broker.connected = False
+        # IMPROVED: Use dedicated health check method instead of equity query
+        if hasattr(broker, 'verify_connection'):
+            is_healthy = broker.verify_connection()
+            if not is_healthy:
+                logger.warning("[HEALTH] Connection verification failed - marking as disconnected")
+                broker.connected = False
+                return
+        else:
+            # Fallback to equity check for brokers without verify_connection
+            equity = broker.get_account_equity()
+            if equity is None or equity <= 0:
+                logger.warning("[HEALTH] Connection may be stale - got invalid equity response")
+                broker.connected = False
     except Exception as e:
         logger.warning(f"[HEALTH] Connection check failed: {e}")
         # Mark as disconnected to trigger reconnect on next check
@@ -7884,6 +7950,7 @@ def send_heartbeat() -> None:
         # Send heartbeat with bot status and performance
         payload = {
             "license_key": license_key,
+            "device_fingerprint": get_device_fingerprint(),  # For session locking
             "bot_version": "2.0.0",
             "status": "online" if bot_status.get("trading_enabled", False) else "idle",
             "metadata": {
@@ -7914,12 +7981,71 @@ def send_heartbeat() -> None:
         )
         
         if response.status_code == 200:
+            data = response.json()
+            
+            # Check for session conflict (license in use on another device)
+            if data.get("session_conflict", False):
+                logger.critical("=" * 70)
+                logger.critical("")
+                logger.critical("  ⚠️ LICENSE ALREADY IN USE")
+                logger.critical("")
+                logger.critical("  Your license key is currently active on another device.")
+                logger.critical(f"  Active device: {data.get('active_device', 'Unknown')}")
+                logger.critical("")
+                logger.critical("  Only one device can use a license at a time.")
+                logger.critical("  Please stop the bot on the other device first.")
+                logger.critical("")
+                logger.critical("  Contact: support@quotrading.com")
+                logger.critical("")
+                logger.critical("="  * 70)
+                
+                # Disable trading and shut down
+                bot_status["trading_enabled"] = False
+                bot_status["emergency_stop"] = True
+                bot_status["stop_reason"] = "session_conflict"
+                
+                # Disconnect broker
+                global broker
+                if broker is not None:
+                    try:
+                        broker.disconnect()
+                    except:
+                        pass
+                
+                # Exit
+                import sys
+                import time
+                time.sleep(3)
+                sys.exit(1)
+            
             logger.debug("Heartbeat sent successfully")
+        elif response.status_code == 403:
+            # Session conflict detected by server
+            logger.critical("=" * 70)
+            logger.critical("")
+            logger.critical("  ⚠️ LICENSE ALREADY IN USE")
+            logger.critical("")
+            logger.critical("  Your license key is currently active on another device.")
+            logger.critical("  Only one device can use a license at a time.")
+            logger.critical("")
+            logger.critical("  Contact: support@quotrading.com")
+            logger.critical("")
+            logger.critical("=" * 70)
+            
+            # Force shutdown
+            bot_status["trading_enabled"] = False
+            bot_status["emergency_stop"] = True
+            
+            import sys
+            import time
+            time.sleep(3)
+            sys.exit(1)
         else:
             logger.debug(f"Heartbeat returned HTTP {response.status_code}")
     
     except Exception as e:
         logger.debug(f"Heartbeat error: {e}")
+
 
 
 def handle_shutdown_event(data: Dict[str, Any]) -> None:

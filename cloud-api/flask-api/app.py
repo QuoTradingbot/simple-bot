@@ -2,7 +2,7 @@
 QuoTrading Flask API with RL Brain + PostgreSQL License Validation
 Simple, reliable API that works everywhere
 """
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 import os
 import json
 import psycopg2
@@ -49,54 +49,189 @@ BOT_DOWNLOAD_URL = os.environ.get("BOT_DOWNLOAD_URL", "https://quotradingfiles.b
 # Connection pool for PostgreSQL (reuse connections)
 _db_pool = None
 
-def send_license_email(email, license_key):
+def send_license_email(email, license_key, whop_user_id=None, whop_membership_id=None):
     logging.info(f"🔍 send_license_email() called for {email}, license {license_key}")
     logging.info(f"🔍 SENDGRID_API_KEY present: {bool(SENDGRID_API_KEY)}")
     logging.info(f"🔍 FROM_EMAIL: {FROM_EMAIL}")
     
     try:
-        subject = "Your QuoTrading AI License Key"
+        subject = "🚀 Your QuoTrading AI License Key"
         
-    html_body = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #667eea;">Welcome to QuoTrading AI</h1>
+        # Build Whop ID display if available
+        whop_id_html = ""
+        if whop_user_id:
+            whop_id_html = f"""<p style="color: #334155; font-size: 14px; line-height: 1.6; margin: 0;">
+                                <strong>Whop ID:</strong> <a href="https://whop.com" style="color: #667eea; text-decoration: none;">{whop_user_id}</a>
+                            </p>"""
         
-        <p>Thank you for your subscription! Your license key is below.</p>
+        # Build order link for footer if we have membership ID
+        order_link_html = ""
+        if whop_membership_id:
+            order_link_html = f"""
+                            <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 24px 0 0 0; text-align: center;">
+                                <p style="color: #64748b; font-size: 14px; line-height: 1.6; margin: 0 0 12px 0;">
+                                    <strong>Order Details</strong>
+                                </p>
+                                <p style="color: #334155; font-size: 13px; line-height: 1.6; margin: 0 0 12px 0;">
+                                    Invoice: R-{whop_membership_id[-8:]}
+                                </p>
+                                <p style="margin: 0;">
+                                    <a href="https://whop.com/hub/memberships/{whop_membership_id}" style="display: inline-block; background: #667eea; color: #ffffff; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600; margin-right: 8px;">Access Order</a>
+                                    <a href="https://whop.com/hub/memberships/{whop_membership_id}/invoice" style="display: inline-block; background: #ffffff; color: #667eea; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600; border: 2px solid #667eea;">View Invoice</a>
+                                </p>
+                            </div>
+            """
         
-        <div style="background: #f3f4f6; padding: 20px; border-radius: 10px; margin: 20px 0;">
-            <h2 style="margin-top: 0;">Your License Key:</h2>
-            <p style="font-size: 24px; font-weight: bold; color: #667eea; letter-spacing: 2px; font-family: monospace;">{license_key}</p>
-            <p style="font-size: 14px; color: #6b7280; margin-top: 10px;">⚠️ Save this key securely - you'll need it to activate the AI</p>
-        </div>
+        html_body = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 40px 20px;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07); overflow: hidden;">
+                    
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
+                                Welcome to QuoTrading AI
+                            </h1>
+                            <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">
+                                Your AI-powered trading journey starts now
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Whop ID Section -->
+                    <tr>
+                        <td style="background: #f8fafc; padding: 20px 40px; border-bottom: 1px solid #e2e8f0;">
+                            {whop_id_html}
+                        </td>
+                    </tr>
+                    
+                    <!-- License Key Box -->
+                    <tr>
+                        <td style="padding: 40px;">
+                            <p style="color: #334155; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
+                                Thank you for subscribing! Your license key is unique to your account — do not share it. Save this email for future reference.
+                            </p>
+                            
+                            <div style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); border-left: 4px solid #667eea; padding: 24px; border-radius: 8px; margin: 24px 0;">
+                                <p style="color: #64748b; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0;">
+                                    Your License Key
+                                </p>
+                                <p style="font-size: 28px; font-weight: 700; color: #1e293b; letter-spacing: 1px; font-family: 'Courier New', monospace; margin: 0; word-break: break-all;">
+                                    {license_key}
+                                </p>
+                                <p style="color: #f59e0b; font-size: 13px; margin: 12px 0 0 0; font-weight: 500;">
+                                    ⚠️ Keep this key secure — it's unique to your account
+                                </p>
+                            </div>
+                            
+                            <!-- Getting Started -->
+                            <h2 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 32px 0 16px 0;">
+                                Getting Started
+                            </h2>
+                            
+                            <table width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 24px 0;">
+                                <tr>
+                                    <td style="padding: 8px 0;">
+                                        <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0;">
+                                            <strong style="color: #667eea;">1.</strong> <strong>Download the AI</strong> — Check your email for the download link
+                                        </p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0;">
+                                        <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0;">
+                                            <strong style="color: #667eea;">2.</strong> <strong>Launch the application</strong> — Run the QuoTrading AI on your computer
+                                        </p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0;">
+                                        <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0;">
+                                            <strong style="color: #667eea;">3.</strong> <strong>Enter your license key</strong> — Paste the key above when prompted
+                                        </p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0;">
+                                        <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0;">
+                                            <strong style="color: #667eea;">4.</strong> <strong>Connect your broker</strong> — Enter your brokerage API credentials (username and API key)
+                                        </p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0;">
+                                        <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0;">
+                                            <strong style="color: #667eea;">5.</strong> <strong>Start trading</strong> — Begin using AI-powered market analysis
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Important Notes -->
+                            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px 20px; border-radius: 8px; margin: 24px 0 16px 0;">
+                                <p style="color: #92400e; font-size: 14px; font-weight: 600; margin: 0 0 12px 0;">
+                                    ⚠️ Important Information
+                                </p>
+                                <p style="color: #78350f; font-size: 14px; line-height: 1.8; margin: 0;">
+                                    • You'll need API credentials from your broker to connect (contact your broker for API access)
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Order Details Section -->
+                    <tr>
+                        <td style="padding: 0 40px 24px 40px;">
+                            {order_link_html}
+                        </td>
+                    </tr>
+                    
+                    <!-- Support Section -->
+                    <tr>
+                        <td style="padding: 0 40px 40px 40px;">
+                            <h2 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0 0 16px 0;">
+                                Need Help?
+                            </h2>
+                            <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0 0 12px 0;">
+                                <strong>📧 Email Support:</strong>
+                                <a href="mailto:support@quotrading.com" style="color: #667eea; text-decoration: none;">support@quotrading.com</a>
+                            </p>
+                            <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0;">
+                                <strong>💬 Discord Community:</strong> Get live support and connect with other traders
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background: #f8fafc; padding: 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+                            <p style="color: #64748b; font-size: 13px; line-height: 1.6; margin: 0 0 8px 0;">
+                                Your subscription renews monthly and can be managed anytime from your Whop dashboard.
+                            </p>
+                            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                                © 2025 QuoTrading. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+    """
         
-        <h2>Getting Started:</h2>
-        <ol>
-            <li><strong>Download the AI</strong> from your Whop dashboard or email</li>
-            <li><strong>Launch the application</strong> on your computer</li>
-            <li><strong>Enter your license key</strong> when prompted: <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: monospace;">{license_key}</code></li>
-            <li><strong>Connect your brokerage account</strong> and set your trading preferences</li>
-            <li><strong>Start trading</strong> with AI-powered market analysis</li>
-        </ol>
-        
-        <h2>📌 Important:</h2>
-        <ul>
-            <li>🔐 Your license key is unique and should not be shared</li>
-            <li>✅ This email contains everything you need to get started</li>
-            <li>📥 Check your spam folder if you haven't received your download link</li>
-            <li>💡 Join our community for tips, updates, and support</li>
-        </ul>
-        
-        <h2>Need Help?</h2>
-        <p>📧 Email: <a href="mailto:support@quotrading.com" style="color: #667eea;">support@quotrading.com</a></p>
-        <p>💬 Discord: Join our community for live support</p>
-        
-        <p style="color: #6b7280; font-size: 12px; margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 20px;">
-            Your subscription renews monthly. Manage your subscription anytime from your Whop dashboard.
-        </p>
-    </body>
-    </html>
-    """        # Try SendGrid first (preferred), fall back to SMTP
+        # Try SendGrid first (preferred), fall back to SMTP
         if SENDGRID_API_KEY:
             logging.info(f"🔍 Attempting SendGrid email to {email}")
             try:
@@ -159,6 +294,504 @@ def send_license_email(email, license_key):
         logging.error(f"❌ CRITICAL ERROR in send_license_email: {type(e).__name__}: {str(e)}")
         import traceback
         logging.error(f"Traceback: {traceback.format_exc()}")
+        return False
+
+def send_renewal_email(email, renewal_date, next_billing_date, whop_membership_id=None):
+    """Send subscription renewal confirmation email"""
+    logging.info(f"🔍 Sending renewal email to {email}")
+    logging.info(f"🔍 SENDGRID_API_KEY present: {bool(SENDGRID_API_KEY)}")
+    logging.info(f"🔍 SMTP_USERNAME present: {bool(SMTP_USERNAME)}")
+    logging.info(f"🔍 FROM_EMAIL: {FROM_EMAIL}")
+    
+    try:
+        subject = "✅ QuoTrading AI Subscription Renewed"
+        
+        # Build order link if we have membership ID
+        order_link_html = ""
+        if whop_membership_id:
+            order_link_html = f"""
+                            <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 24px 0 0 0; text-align: center;">
+                                <p style="margin: 0;">
+                                    <a href="https://whop.com/hub/memberships/{whop_membership_id}" style="display: inline-block; background: #667eea; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600;">Manage Subscription</a>
+                                </p>
+                            </div>
+            """
+        
+        html_body = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 40px 20px;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07); overflow: hidden;">
+                    
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
+                                ✅ Subscription Renewed
+                            </h1>
+                            <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">
+                                Your QuoTrading AI subscription has been renewed
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px;">
+                            <p style="color: #334155; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
+                                Great news! Your monthly QuoTrading AI subscription was successfully renewed on <strong>{renewal_date}</strong>.
+                            </p>
+                            
+                            <div style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); border-left: 4px solid #10b981; padding: 24px; border-radius: 8px; margin: 24px 0;">
+                                <p style="color: #64748b; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 12px 0;">
+                                    Renewal Details
+                                </p>
+                                <p style="color: #334155; font-size: 15px; line-height: 1.8; margin: 0 0 8px 0;">
+                                    <strong>Renewed:</strong> {renewal_date}
+                                </p>
+                                <p style="color: #334155; font-size: 15px; line-height: 1.8; margin: 0;">
+                                    <strong>Next Billing Date:</strong> {next_billing_date}
+                                </p>
+                            </div>
+                            
+                            <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 24px 0 0 0;">
+                                Your AI continues to analyze markets and provide trading signals. No action needed — keep trading!
+                            </p>
+                            {order_link_html}
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background: #f8fafc; padding: 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+                            <p style="color: #64748b; font-size: 13px; line-height: 1.6; margin: 0 0 8px 0;">
+                                Questions? Contact <a href="mailto:support@quotrading.com" style="color: #667eea; text-decoration: none;">support@quotrading.com</a>
+                            </p>
+                            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                                © 2025 QuoTrading. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+    """
+        
+        # Try SendGrid first
+        if SENDGRID_API_KEY:
+            logging.info(f"🔍 Attempting SendGrid renewal email to {email}")
+            try:
+                payload = {
+                    "personalizations": [{"to": [{"email": email}]}],
+                    "from": {"email": FROM_EMAIL, "name": "QuoTrading"},
+                    "subject": subject,
+                    "content": [{"type": "text/html", "value": html_body}]
+                }
+                
+                response = requests.post(
+                    "https://api.sendgrid.com/v3/mail/send",
+                    headers={
+                        "Authorization": f"Bearer {SENDGRID_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json=payload
+                )
+                
+                logging.info(f"🔍 SendGrid response: status={response.status_code}, body={response.text}")
+                
+                if response.status_code == 202:
+                    logging.info(f"✅ SendGrid renewal email sent successfully to {email}")
+                    return True
+                else:
+                    logging.error(f"SendGrid renewal email failed: {response.status_code} - {response.text}")
+                    return False
+                    
+            except Exception as e:
+                logging.error(f"SendGrid renewal email error: {e}")
+                return False
+        else:
+            logging.error(f"❌ No email method configured")
+            return False
+            
+    except Exception as e:
+        logging.error(f"❌ ERROR in send_renewal_email: {e}")
+        return False
+
+def send_cancellation_email(email, cancellation_date, access_until_date, whop_membership_id=None):
+    """Send subscription cancellation confirmation email"""
+    logging.info(f"🔍 Sending cancellation email to {email}")
+    
+    try:
+        subject = "QuoTrading AI Subscription Cancelled"
+        
+        # Build reactivate link if we have membership ID
+        reactivate_link_html = ""
+        if whop_membership_id:
+            reactivate_link_html = f"""
+                            <div style="text-align: center; margin: 24px 0 0 0;">
+                                <p style="color: #334155; font-size: 15px; margin: 0 0 12px 0;">
+                                    Changed your mind?
+                                </p>
+                                <a href="https://whop.com/hub/memberships/{whop_membership_id}" style="display: inline-block; background: #667eea; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600;">Reactivate Subscription</a>
+                            </div>
+            """
+        
+        html_body = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 40px 20px;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07); overflow: hidden;">
+                    
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #64748b 0%, #475569 100%); padding: 40px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
+                                Subscription Cancelled
+                            </h1>
+                            <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">
+                                We're sorry to see you go
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px;">
+                            <p style="color: #334155; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
+                                Your QuoTrading AI subscription has been cancelled as of <strong>{cancellation_date}</strong>.
+                            </p>
+                            
+                            <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-left: 4px solid #f59e0b; padding: 24px; border-radius: 8px; margin: 24px 0;">
+                                <p style="color: #92400e; font-size: 14px; font-weight: 600; margin: 0 0 12px 0;">
+                                    ⚠️ Important Information
+                                </p>
+                                <p style="color: #78350f; font-size: 14px; line-height: 1.8; margin: 0 0 8px 0;">
+                                    • You'll retain access until <strong>{access_until_date}</strong>
+                                </p>
+                                <p style="color: #78350f; font-size: 14px; line-height: 1.8; margin: 0;">
+                                    • No further charges will be made
+                                </p>
+                            </div>
+                            
+                            <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 24px 0 0 0;">
+                                Thank you for using QuoTrading AI. We'd love to have you back anytime!
+                            </p>
+                            {reactivate_link_html}
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background: #f8fafc; padding: 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+                            <p style="color: #64748b; font-size: 13px; line-height: 1.6; margin: 0 0 8px 0;">
+                                Questions? Contact <a href="mailto:support@quotrading.com" style="color: #667eea; text-decoration: none;">support@quotrading.com</a>
+                            </p>
+                            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                                © 2025 QuoTrading. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+    """
+        
+        # Try SendGrid
+        if SENDGRID_API_KEY:
+            try:
+                payload = {
+                    "personalizations": [{"to": [{"email": email}]}],
+                    "from": {"email": FROM_EMAIL, "name": "QuoTrading"},
+                    "subject": subject,
+                    "content": [{"type": "text/html", "value": html_body}]
+                }
+                
+                response = requests.post(
+                    "https://api.sendgrid.com/v3/mail/send",
+                    headers={
+                        "Authorization": f"Bearer {SENDGRID_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json=payload
+                )
+                
+                if response.status_code == 202:
+                    logging.info(f"✅ Cancellation email sent to {email}")
+                    return True
+                else:
+                    logging.error(f"Cancellation email failed: {response.status_code}")
+                    return False
+                    
+            except Exception as e:
+                logging.error(f"Cancellation email error: {e}")
+                return False
+        else:
+            logging.error(f"❌ No email method configured")
+            return False
+            
+    except Exception as e:
+        logging.error(f"❌ ERROR in send_cancellation_email: {e}")
+        return False
+
+def send_payment_failed_email(email, retry_date, whop_membership_id=None):
+    """Send payment failure notification email"""
+    logging.info(f"🔍 Sending payment failed email to {email}")
+    
+    try:
+        subject = "⚠️ QuoTrading AI Payment Failed"
+        
+        # Build update payment link if we have membership ID
+        update_payment_html = ""
+        if whop_membership_id:
+            update_payment_html = f"""
+                            <div style="text-align: center; margin: 24px 0 0 0;">
+                                <a href="https://whop.com/hub/memberships/{whop_membership_id}" style="display: inline-block; background: #ef4444; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600;">Update Payment Method</a>
+                            </div>
+            """
+        
+        html_body = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 40px 20px;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07); overflow: hidden;">
+                    
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); padding: 40px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
+                                ⚠️ Payment Failed
+                            </h1>
+                            <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">
+                                Action required to continue your subscription
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px;">
+                            <p style="color: #334155; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
+                                We were unable to process your recent payment for QuoTrading AI. This could be due to insufficient funds, an expired card, or a temporary issue with your payment method.
+                            </p>
+                            
+                            <div style="background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); border-left: 4px solid #ef4444; padding: 24px; border-radius: 8px; margin: 24px 0;">
+                                <p style="color: #991b1b; font-size: 14px; font-weight: 600; margin: 0 0 12px 0;">
+                                    ⚠️ Immediate Action Required
+                                </p>
+                                <p style="color: #7f1d1d; font-size: 14px; line-height: 1.8; margin: 0 0 8px 0;">
+                                    • Your subscription is temporarily suspended
+                                </p>
+                                <p style="color: #7f1d1d; font-size: 14px; line-height: 1.8; margin: 0;">
+                                    • Payment will be retried on <strong>{retry_date}</strong>
+                                </p>
+                            </div>
+                            
+                            <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 24px 0 0 0;">
+                                <strong>To restore access:</strong> Please update your payment method below to avoid service interruption.
+                            </p>
+                            {update_payment_html}
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background: #f8fafc; padding: 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+                            <p style="color: #64748b; font-size: 13px; line-height: 1.6; margin: 0 0 8px 0;">
+                                Questions? Contact <a href="mailto:support@quotrading.com" style="color: #667eea; text-decoration: none;">support@quotrading.com</a>
+                            </p>
+                            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                                © 2025 QuoTrading. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+    """
+        
+        # Try SendGrid
+        if SENDGRID_API_KEY:
+            try:
+                payload = {
+                    "personalizations": [{"to": [{"email": email}]}],
+                    "from": {"email": FROM_EMAIL, "name": "QuoTrading"},
+                    "subject": subject,
+                    "content": [{"type": "text/html", "value": html_body}]
+                }
+                
+                response = requests.post(
+                    "https://api.sendgrid.com/v3/mail/send",
+                    headers={
+                        "Authorization": f"Bearer {SENDGRID_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json=payload
+                )
+                
+                if response.status_code == 202:
+                    logging.info(f"✅ Payment failed email sent to {email}")
+                    return True
+                else:
+                    logging.error(f"Payment failed email failed: {response.status_code}")
+                    return False
+                    
+            except Exception as e:
+                logging.error(f"Payment failed email error: {e}")
+                return False
+        else:
+            logging.error(f"❌ No email method configured")
+            return False
+            
+    except Exception as e:
+        logging.error(f"❌ ERROR in send_payment_failed_email: {e}")
+        return False
+
+def send_subscription_expired_email(email, expiration_date):
+    """Send subscription expiration notification email"""
+    logging.info(f"🔍 Sending subscription expired email to {email}")
+    
+    try:
+        subject = "QuoTrading AI Subscription Expired"
+        
+        html_body = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 40px 20px;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07); overflow: hidden;">
+                    
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #64748b 0%, #475569 100%); padding: 40px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
+                                Subscription Expired
+                            </h1>
+                            <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">
+                                Your QuoTrading AI access has ended
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px;">
+                            <p style="color: #334155; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
+                                Your QuoTrading AI subscription expired on <strong>{expiration_date}</strong>. Your license key is no longer active.
+                            </p>
+                            
+                            <div style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); border-left: 4px solid #667eea; padding: 24px; border-radius: 8px; margin: 24px 0;">
+                                <p style="color: #475569; font-size: 14px; font-weight: 600; margin: 0 0 12px 0;">
+                                    💡 Want to Continue Trading?
+                                </p>
+                                <p style="color: #64748b; font-size: 14px; line-height: 1.8; margin: 0;">
+                                    Reactivate your subscription to regain access to AI-powered market analysis and trading signals.
+                                </p>
+                            </div>
+                            
+                            <div style="text-align: center; margin: 24px 0 0 0;">
+                                <a href="https://whop.com" style="display: inline-block; background: #667eea; color: #ffffff; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600;">Reactivate Subscription</a>
+                            </div>
+                            
+                            <p style="color: #64748b; font-size: 14px; line-height: 1.6; margin: 24px 0 0 0; text-align: center;">
+                                Thank you for being part of the QuoTrading community!
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background: #f8fafc; padding: 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+                            <p style="color: #64748b; font-size: 13px; line-height: 1.6; margin: 0 0 8px 0;">
+                                Questions? Contact <a href="mailto:support@quotrading.com" style="color: #667eea; text-decoration: none;">support@quotrading.com</a>
+                            </p>
+                            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                                © 2025 QuoTrading. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
+    """
+        
+        # Try SendGrid
+        if SENDGRID_API_KEY:
+            try:
+                payload = {
+                    "personalizations": [{"to": [{"email": email}]}],
+                    "from": {"email": FROM_EMAIL, "name": "QuoTrading"},
+                    "subject": subject,
+                    "content": [{"type": "text/html", "value": html_body}]
+                }
+                
+                response = requests.post(
+                    "https://api.sendgrid.com/v3/mail/send",
+                    headers={
+                        "Authorization": f"Bearer {SENDGRID_API_KEY}",
+                        "Content-Type": "application/json"
+                    },
+                    json=payload
+                )
+                
+                if response.status_code == 202:
+                    logging.info(f"✅ Subscription expired email sent to {email}")
+                    return True
+                else:
+                    logging.error(f"Expired email failed: {response.status_code}")
+                    return False
+                    
+            except Exception as e:
+                logging.error(f"Expired email error: {e}")
+                return False
+        else:
+            logging.error(f"❌ No email method configured")
+            return False
+            
+    except Exception as e:
+        logging.error(f"❌ ERROR in send_subscription_expired_email: {e}")
         return False
 
 def generate_license_key():
@@ -368,38 +1001,72 @@ def hello():
 
 @app.route('/api/heartbeat', methods=['POST'])
 def heartbeat():
-    """Record bot heartbeat for online status tracking"""
+    """Record bot heartbeat for online status tracking with session locking"""
     try:
         data = request.get_json()
         license_key = data.get('license_key')
+        device_fingerprint = data.get('device_fingerprint')
         
         if not license_key:
             return jsonify({"status": "error", "message": "License key required"}), 400
+        
+        if not device_fingerprint:
+            return jsonify({"status": "error", "message": "Device fingerprint required"}), 400
         
         # Validate license
         is_valid, message, _ = validate_license(license_key)
         if not is_valid:
             return jsonify({"status": "error", "message": message}), 403
         
-        # Record heartbeat
+        # Record heartbeat with session locking
         conn = get_db_connection()
         if conn:
             try:
                 with conn.cursor() as cursor:
-                    # Update last heartbeat time in users table
+                    # Check for existing active session (last heartbeat within 2 minutes)
+                    cursor.execute("""
+                        SELECT device_fingerprint, last_heartbeat
+                        FROM users
+                        WHERE license_key = %s
+                    """, (license_key,))
+                    user = cursor.fetchone()
+                    
+                    if user:
+                        stored_device = user[0]
+                        last_heartbeat = user[1]
+                        
+                        # Check if another device is active (heartbeat within 2 minutes)
+                        if stored_device and stored_device != device_fingerprint:
+                            # Check if the stored device is still active
+                            from datetime import datetime, timedelta
+                            if last_heartbeat:
+                                time_since_last = datetime.now() - last_heartbeat
+                                if time_since_last < timedelta(minutes=2):
+                                    # SESSION CONFLICT: Another device is active
+                                    logging.warning(f"⚠️ Session conflict for {license_key}: Device {device_fingerprint} tried to connect while {stored_device} is active")
+                                    return jsonify({
+                                        "status": "error",
+                                        "session_conflict": True,
+                                        "message": "License already in use on another device",
+                                        "active_device": stored_device[:8] + "..."  # Show partial for identification
+                                    }), 403
+                    
+                    # No conflict - update heartbeat and device fingerprint
                     cursor.execute("""
                         UPDATE users 
-                        SET last_heartbeat = NOW(), 
+                        SET last_heartbeat = NOW(),
+                            device_fingerprint = %s,
                             metadata = %s
                         WHERE license_key = %s
-                    """, (json.dumps(data.get('metadata', {})), license_key))
+                    """, (device_fingerprint, json.dumps(data.get('metadata', {})), license_key))
                     
                     # Also insert into heartbeats table for history
                     cursor.execute("""
-                        INSERT INTO heartbeats (license_key, bot_version, status, metadata)
-                        VALUES (%s, %s, %s, %s)
+                        INSERT INTO heartbeats (license_key, device_fingerprint, bot_version, status, metadata)
+                        VALUES (%s, %s, %s, %s, %s)
                     """, (
                         license_key,
+                        device_fingerprint,
                         data.get('bot_version', 'unknown'),
                         data.get('status', 'online'),
                         json.dumps(data.get('metadata', {}))
@@ -407,7 +1074,11 @@ def heartbeat():
                     
                     conn.commit()
                     
-                return jsonify({"status": "success", "message": "Heartbeat recorded"}), 200
+                return jsonify({
+                    "status": "success",
+                    "message": "Heartbeat recorded",
+                    "session_conflict": False
+                }), 200
             finally:
                 return_connection(conn)
         
@@ -417,14 +1088,17 @@ def heartbeat():
         logging.error(f"Heartbeat error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
 @app.route('/api/main', methods=['POST'])
 def main():
-    """Main signal processing endpoint with license validation"""
+    """Main signal processing endpoint with license validation and session locking"""
     try:
         data = request.get_json()
         
         # Validate license
         license_key = data.get('license_key')
+        device_fingerprint = data.get('device_fingerprint')
+        
         is_valid, message, expiration_date = validate_license(license_key)
         
         if not is_valid:
@@ -434,6 +1108,47 @@ def main():
                 "license_valid": False,
                 "license_expiration": expiration_date.isoformat() if expiration_date else None
             }), 403
+        
+        # Session locking - check if another device is using this license
+        if device_fingerprint:
+            conn = get_db_connection()
+            if conn:
+                try:
+                    with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                        cursor.execute("""
+                            SELECT device_fingerprint, last_heartbeat
+                            FROM users
+                            WHERE license_key = %s
+                        """, (license_key,))
+                        
+                        user = cursor.fetchone()
+                        
+                        if user and user['device_fingerprint']:
+                            # Check if another device is active (heartbeat within last 2 minutes)
+                            if user['last_heartbeat']:
+                                time_since_heartbeat = (datetime.now() - user['last_heartbeat']).total_seconds()
+                                
+                                if time_since_heartbeat < 120 and user['device_fingerprint'] != device_fingerprint:
+                                    # Another device is actively using this license
+                                    return jsonify({
+                                        "status": "error",
+                                        "message": "License already in use on another device. Please stop the bot on the other computer first.",
+                                        "license_valid": False,
+                                        "session_conflict": True
+                                    }), 403
+                        
+                        # Update device fingerprint for this session
+                        cursor.execute("""
+                            UPDATE users
+                            SET device_fingerprint = %s,
+                                last_heartbeat = NOW()
+                            WHERE license_key = %s
+                        """, (device_fingerprint, license_key))
+                        
+                        conn.commit()
+                        
+                finally:
+                    return_connection(conn)
         
         # Process signal with RL brain
         signal_type = data.get('signal_type', 'NEUTRAL')
@@ -511,6 +1226,16 @@ def list_licenses():
                         "expires_at": lic[4].isoformat() if lic[4] else None,
                         "created_at": lic[5].isoformat() if lic[5] else None
                     })
+                
+                # Add admin key to the list
+                license_list.insert(0, {
+                    "license_key": ADMIN_API_KEY,
+                    "email": "admin@quotrading.com",
+                    "type": "ADMIN",
+                    "status": "ACTIVE",
+                    "expires_at": None,  # Never expires
+                    "created_at": "2024-01-01T00:00:00"  # Static date
+                })
                 
                 return jsonify({
                     "status": "success",
@@ -669,7 +1394,7 @@ def whop_webhook():
                 if event_type in ['membership.activated', 'payment.succeeded']:
                     email = data.get('email') or data.get('user', {}).get('email')
                     membership_id = data.get('id')
-                    user_id = data.get('user_id')
+                    user_id = data.get('user_id') or data.get('user', {}).get('id')
                     
                     if email:
                         # Check if user exists
@@ -688,14 +1413,15 @@ def whop_webhook():
                         else:
                             # Create new license
                             license_key = generate_license_key()
+                            account_id = f"ACC-{secrets.token_hex(8).upper()}"
                             cursor.execute("""
-                                INSERT INTO users (license_key, email, license_type, license_status, whop_membership_id, whop_user_id)
-                                VALUES (%s, %s, %s, %s, %s, %s)
-                            """, (license_key, email, 'subscription', 'active', membership_id, user_id))
+                                INSERT INTO users (account_id, license_key, email, license_type, license_status, whop_membership_id, whop_user_id)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            """, (account_id, license_key, email, 'Monthly', 'active', membership_id, user_id))
                             logging.info(f"🎉 License created from Whop: {license_key} for {email}")
                             
-                            # Send email
-                            email_sent = send_license_email(email, license_key)
+                            # Send email with Whop IDs
+                            email_sent = send_license_email(email, license_key, user_id, membership_id)
                             if email_sent:
                                 logging.info(f"✅ Email successfully sent to {email}")
                             else:
@@ -707,9 +1433,16 @@ def whop_webhook():
                 # Handle Membership Cancelled / Deactivated
                 elif event_type in ['membership.cancelled', 'membership.deactivated', 'subscription.canceled']:
                     membership_id = data.get('id')
-                    email = data.get('email')
+                    email = data.get('email') or data.get('user', {}).get('email')
                     
                     if membership_id:
+                        # Get user email if not provided
+                        if not email:
+                            cursor.execute("SELECT email FROM users WHERE whop_membership_id = %s", (membership_id,))
+                            result = cursor.fetchone()
+                            if result:
+                                email = result[0]
+                        
                         cursor.execute("""
                             UPDATE users 
                             SET license_status = 'cancelled'
@@ -724,11 +1457,26 @@ def whop_webhook():
                         
                     conn.commit()
                     logging.info(f"❌ License cancelled via Whop webhook")
+                    
+                    # Send cancellation email
+                    if email:
+                        cancellation_date = datetime.now().strftime("%B %d, %Y")
+                        access_until = (datetime.now() + timedelta(days=30)).strftime("%B %d, %Y")
+                        send_cancellation_email(email, cancellation_date, access_until, membership_id)
 
                 # Handle Payment Failed
                 elif event_type == 'payment.failed':
-                    membership_id = data.get('membership_id')
+                    membership_id = data.get('membership_id') or data.get('id')
+                    email = data.get('email') or data.get('user', {}).get('email')
+                    
                     if membership_id:
+                        # Get user email if not provided
+                        if not email:
+                            cursor.execute("SELECT email FROM users WHERE whop_membership_id = %s", (membership_id,))
+                            result = cursor.fetchone()
+                            if result:
+                                email = result[0]
+                        
                         cursor.execute("""
                             UPDATE users 
                             SET license_status = 'suspended'
@@ -736,6 +1484,31 @@ def whop_webhook():
                         """, (membership_id,))
                         conn.commit()
                         logging.warning(f"⚠️ License suspended (payment failed)")
+                        
+                        # Send payment failed email
+                        if email:
+                            retry_date = (datetime.now() + timedelta(days=3)).strftime("%B %d, %Y")
+                            send_payment_failed_email(email, retry_date, membership_id)
+                
+                # Handle Payment Succeeded (renewal)
+                elif event_type in ['payment.succeeded', 'membership.renewed']:
+                    membership_id = data.get('membership_id') or data.get('id')
+                    email = data.get('email') or data.get('user', {}).get('email')
+                    
+                    if membership_id and email:
+                        # Ensure license is active
+                        cursor.execute("""
+                            UPDATE users 
+                            SET license_status = 'active'
+                            WHERE whop_membership_id = %s
+                        """, (membership_id,))
+                        conn.commit()
+                        
+                        # Send renewal email
+                        renewal_date = datetime.now().strftime("%B %d, %Y")
+                        next_billing = (datetime.now() + timedelta(days=30)).strftime("%B %d, %Y")
+                        send_renewal_email(email, renewal_date, next_billing, membership_id)
+                        logging.info(f"✅ Renewal email sent to {email}")
 
         finally:
             return_connection(conn)
@@ -1529,9 +2302,8 @@ def submit_outcome():
         
         try:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            # TODO: Add license validation once users table is created
             
-            # Extract execution data if provided
+            # Extract execution data if provided (for backwards compatibility)
             exec_data = data.get('execution_data', {})
             
             # Insert outcome directly into PostgreSQL (instant, no locking)
@@ -2430,85 +3202,223 @@ def init_database_if_needed():
     except Exception as e:
         app.logger.warning(f"Database initialization check: {e}")
 
-@app.route('/api/admin/system-health', methods=['GET'])
-def admin_system_health():
-    """Get system health status for monitoring"""
-    admin_key = request.args.get('license_key') or request.args.get('admin_key')
-    if admin_key != ADMIN_API_KEY:
-        return jsonify({"error": "Unauthorized"}), 401
-    
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Public health check endpoint for server infrastructure monitoring"""
     health_status = {
         "timestamp": datetime.now().isoformat(),
-        "database": {"status": "unknown", "response_time_ms": 0, "error": None},
-        "rl_engine": {"status": "unknown", "total_experiences": 0, "response_time_ms": 0, "error": None}
+        "overall_status": "unknown",
+        "flask_server": {"status": "healthy", "version": "2.0", "environment": "production", "region": "West US 2"},
+        "app_service_plan": {"status": "healthy", "name": "quotrading-asp", "tier": "Basic", "region": "West US 2"},
+        "database": {"status": "unknown", "response_time_ms": 0, "pool_available": 0, "pool_used": 0, "error": None},
+        "email_service": {"status": "unknown", "provider": "sendgrid" if SENDGRID_API_KEY else "smtp", "error": None},
+        "whop_api": {"status": "unknown", "response_time_ms": 0, "error": None}
     }
     
-    # Test PostgreSQL connection
+    # Check PostgreSQL connection + pool stats
     db_start = datetime.now()
     try:
         conn = get_db_connection()
         if conn:
+            # Test query
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                cursor.execute("SELECT COUNT(*) as count FROM rl_experiences WHERE took_trade = TRUE")
-                result = cursor.fetchone()
-                total_experiences = result['count'] if result else 0
-                
+                cursor.execute("SELECT 1 as test")
+                cursor.fetchone()
+            
             return_connection(conn)
             db_time = (datetime.now() - db_start).total_seconds() * 1000
+            
+            # Get pool stats if available
+            pool_available = 0
+            pool_used = 0
+            if _db_pool:
+                try:
+                    # SimpleConnectionPool doesn't expose stats directly, but we can infer
+                    pool_available = _db_pool.maxconn - len(getattr(_db_pool, '_used', {}))
+                    pool_used = len(getattr(_db_pool, '_used', {}))
+                except:
+                    pass
+            
             health_status["database"] = {
                 "status": "healthy",
                 "response_time_ms": round(db_time, 2),
-                "error": None
-            }
-            health_status["rl_engine"] = {
-                "status": "healthy",
-                "total_experiences": total_experiences,
-                "response_time_ms": round(db_time, 2),
-                "last_query": datetime.now().isoformat(),
+                "pool_available": pool_available,
+                "pool_used": pool_used,
                 "error": None
             }
         else:
             health_status["database"] = {
                 "status": "unhealthy",
                 "response_time_ms": 0,
+                "pool_available": 0,
+                "pool_used": 0,
                 "error": "Database connection failed"
-            }
-            health_status["rl_engine"] = {
-                "status": "unhealthy",
-                "total_experiences": 0,
-                "response_time_ms": 0,
-                "error": "Cannot query RL data - database unavailable"
             }
     except Exception as e:
         logging.error(f"Database health check error: {e}")
         health_status["database"] = {
             "status": "unhealthy",
             "response_time_ms": 0,
+            "pool_available": 0,
+            "pool_used": 0,
             "error": str(e)
         }
-        health_status["rl_engine"] = {
+    
+    # Check email service
+    try:
+        if SENDGRID_API_KEY:
+            # SendGrid API check - verify API key format
+            if len(SENDGRID_API_KEY) > 20 and SENDGRID_API_KEY.startswith('SG.'):
+                health_status["email_service"] = {
+                    "status": "healthy",
+                    "provider": "sendgrid",
+                    "error": None
+                }
+            else:
+                health_status["email_service"] = {
+                    "status": "degraded",
+                    "provider": "sendgrid",
+                    "error": "API key format invalid"
+                }
+        elif SMTP_USERNAME and SMTP_PASSWORD:
+            # SMTP configured
+            health_status["email_service"] = {
+                "status": "healthy",
+                "provider": "smtp",
+                "error": None
+            }
+        else:
+            health_status["email_service"] = {
+                "status": "unhealthy",
+                "provider": "none",
+                "error": "No email service configured"
+            }
+    except Exception as e:
+        health_status["email_service"] = {
             "status": "unhealthy",
-            "total_experiences": 0,
+            "provider": "unknown",
+            "error": str(e)
+        }
+    
+    # Check Whop API connectivity
+    whop_start = datetime.now()
+    try:
+        if WHOP_API_KEY:
+            # Ping Whop API base URL to check connectivity
+            response = requests.get(
+                "https://api.whop.com",
+                timeout=5
+            )
+            whop_time = (datetime.now() - whop_start).total_seconds() * 1000
+            
+            # If we can reach Whop and have a key configured, mark as healthy
+            if response.status_code in [200, 404]:  # 404 is expected for base URL
+                health_status["whop_api"] = {
+                    "status": "healthy",
+                    "response_time_ms": round(whop_time, 2),
+                    "error": None
+                }
+            else:
+                health_status["whop_api"] = {
+                    "status": "degraded",
+                    "response_time_ms": round(whop_time, 2),
+                    "error": f"HTTP {response.status_code}"
+                }
+        else:
+            health_status["whop_api"] = {
+                "status": "degraded",
+                "response_time_ms": 0,
+                "error": "Whop API key not configured"
+            }
+    except requests.Timeout:
+        health_status["whop_api"] = {
+            "status": "unhealthy",
+            "response_time_ms": 5000,
+            "error": "Request timeout"
+        }
+    except Exception as e:
+        health_status["whop_api"] = {
+            "status": "unhealthy",
             "response_time_ms": 0,
             "error": str(e)
         }
     
     # Determine overall health
     statuses = [
+        health_status["flask_server"]["status"],
+        health_status["app_service_plan"]["status"],
         health_status["database"]["status"],
-        health_status["rl_engine"]["status"]
+        health_status["email_service"]["status"],
+        health_status["whop_api"]["status"]
     ]
     
     if all(s == "healthy" for s in statuses):
-        overall_status = "healthy"
+        health_status["overall_status"] = "healthy"
     elif any(s == "unhealthy" for s in statuses):
-        overall_status = "unhealthy"
+        health_status["overall_status"] = "unhealthy"
     else:
-        overall_status = "degraded"
+        health_status["overall_status"] = "degraded"
     
-    health_status["overall_status"] = overall_status
+    # Return 200 if healthy, 503 if unhealthy, 200 if degraded
+    status_code = 200 if health_status["overall_status"] != "unhealthy" else 503
+    return jsonify(health_status), status_code
+
+@app.route('/api/admin/system-health', methods=['GET'])
+def admin_system_health():
+    """Get detailed system health status with admin authentication"""
+    admin_key = request.args.get('license_key') or request.args.get('admin_key')
+    if admin_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
     
-    return jsonify(health_status), 200
+    # Get basic health status
+    basic_health = health_check()
+    health_data = basic_health[0].get_json()
+    
+    # Add admin-only metrics
+    db_start = datetime.now()
+    try:
+        conn = get_db_connection()
+        if conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                # Get RL experience count
+                cursor.execute("SELECT COUNT(*) as count FROM rl_experiences WHERE took_trade = TRUE")
+                result = cursor.fetchone()
+                total_experiences = result['count'] if result else 0
+                
+                # Get active license count
+                cursor.execute("SELECT COUNT(*) as count FROM users WHERE license_status = 'ACTIVE'")
+                result = cursor.fetchone()
+                active_licenses = result['count'] if result else 0
+                
+            return_connection(conn)
+            db_time = (datetime.now() - db_start).total_seconds() * 1000
+            
+            health_data["rl_engine"] = {
+                "status": "healthy",
+                "total_experiences": total_experiences,
+                "response_time_ms": round(db_time, 2),
+                "error": None
+            }
+            health_data["licenses"] = {
+                "active_count": active_licenses
+            }
+        else:
+            health_data["rl_engine"] = {
+                "status": "unhealthy",
+                "total_experiences": 0,
+                "response_time_ms": 0,
+                "error": "Cannot query RL data - database unavailable"
+            }
+    except Exception as e:
+        logging.error(f"Admin health check error: {e}")
+        health_data["rl_engine"] = {
+            "status": "unhealthy",
+            "total_experiences": 0,
+            "response_time_ms": 0,
+            "error": str(e)
+        }
+    
+    return jsonify(health_data), 200
 
 # ============================================================================
 # BULK OPERATIONS ENDPOINTS
@@ -2667,6 +3577,79 @@ def admin_bulk_delete():
     except Exception as e:
         conn.rollback()
         logging.error(f"Bulk delete error: {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        return_connection(conn)
+
+# ============================================================================
+# DATABASE VIEWER ENDPOINT
+# ============================================================================
+
+@app.route('/api/admin/database/<table_name>', methods=['GET'])
+def admin_view_database_table(table_name):
+    """View raw database table contents (admin only)"""
+    api_key = request.args.get('admin_key')
+    if api_key != ADMIN_API_KEY:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    # Whitelist allowed tables
+    allowed_tables = ['rl_experiences', 'users', 'api_logs']
+    if table_name not in allowed_tables:
+        return jsonify({"error": f"Table '{table_name}' not allowed"}), 400
+    
+    limit = request.args.get('limit', 100, type=int)
+    if limit > 1000:
+        limit = 1000  # Max 1000 rows
+    
+    conn = get_db_connection()
+    if not conn:
+        return jsonify({"error": "Database unavailable"}), 503
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        # Get total row count
+        cur.execute(f"SELECT COUNT(*) FROM {table_name}")
+        total_rows = cur.fetchone()['count']
+        
+        # Fetch recent rows (ordered by most recent first)
+        if table_name == 'rl_experiences':
+            cur.execute(f"""
+                SELECT * FROM {table_name}
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, (limit,))
+        elif table_name == 'users':
+            cur.execute(f"""
+                SELECT * FROM {table_name}
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, (limit,))
+        elif table_name == 'api_logs':
+            cur.execute(f"""
+                SELECT * FROM {table_name}
+                ORDER BY created_at DESC
+                LIMIT %s
+            """, (limit,))
+        
+        rows = cur.fetchall()
+        
+        # Convert datetime objects to ISO strings
+        for row in rows:
+            for key, value in row.items():
+                if hasattr(value, 'isoformat'):
+                    row[key] = value.isoformat()
+        
+        return jsonify({
+            "table": table_name,
+            "total_rows": total_rows,
+            "rows_returned": len(rows),
+            "rows": rows
+        }), 200
+        
+    except Exception as e:
+        logging.error(f"Database viewer error for {table_name}: {e}")
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()
@@ -2856,6 +3839,12 @@ def admin_retention_metrics():
     finally:
         cur.close()
         return_connection(conn)
+
+
+@app.route('/admin-dashboard-full.html')
+def serve_admin_dashboard():
+    """Serve the admin dashboard HTML file"""
+    return send_from_directory('.', 'admin-dashboard-full.html')
 
 
 if __name__ == '__main__':

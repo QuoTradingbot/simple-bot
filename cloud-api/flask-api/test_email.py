@@ -27,47 +27,178 @@ def send_test_email(to_email, license_key="TEST-DEMO-1234-5678"):
     logging.info(f"🔍 SMTP_USERNAME present: {bool(SMTP_USERNAME)}")
     logging.info(f"🔍 FROM_EMAIL: {FROM_EMAIL}")
     
-    subject = "Your QuoTrading AI License Key"
+    subject = "🚀 Your QuoTrading AI License Key"
+    
+    # Test with sample Whop IDs
+    whop_user_id = "user_abc123xyz"
+    whop_membership_id = "mem_test123456"
+    
+    whop_id_html = f"""<p style="color: #334155; font-size: 14px; line-height: 1.6; margin: 0;">
+                                <strong>Whop ID:</strong> <a href="https://whop.com" style="color: #667eea; text-decoration: none;">{whop_user_id}</a>
+                            </p>"""
+    
+    order_link_html = f"""
+                            <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 24px 0 0 0; text-align: center;">
+                                <p style="color: #64748b; font-size: 14px; line-height: 1.6; margin: 0 0 12px 0;">
+                                    <strong>Order Details</strong>
+                                </p>
+                                <p style="color: #334155; font-size: 13px; line-height: 1.6; margin: 0 0 12px 0;">
+                                    Invoice: R-{whop_membership_id[-8:]}
+                                </p>
+                                <p style="margin: 0;">
+                                    <a href="https://whop.com/hub/memberships/{whop_membership_id}" style="display: inline-block; background: #667eea; color: #ffffff; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600; margin-right: 8px;">Access Order</a>
+                                    <a href="https://whop.com/hub/memberships/{whop_membership_id}/invoice" style="display: inline-block; background: #ffffff; color: #667eea; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-size: 14px; font-weight: 600; border: 2px solid #667eea;">View Invoice</a>
+                                </p>
+                            </div>
+            """
     
     html_body = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #667eea;">Welcome to QuoTrading AI</h1>
-        
-        <p>Thank you for your subscription! Your license key is below.</p>
-        
-        <div style="background: #f3f4f6; padding: 20px; border-radius: 10px; margin: 20px 0;">
-            <h2 style="margin-top: 0;">Your License Key:</h2>
-            <p style="font-size: 24px; font-weight: bold; color: #667eea; letter-spacing: 2px; font-family: monospace;">{license_key}</p>
-            <p style="font-size: 14px; color: #6b7280; margin-top: 10px;">⚠️ Save this key securely - you'll need it to activate the AI</p>
-        </div>
-        
-        <h2>Getting Started:</h2>
-        <ol>
-            <li><strong>Download the AI</strong> from your Whop dashboard or email</li>
-            <li><strong>Launch the application</strong> on your computer</li>
-            <li><strong>Enter your license key</strong> when prompted: <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-family: monospace;">{license_key}</code></li>
-            <li><strong>Connect your brokerage account</strong> and set your trading preferences</li>
-            <li><strong>Start trading</strong> with AI-powered market analysis</li>
-        </ol>
-        
-        <h2>📌 Important:</h2>
-        <ul>
-            <li>🔐 Your license key is unique and should not be shared</li>
-            <li>✅ This email contains everything you need to get started</li>
-            <li>📥 Check your spam folder if you haven't received your download link</li>
-            <li>💡 Join our community for tips, updates, and support</li>
-        </ul>
-        
-        <h2>Need Help?</h2>
-        <p>📧 Email: <a href="mailto:support@quotrading.com" style="color: #667eea;">support@quotrading.com</a></p>
-        <p>💬 Discord: Join our community for live support</p>
-        
-        <p style="color: #6b7280; font-size: 12px; margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 20px;">
-            Your subscription renews monthly. Manage your subscription anytime from your Whop dashboard.
-        </p>
-    </body>
-    </html>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f8fafc; padding: 40px 20px;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 16px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07); overflow: hidden;">
+                    
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
+                                Welcome to QuoTrading AI
+                            </h1>
+                            <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">
+                                Your AI-powered trading journey starts now
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Whop ID Section -->
+                    <tr>
+                        <td style="background: #f8fafc; padding: 20px 40px; border-bottom: 1px solid #e2e8f0;">
+                            {whop_id_html}
+                        </td>
+                    </tr>
+                    
+                    <!-- License Key Box -->
+                    <tr>
+                        <td style="padding: 40px;">
+                            <p style="color: #334155; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
+                                Thank you for subscribing! Your license key is unique to your account — do not share it. Save this email for future reference.
+                            </p>
+                            
+                            <div style="background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%); border-left: 4px solid #667eea; padding: 24px; border-radius: 8px; margin: 24px 0;">
+                                <p style="color: #64748b; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px 0;">
+                                    Your License Key
+                                </p>
+                                <p style="font-size: 28px; font-weight: 700; color: #1e293b; letter-spacing: 1px; font-family: 'Courier New', monospace; margin: 0; word-break: break-all;">
+                                    {license_key}
+                                </p>
+                                <p style="color: #f59e0b; font-size: 13px; margin: 12px 0 0 0; font-weight: 500;">
+                                    ⚠️ Keep this key secure — it's unique to your account
+                                </p>
+                            </div>
+                            
+                            <!-- Getting Started -->
+                            <h2 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 32px 0 16px 0;">
+                                Getting Started
+                            </h2>
+                            
+                            <table width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 24px 0;">
+                                <tr>
+                                    <td style="padding: 8px 0;">
+                                        <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0;">
+                                            <strong style="color: #667eea;">1.</strong> <strong>Download the AI</strong> — Check your email for the download link
+                                        </p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0;">
+                                        <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0;">
+                                            <strong style="color: #667eea;">2.</strong> <strong>Launch the application</strong> — Run the QuoTrading AI on your computer
+                                        </p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0;">
+                                        <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0;">
+                                            <strong style="color: #667eea;">3.</strong> <strong>Enter your license key</strong> — Paste the key above when prompted
+                                        </p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0;">
+                                        <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0;">
+                                            <strong style="color: #667eea;">4.</strong> <strong>Connect your broker</strong> — Enter your brokerage API credentials (username and API key)
+                                        </p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td style="padding: 8px 0;">
+                                        <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0;">
+                                            <strong style="color: #667eea;">5.</strong> <strong>Start trading</strong> — Begin using AI-powered market analysis
+                                        </p>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <!-- Important Notes -->
+                            <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px 20px; border-radius: 8px; margin: 24px 0 16px 0;">
+                                <p style="color: #92400e; font-size: 14px; font-weight: 600; margin: 0 0 12px 0;">
+                                    ⚠️ Important Information
+                                </p>
+                                <p style="color: #78350f; font-size: 14px; line-height: 1.8; margin: 0;">
+                                    • You'll need API credentials from your broker to connect (contact your broker for API access)
+                                </p>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Order Details Section -->
+                    <tr>
+                        <td style="padding: 0 40px 24px 40px;">
+                            {order_link_html}
+                        </td>
+                    </tr>
+                    
+                    <!-- Support Section -->
+                    <tr>
+                        <td style="padding: 0 40px 40px 40px;">
+                            <h2 style="color: #1e293b; font-size: 20px; font-weight: 700; margin: 0 0 16px 0;">
+                                Need Help?
+                            </h2>
+                            <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0 0 12px 0;">
+                                <strong>📧 Email Support:</strong>
+                                <a href="mailto:support@quotrading.com" style="color: #667eea; text-decoration: none;">support@quotrading.com</a>
+                            </p>
+                            <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0;">
+                                <strong>💬 Discord Community:</strong> Get live support and connect with other traders
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background: #f8fafc; padding: 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+                            <p style="color: #64748b; font-size: 13px; line-height: 1.6; margin: 0 0 8px 0;">
+                                Your subscription renews monthly and can be managed anytime from your Whop dashboard.
+                            </p>
+                            <p style="color: #94a3b8; font-size: 12px; margin: 0;">
+                                © 2025 QuoTrading. All rights reserved.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
     """
     
     try:

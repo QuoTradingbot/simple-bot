@@ -591,7 +591,8 @@ def _load_config_from_json(config: BotConfiguration) -> BotConfiguration:
     Returns:
         Updated BotConfiguration instance
     """
-    config_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data/config.json")
+    from pathlib import Path
+    config_file = Path(__file__).parent.parent / "data" / "config.json"
     if os.path.exists(config_file):
         import json
         with open(config_file, 'r') as f:

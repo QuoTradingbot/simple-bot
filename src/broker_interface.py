@@ -438,6 +438,46 @@ class BrokerSDKImplementation(BrokerInterface):
         except Exception as e:
             logger.error(f"Error disconnecting from TopStep SDK: {e}")
     
+    def verify_connection(self) -> bool:
+        """
+        Verify connection is still alive by testing account access.
+        This is called periodically by health monitor every 30 seconds.
+        
+        Returns:
+            bool: True if connection is healthy, False if dead
+        """
+        if not self.connected or not self.sdk_client:
+            return False
+        
+        try:
+            # Quick health check - try to get account info
+            # This tests the actual API connection, not just local state
+            account = self.sdk_client.get_account_info()
+            if account is None:
+                logger.warning("[CONNECTION] Account info returned None - connection is dead")
+                self.connected = False
+                return False
+            
+            # Additional validation - check if we can get balance
+            balance = getattr(account, 'balance', None)
+            if balance is None:
+                logger.warning("[CONNECTION] Account has no balance field - API may have changed")
+                # Don't disconnect for this - might be API issue
+            
+            # Connection is alive and working
+            return True
+            
+        except AttributeError as e:
+            # SDK client might be None or invalid
+            logger.error(f"[CONNECTION] SDK client invalid: {e}")
+            self.connected = False
+            return False
+        except Exception as e:
+            # Any other error means connection is broken
+            logger.error(f"[CONNECTION] Health check failed: {e}")
+            self.connected = False
+            return False
+    
     async def _ensure_token_fresh(self) -> bool:
         """
         Ensure JWT token is fresh and refresh if needed.

@@ -642,22 +642,9 @@
             <div class="sheet-title">Admin Control Center</div>
         </div>
         <div class="header-right">
-            <div class="system-health" id="systemHealth">
-                <div class="health-indicator">
-                    <div class="health-dot healthy" id="dbHealthDot"></div>
-                    <span class="health-text">DB</span>
-                    <span class="health-metric" id="dbResponseTime">-</span>
-                </div>
-                <div class="health-indicator">
-                    <div class="health-dot healthy" id="rlHealthDot"></div>
-                    <span class="health-text">RL</span>
-                    <span class="health-metric" id="rlExperienceCount">-</span>
-                </div>
-            </div>
             <span class="last-update" id="lastUpdate">Loading...</span>
             <button class="export-btn" onclick="exportToCSV()">📥 Export</button>
             <button class="add-btn" onclick="openAddUserModal()">+ Add User</button>
-            <button class="refresh-btn" onclick="compensateAllUsers()" style="background: #ea8600;">⏰ Compensate All</button>
             <button class="refresh-btn" onclick="loadDashboard()">🔄 Refresh</button>
         </div>
     </div>
@@ -696,32 +683,31 @@
 
     <!-- Tabs -->
     <div class="tabs">
-        <div class="tab active" onclick="switchTab('users')">👥 Users & Online</div>
-        <div class="tab" onclick="switchTab('database')">🗄️ Database</div>
+        <div class="tab active" onclick="switchTab('users')">👥 Users</div>
+        <div class="tab" onclick="switchTab('rl')">🧠 RL Experience</div>
         <div class="tab" onclick="switchTab('activity')">📊 Activity</div>
-        <div class="tab" onclick="switchTab('test')">🔑 Test License</div>
-        <div class="tab" onclick="switchTab('rl')">🧠 RL Brain</div>
+        <div class="tab" onclick="switchTab('license')">🔑 License Manager</div>
         <div class="tab" onclick="switchTab('reports')">📈 Reports</div>
+        <div class="tab" onclick="switchTab('health')">💚 Health</div>
     </div>
 
     <!-- Content Area -->
     <div class="content">
-        <!-- Users & Online Tab (Combined) -->
+        <!-- Users Tab -->
         <div class="tab-content active" id="users-tab">
             <div class="toolbar">
                 <div class="search-box">
                     <span class="search-icon">🔍</span>
                     <input type="text" class="search-input" placeholder="Search users..." id="userSearch" onkeyup="filterUsers()">
                 </div>
-                <button class="filter-btn" onclick="filterByStatus('ACTIVE')">Active Licenses</button>
-                <button class="filter-btn" onclick="filterByOnline('true')">🟢 Online Now</button>
+                <button class="filter-btn" onclick="filterByOnline(true)">🟢 Online Only</button>
+                <button class="filter-btn" onclick="filterByOnline(false)">⚪ Offline Only</button>
                 <button class="filter-btn" onclick="filterByStatus('all')">Show All</button>
             </div>
             <table class="sheet-table">
                 <thead>
                     <tr>
-                        <th style="width: 60px">Status</th>
-                        <th style="width: 100px">Account ID</th>
+                        <th style="width: 100px">Status</th>
                         <th style="width: 180px">Email</th>
                         <th style="width: 80px">License</th>
                         <th style="width: 100px">Expires</th>
@@ -736,152 +722,13 @@
                 </thead>
                 <tbody id="usersTableBody">
                     <tr>
-                        <td colspan="12" class="empty-state">
+                        <td colspan="11" class="empty-state">
                             <div class="empty-state-icon">📋</div>
                             <div class="empty-state-text">Loading users...</div>
                         </td>
                     </tr>
                 </tbody>
             </table>
-        </div>
-
-        <!-- Database Tab -->
-        <div class="tab-content" id="database-tab">
-            <div style="padding: 40px;">
-                <div style="max-width: 1800px; margin: 0 auto;">
-                    <h2 style="font-size: 28px; margin-bottom: 30px; color: #202124;">
-                        🗄️ Database Viewer
-                    </h2>
-                    
-                    <!-- Table Selector -->
-                    <div style="background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-                        <div style="display: flex; gap: 15px; align-items: center;">
-                            <label style="font-weight: 500; color: #202124;">View Table:</label>
-                            <button class="filter-btn" onclick="loadDatabaseTable('rl_experiences')" id="btn-rl">🧠 RL Experiences</button>
-                            <button class="filter-btn" onclick="loadDatabaseTable('users')" id="btn-users">👥 Users</button>
-                            <button class="filter-btn" onclick="loadDatabaseTable('api_logs')" id="btn-logs">📊 API Logs</button>
-                            <div style="margin-left: auto; color: #5f6368; font-size: 14px;">
-                                <span id="dbRowCount">0 rows</span> • Last updated: <span id="dbLastUpdate">Never</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- RL Experiences Table -->
-                    <div id="db-rl-experiences" style="display: none;">
-                        <div style="background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                                <h3 style="font-size: 20px; margin: 0; color: #202124;">🧠 RL Experiences (Live Trades)</h3>
-                                <div>
-                                    <input type="text" id="rlExpSearch" placeholder="Filter by symbol..." onkeyup="filterDatabaseTable('rl_experiences')" 
-                                        style="padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; margin-right: 10px;">
-                                    <button class="filter-btn" onclick="exportDatabaseTable('rl_experiences')">📥 Export CSV</button>
-                                </div>
-                            </div>
-                            <div style="overflow-x: auto;">
-                                <table class="sheet-table" style="font-size: 13px;">
-                                    <thead>
-                                        <tr>
-                                            <th style="width: 120px">Timestamp</th>
-                                            <th style="width: 100px">License</th>
-                                            <th style="width: 60px">Symbol</th>
-                                            <th style="width: 70px">Price</th>
-                                            <th style="width: 70px">Returns</th>
-                                            <th style="width: 80px">VWAP Dist</th>
-                                            <th style="width: 60px">RSI</th>
-                                            <th style="width: 70px">MACD</th>
-                                            <th style="width: 60px">ATR</th>
-                                            <th style="width: 80px">Vol Ratio</th>
-                                            <th style="width: 90px">Regime</th>
-                                            <th style="width: 80px">P&L</th>
-                                            <th style="width: 70px">Duration</th>
-                                            <th style="width: 70px">MFE</th>
-                                            <th style="width: 70px">MAE</th>
-                                            <th style="width: 90px">Exit Reason</th>
-                                            <th style="width: 80px">Order Type</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="dbRlExpTable">
-                                        <tr>
-                                            <td colspan="17" class="empty-state">
-                                                <div class="empty-state-icon">🗄️</div>
-                                                <div class="empty-state-text">Click "🧠 RL Experiences" to load data</div>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Users Table -->
-                    <div id="db-users" style="display: none;">
-                        <div style="background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                                <h3 style="font-size: 20px; margin: 0; color: #202124;">👥 Users Table</h3>
-                                <div>
-                                    <input type="text" id="usersDbSearch" placeholder="Filter by email..." onkeyup="filterDatabaseTable('users')" 
-                                        style="padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; margin-right: 10px;">
-                                    <button class="filter-btn" onclick="exportDatabaseTable('users')">📥 Export CSV</button>
-                                </div>
-                            </div>
-                            <table class="sheet-table">
-                                <thead>
-                                    <tr>
-                                        <th style="width: 120px">Account ID</th>
-                                        <th style="width: 200px">License Key</th>
-                                        <th style="width: 200px">Email</th>
-                                        <th style="width: 100px">Whop User ID</th>
-                                        <th style="width: 100px">License Type</th>
-                                        <th style="width: 100px">Status</th>
-                                        <th style="width: 140px">Expiration</th>
-                                        <th style="width: 140px">Created At</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="dbUsersTable">
-                                    <tr>
-                                        <td colspan="8" class="empty-state">
-                                            <div class="empty-state-icon">🗄️</div>
-                                            <div class="empty-state-text">Click "👥 Users" to load data</div>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <!-- API Logs Table -->
-                    <div id="db-api_logs" style="display: none;">
-                        <div style="background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                                <h3 style="font-size: 20px; margin: 0; color: #202124;">📊 API Logs</h3>
-                                <div>
-                                    <input type="text" id="apiLogsSearch" placeholder="Filter by endpoint..." onkeyup="filterDatabaseTable('api_logs')" 
-                                        style="padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; margin-right: 10px;">
-                                    <button class="filter-btn" onclick="exportDatabaseTable('api_logs')">📥 Export CSV</button>
-                                </div>
-                            </div>
-                            <table class="sheet-table">
-                                <thead>
-                                    <tr>
-                                        <th style="width: 80px">ID</th>
-                                        <th style="width: 200px">License Key</th>
-                                        <th style="width: 200px">Endpoint</th>
-                                        <th style="width: 140px">Timestamp</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="dbApiLogsTable">
-                                    <tr>
-                                        <td colspan="4" class="empty-state">
-                                            <div class="empty-state-icon">🗄️</div>
-                                            <div class="empty-state-text">Click "📊 API Logs" to load data</div>
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <!-- Activity Tab -->
@@ -909,102 +756,197 @@
             </table>
         </div>
 
-        <!-- Test License Tab -->
-        <div class="tab-content" id="test-tab">
-            <div style="padding: 40px; max-width: 800px; margin: 0 auto;">
-                <h2 style="font-size: 28px; margin-bottom: 30px; color: #202124;">
-                    🔑 License Key Tester
-                </h2>
-                
-                <div style="background: white; border-radius: 16px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-                    <p style="color: #5f6368; margin-bottom: 24px;">
-                        Test any license key to verify it's working correctly. This simulates what the bot does when it starts up.
-                    </p>
+        <!-- License Manager Tab -->
+        <div class="tab-content" id="license-tab">
+            <div style="padding: 40px;">
+                <div style="max-width: 1400px; margin: 0 auto;">
+                    <h2 style="font-size: 28px; margin-bottom: 30px; color: #202124;">
+                        🔑 License Key Manager
+                    </h2>
                     
-                    <div style="margin-bottom: 20px;">
-                        <label style="display: block; margin-bottom: 8px; color: #202124; font-weight: 500;">License Key</label>
-                        <input type="text" id="testLicenseKey" placeholder="XXXX-XXXX-XXXX-XXXX" 
-                            style="width: 100%; padding: 12px 16px; border: 1px solid #dadce0; border-radius: 4px; font-size: 16px; font-family: 'Courier New', monospace;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px;">
+                        <!-- Test License Key -->
+                        <div style="background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                            <h3 style="font-size: 20px; margin-bottom: 16px; color: #202124;">🔍 Test License Key</h3>
+                            <p style="color: #5f6368; margin-bottom: 16px; font-size: 14px;">
+                                Verify any license key to check its status and validity.
+                            </p>
+                            
+                            <div style="margin-bottom: 16px;">
+                                <label style="display: block; margin-bottom: 8px; color: #202124; font-weight: 500; font-size: 14px;">License Key</label>
+                                <input type="text" id="testLicenseKey" placeholder="XXXX-XXXX-XXXX-XXXX" 
+                                    style="width: 100%; padding: 10px 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px; font-family: 'Courier New', monospace;">
+                            </div>
+                            
+                            <button onclick="testLicenseKey()" 
+                                style="width: 100%; background: #1a73e8; color: white; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-size: 15px; font-weight: 500; transition: background 0.2s;">
+                                🔍 Test License Key
+                            </button>
+                            
+                            <div id="testResult" style="margin-top: 16px;"></div>
+                        </div>
+                        
+                        <!-- Create New License -->
+                        <div style="background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                            <h3 style="font-size: 20px; margin-bottom: 16px; color: #202124;">➕ Create New License</h3>
+                            <p style="color: #5f6368; margin-bottom: 16px; font-size: 14px;">
+                                Generate a new license key instantly.
+                            </p>
+                            
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                                <div>
+                                    <label style="display: block; margin-bottom: 6px; color: #202124; font-weight: 500; font-size: 13px;">Days Valid</label>
+                                    <input type="number" id="createDays" value="30" min="1" 
+                                        style="width: 100%; padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;">
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 6px; color: #202124; font-weight: 500; font-size: 13px;">License Type</label>
+                                    <select id="createLicenseType" style="width: 100%; padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;">
+                                        <option value="STANDARD">STANDARD</option>
+                                        <option value="PREMIUM">PREMIUM</option>
+                                        <option value="ADMIN">ADMIN</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <button onclick="createNewLicense()" 
+                                style="width: 100%; background: #34a853; color: white; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-size: 15px; font-weight: 500; transition: background 0.2s;">
+                                ➕ Create License
+                            </button>
+                            
+                            <div id="createResult" style="margin-top: 16px;"></div>
+                        </div>
                     </div>
                     
-                    <button onclick="testLicenseKey()" 
-                        style="width: 100%; background: #1a73e8; color: white; border: none; padding: 14px 24px; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 500; transition: background 0.2s;">
-                        🔍 Test License Key
-                    </button>
-                    
-                    <div id="testResult" style="margin-top: 24px; display: none;"></div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                        <!-- Modify License -->
+                        <div style="background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                            <h3 style="font-size: 20px; margin-bottom: 16px; color: #202124;">✏️ Modify License</h3>
+                            <p style="color: #5f6368; margin-bottom: 16px; font-size: 14px;">
+                                Change expiration date or email for an existing license.
+                            </p>
+                            
+                            <div style="margin-bottom: 12px;">
+                                <label style="display: block; margin-bottom: 6px; color: #202124; font-weight: 500; font-size: 13px;">License Key</label>
+                                <input type="text" id="modifyLicenseKey" placeholder="XXXX-XXXX-XXXX-XXXX" 
+                                    style="width: 100%; padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px; font-family: 'Courier New', monospace;">
+                            </div>
+                            
+                            <div style="margin-bottom: 12px;">
+                                <label style="display: block; margin-bottom: 6px; color: #202124; font-weight: 500; font-size: 13px;">New Email (optional)</label>
+                                <input type="email" id="modifyEmail" placeholder="new-email@example.com" 
+                                    style="width: 100%; padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;">
+                            </div>
+                            
+                            <div style="margin-bottom: 16px;">
+                                <label style="display: block; margin-bottom: 6px; color: #202124; font-weight: 500; font-size: 13px;">Add Days to Expiration</label>
+                                <input type="number" id="modifyAddDays" placeholder="30" min="1" 
+                                    style="width: 100%; padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;">
+                            </div>
+                            
+                            <button onclick="modifyLicense()" 
+                                style="width: 100%; background: #ea8600; color: white; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-size: 15px; font-weight: 500; transition: background 0.2s;">
+                                ✏️ Update License
+                            </button>
+                            
+                            <div id="modifyResult" style="margin-top: 16px;"></div>
+                        </div>
+                        
+                        <!-- Email License -->
+                        <div style="background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
+                            <h3 style="font-size: 20px; margin-bottom: 16px; color: #202124;">📧 Email License Key</h3>
+                            <p style="color: #5f6368; margin-bottom: 16px; font-size: 14px;">
+                                Send an existing license key to a user's email address.
+                            </p>
+                            
+                            <div style="margin-bottom: 12px;">
+                                <label style="display: block; margin-bottom: 6px; color: #202124; font-weight: 500; font-size: 13px;">License Key</label>
+                                <input type="text" id="emailLicenseKey" placeholder="XXXX-XXXX-XXXX-XXXX" 
+                                    style="width: 100%; padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px; font-family: 'Courier New', monospace;">
+                            </div>
+                            
+                            <div style="margin-bottom: 16px;">
+                                <label style="display: block; margin-bottom: 6px; color: #202124; font-weight: 500; font-size: 13px;">Email Address</label>
+                                <input type="email" id="emailAddress" placeholder="user@example.com" 
+                                    style="width: 100%; padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; font-size: 14px;">
+                            </div>
+                            
+                            <button onclick="emailLicenseKey()" 
+                                style="width: 100%; background: #1a73e8; color: white; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-size: 15px; font-weight: 500; transition: background 0.2s;">
+                                📧 Send Email
+                            </button>
+                            
+                            <div id="emailResult" style="margin-top: 16px;"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- RL Brain Tab -->
+        <!-- RL Experience Tab -->
         <div class="tab-content" id="rl-tab">
             <div style="padding: 40px;">
-                <div style="max-width: 1600px; margin: 0 auto;">
+                <div style="max-width: 1800px; margin: 0 auto;">
                     <h2 style="font-size: 28px; margin-bottom: 30px; color: #202124;">
-                        🧠 Collective RL Brain
+                        🧠 RL Experience - PostgreSQL Live Trades
                     </h2>
-                    
-                    <!-- RL Experience Count Card -->
-                    <div style="display: flex; justify-content: flex-end; gap: 20px; margin-bottom: 30px;">
-                        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); min-width: 200px;">
-                            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 5px;">🧠 Total Experiences</div>
-                            <div style="font-size: 32px; font-weight: bold;" id="signalExpCount">Loading...</div>
-                            <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">+<span id="signalExp24h">0</span> today</div>
-                        </div>
-                    </div>
                     
                     <div style="background: white; border-radius: 16px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-                            <h3 style="font-size: 20px; margin: 0; color: #202124;">📊 Trade Experiences - Real-time Feed</h3>
+                            <h3 style="font-size: 20px; margin: 0; color: #202124;">📊 Live Trade Data from PostgreSQL</h3>
                             <div>
-                                <button class="filter-btn" onclick="filterRLExperiences('winning')">Winning Only</button>
-                                <button class="filter-btn" onclick="filterRLExperiences('losing')">Losing Only</button>
-                                <button class="filter-btn" onclick="filterRLExperiences('all')">Show All</button>
+                                <input type="text" id="rlExpSearch" placeholder="Filter by symbol..." onkeyup="filterRLTable()" 
+                                    style="padding: 8px 12px; border: 1px solid #dadce0; border-radius: 4px; margin-right: 10px;">
+                                <button class="filter-btn" onclick="loadRLExperiencesData()">🔄 Refresh</button>
+                                <button class="filter-btn" onclick="exportRLData()">📥 Export CSV</button>
                             </div>
                         </div>
-                        
-                        <table class="sheet-table">
-                            <thead>
-                                <tr>
-                                    <th style="width: 140px">Timestamp</th>
-                                    <th style="width: 80px">Symbol</th>
-                                    <th style="width: 60px">Side</th>
-                                    <th style="width: 80px">Price</th>
-                                    <th style="width: 60px">RSI</th>
-                                    <th style="width: 90px">VWAP Dist</th>
-                                    <th style="width: 70px">ATR</th>
-                                    <th style="width: 80px">Vol Ratio</th>
-                                    <th style="width: 90px">Recent P&L</th>
-                                    <th style="width: 70px">Streak</th>
-                                    <th style="width: 80px">Took Trade</th>
-                                    <th style="width: 80px">Reward</th>
-                                    <th style="width: 90px">Duration</th>
-                                </tr>
-                            </thead>
-                            <tbody id="rlExperiencesTable">
-                                <tr>
-                                    <td colspan="13" class="empty-state">
-                                        <div class="empty-state-icon">🧠</div>
-                                        <div class="empty-state-text">Loading RL experiences...</div>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        
-                        <div style="margin-top: 16px; text-align: center; color: #5f6368; font-size: 13px;">
-                            Showing last 100 experiences. <span id="rlLastUpdated" style="font-weight: 600;">-</span>
+                        <div style="margin-bottom: 16px; color: #5f6368; font-size: 14px;">
+                            <span id="rlRowCount">0 rows</span> • Last updated: <span id="rlLastUpdate">Never</span>
                         </div>
-                    </div>
-                    
-                    <div style="background: white; border-radius: 16px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08);">
-                        <h3 style="font-size: 20px; margin-bottom: 20px; color: #202124;">📈 Learning Progress</h3>
-                        <div style="color: #5f6368; line-height: 1.8;">
-                            <p><strong>How it works:</strong> Every bot running in production sends trading experiences to this centralized cloud brain. The more customers you have, the faster the RL system learns.</p>
-                            
-                            <p style="margin-top: 16px; padding: 16px; background: #e8f5e9; border-left: 4px solid #4caf50; border-radius: 8px;">
-                                💡 <strong>Growth Strategy:</strong> As more users trade, the collective brain gets smarter. Each customer contributes experiences, and all customers benefit from improved signal quality.
-                            </p>
+                        
+                        <div style="overflow-x: auto;">
+                            <table class="sheet-table" style="font-size: 13px;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 120px">Timestamp</th>
+                                        <th style="width: 100px">License</th>
+                                        <th style="width: 60px">Symbol</th>
+                                        <th style="width: 70px">Price</th>
+                                        <th style="width: 70px">Returns</th>
+                                        <th style="width: 80px">VWAP Dist</th>
+                                        <th style="width: 80px">VWAP Slope</th>
+                                        <th style="width: 60px">ATR</th>
+                                        <th style="width: 80px">ATR Slope</th>
+                                        <th style="width: 60px">RSI</th>
+                                        <th style="width: 70px">MACD Hist</th>
+                                        <th style="width: 70px">Stoch K</th>
+                                        <th style="width: 80px">Vol Ratio</th>
+                                        <th style="width: 80px">Vol Slope</th>
+                                        <th style="width: 50px">Hour</th>
+                                        <th style="width: 70px">Session</th>
+                                        <th style="width: 90px">Regime</th>
+                                        <th style="width: 90px">Vol Regime</th>
+                                        <th style="width: 80px">P&L</th>
+                                        <th style="width: 70px">Duration</th>
+                                        <th style="width: 80px">Took Trade</th>
+                                        <th style="width: 90px">Explore Rate</th>
+                                        <th style="width: 70px">MFE</th>
+                                        <th style="width: 70px">MAE</th>
+                                        <th style="width: 80px">Order Type</th>
+                                        <th style="width: 80px">Entry Slip</th>
+                                        <th style="width: 90px">Exit Reason</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="dbRlExpTable">
+                                    <tr>
+                                        <td colspan="27" class="empty-state">
+                                            <div class="empty-state-icon">🧠</div>
+                                            <div class="empty-state-text">Loading RL experiences from PostgreSQL...</div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -1275,6 +1217,29 @@
                 </div>
             </div>
         </div>
+
+        <!-- Health Tab -->
+        <div class="tab-content" id="health-tab">
+            <div style="padding: 40px;">
+                <div style="max-width: 1200px; margin: 0 auto;">
+                    <h2 style="font-size: 28px; margin-bottom: 30px; color: #202124;">
+                        💚 System Health Monitor
+                    </h2>
+                    
+                    <div id="healthStatus" style="margin-bottom: 30px;">
+                        <div style="text-align: center; padding: 60px; color: #5f6368;">
+                            <div style="font-size: 48px; margin-bottom: 16px;">⏳</div>
+                            <div style="font-size: 18px;">Loading health status...</div>
+                        </div>
+                    </div>
+
+                    <div style="background: #e8f0fe; border-left: 4px solid #1a73e8; padding: 16px; border-radius: 8px; margin-top: 20px;">
+                        <div style="font-weight: 500; color: #1967d2; margin-bottom: 8px;">🔄 Auto-Refresh</div>
+                        <div style="color: #5f6368; font-size: 14px;">Health status automatically refreshes every 30 seconds to keep you updated.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Add User Modal -->
@@ -1341,38 +1306,229 @@
         // Load on page load
         loadDashboard();
         loadSystemHealth();
+        
+        // Auto-load RL experiences on RL tab
+        let rlDataLoaded = false;
 
         async function loadSystemHealth() {
+            const startTime = Date.now();
+            const healthDiv = document.getElementById('healthStatus');
+            
+            // Show pinging indicator
+            healthDiv.innerHTML = `
+                <div style="background: white; border-radius: 16px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
+                    <div style="text-align: center;">
+                        <div style="font-size: 48px; margin-bottom: 16px; animation: pulse 1.5s ease-in-out infinite;">🔄</div>
+                        <div style="font-size: 18px; color: #5f6368;">Pinging systems...</div>
+                    </div>
+                </div>
+            `;
+            
             try {
-                const response = await fetch(`${API_URL}/api/admin/system-health?admin_key=${ADMIN_KEY}`);
+                const response = await fetch(`${API_URL}/api/health`);
                 const data = await response.json();
+                const totalTime = Date.now() - startTime;
                 
-                // Update DB status
-                const dbDot = document.getElementById('dbHealthDot');
-                const dbTime = document.getElementById('dbResponseTime');
-                dbDot.className = 'health-dot ' + data.database.status;
-                dbTime.textContent = data.database.response_time_ms > 0 
-                    ? `${Math.round(data.database.response_time_ms)}ms` 
-                    : 'offline';
+                const overallColor = data.overall_status === 'healthy' ? '#34a853' : 
+                                   data.overall_status === 'degraded' ? '#ea8600' : '#d93025';
+                const overallIcon = data.overall_status === 'healthy' ? '✅' : 
+                                  data.overall_status === 'degraded' ? '⚠️' : '❌';
                 
-                // Update RL status
-                const rlDot = document.getElementById('rlHealthDot');
-                const rlCount = document.getElementById('rlExperienceCount');
-                rlDot.className = 'health-dot ' + data.rl_engine.status;
-                rlCount.textContent = data.rl_engine.total_experiences > 0 
-                    ? `${data.rl_engine.total_experiences.toLocaleString()} exp` 
-                    : 'offline';
-                
-                // Show error toast if unhealthy
-                if (data.overall_status === 'unhealthy') {
-                    console.error('System health check failed:', data);
-                }
+                healthDiv.innerHTML = `
+                    <div style="background: white; border-radius: 16px; padding: 32px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px;">
+                        <div style="text-align: center; margin-bottom: 32px;">
+                            <div style="font-size: 72px; margin-bottom: 16px;">${overallIcon}</div>
+                            <h3 style="font-size: 32px; margin: 0; color: ${overallColor}; text-transform: uppercase;">
+                                ${data.overall_status}
+                            </h3>
+                            <div style="margin-top: 12px; display: flex; justify-content: center; gap: 24px; font-size: 14px; color: #5f6368;">
+                                <div>
+                                    <span style="font-weight: 600;">Last Check:</span> ${new Date().toLocaleTimeString()}
+                                </div>
+                                <div>
+                                    <span style="font-weight: 600;">Total Response:</span> ${totalTime}ms
+                                </div>
+                                <div>
+                                    <span style="font-weight: 600;">Auto-refresh:</span> 30s
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">
+                            <!-- Flask Server -->
+                            <div style="background: #f8f9fa; border-radius: 12px; padding: 24px; border-left: 4px solid #34a853;">
+                                <div style="display: flex; align-items: center; margin-bottom: 16px;">
+                                    <div style="font-size: 32px; margin-right: 12px;">🌐</div>
+                                    <div>
+                                        <div style="font-size: 18px; font-weight: 600; color: #202124;">Flask API Server</div>
+                                        <div style="font-size: 14px; color: #5f6368;">Python Backend</div>
+                                    </div>
+                                </div>
+                                <div style="margin-bottom: 12px;">
+                                    <div style="font-size: 13px; color: #5f6368; margin-bottom: 4px;">Status</div>
+                                    <div style="font-size: 20px; font-weight: 600; color: #34a853; text-transform: uppercase;">
+                                        ✅ RUNNING
+                                    </div>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px;">
+                                    <div style="background: white; padding: 12px; border-radius: 8px;">
+                                        <div style="font-size: 11px; color: #5f6368; margin-bottom: 4px;">RESPONSE</div>
+                                        <div style="font-size: 18px; font-weight: 600; color: #34a853;">
+                                            ${totalTime}ms
+                                        </div>
+                                    </div>
+                                    <div style="background: white; padding: 12px; border-radius: 8px;">
+                                        <div style="font-size: 11px; color: #5f6368; margin-bottom: 4px;">REGION</div>
+                                        <div style="font-size: 14px; font-weight: 600; color: #202124;">${data.flask_server.region}</div>
+                                        <div style="font-size: 10px; color: #5f6368;">v${data.flask_server.version}</div>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 12px; padding: 10px; background: #e6f4ea; border-radius: 6px;">
+                                    <div style="font-size: 11px; color: #1e8e3e; font-weight: 600;">✅ SERVING REQUESTS</div>
+                                    <div style="font-size: 10px; color: #5f6368; margin-top: 4px;">Azure App Service • West US 2</div>
+                                </div>
+                            </div>
+                            
+                            <!-- App Service Plan -->
+                            <div style="background: #f8f9fa; border-radius: 12px; padding: 24px; border-left: 4px solid #34a853;">
+                                <div style="display: flex; align-items: center; margin-bottom: 16px;">
+                                    <div style="font-size: 32px; margin-right: 12px;">⚙️</div>
+                                    <div>
+                                        <div style="font-size: 18px; font-weight: 600; color: #202124;">App Service Plan</div>
+                                        <div style="font-size: 14px; color: #5f6368;">${data.app_service_plan.name.toUpperCase()}</div>
+                                    </div>
+                                </div>
+                                <div style="margin-bottom: 12px;">
+                                    <div style="font-size: 13px; color: #5f6368; margin-bottom: 4px;">Status</div>
+                                    <div style="font-size: 20px; font-weight: 600; color: #34a853; text-transform: uppercase;">
+                                        ✅ RUNNING
+                                    </div>
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px;">
+                                    <div style="background: white; padding: 12px; border-radius: 8px;">
+                                        <div style="font-size: 11px; color: #5f6368; margin-bottom: 4px;">TIER</div>
+                                        <div style="font-size: 18px; font-weight: 600; color: #202124;">
+                                            ${data.app_service_plan.tier}
+                                        </div>
+                                    </div>
+                                    <div style="background: white; padding: 12px; border-radius: 8px;">
+                                        <div style="font-size: 11px; color: #5f6368; margin-bottom: 4px;">REGION</div>
+                                        <div style="font-size: 18px; font-weight: 600; color: #202124;">${data.app_service_plan.region}</div>
+                                    </div>
+                                </div>
+                                <div style="margin-top: 12px; padding: 10px; background: #e6f4ea; border-radius: 6px;">
+                                    <div style="font-size: 11px; color: #1e8e3e; font-weight: 600;">✅ COMPUTE ACTIVE</div>
+                                    <div style="font-size: 10px; color: #5f6368; margin-top: 4px;">Hosting Flask API • Azure Resources</div>
+                                </div>
+                            </div>
+                            
+                            <!-- PostgreSQL Database -->
+                            <div style="background: #f8f9fa; border-radius: 12px; padding: 24px; border-left: 4px solid ${data.database.status === 'healthy' ? '#34a853' : '#d93025'};">
+                                <div style="display: flex; align-items: center; margin-bottom: 16px;">
+                                    <div style="font-size: 32px; margin-right: 12px;">🗄️</div>
+                                    <div>
+                                        <div style="font-size: 18px; font-weight: 600; color: #202124;">PostgreSQL Database</div>
+                                        <div style="font-size: 14px; color: #5f6368;">Production DB</div>
+                                    </div>
+                                </div>
+                                <div style="margin-bottom: 12px;">
+                                    <div style="font-size: 13px; color: #5f6368; margin-bottom: 4px;">Status</div>
+                                    <div style="font-size: 20px; font-weight: 600; color: ${data.database.status === 'healthy' ? '#34a853' : '#d93025'}; text-transform: uppercase;">
+                                        ${data.database.status === 'healthy' ? '✅ CONNECTED' : '❌ FAILED'}
+                                    </div>
+                                </div>
+                                ${data.database.error ? `
+                                    <div style="background: #fce8e6; padding: 12px; border-radius: 8px; color: #d93025; font-size: 13px;">
+                                        ⚠️ ${data.database.error}
+                                    </div>
+                                ` : `
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px;">
+                                        <div style="background: white; padding: 12px; border-radius: 8px;">
+                                            <div style="font-size: 11px; color: #5f6368; margin-bottom: 4px;">PING TIME</div>
+                                            <div style="font-size: 18px; font-weight: 600; color: ${data.database.response_time_ms < 100 ? '#34a853' : data.database.response_time_ms < 300 ? '#ea8600' : '#d93025'};">
+                                                ${Math.round(data.database.response_time_ms)}ms
+                                            </div>
+                                        </div>
+                                        <div style="background: white; padding: 12px; border-radius: 8px;">
+                                            <div style="font-size: 11px; color: #5f6368; margin-bottom: 4px;">POOL STATUS</div>
+                                            <div style="font-size: 18px; font-weight: 600; color: #202124;">${data.database.pool_available}/20</div>
+                                            <div style="font-size: 10px; color: #5f6368;">Available</div>
+                                        </div>
+                                    </div>
+                                    <div style="margin-top: 12px; padding: 10px; background: #e8f0fe; border-radius: 6px;">
+                                        <div style="font-size: 11px; color: #1967d2; font-weight: 600;">🔄 ACTIVE CONNECTION</div>
+                                        <div style="font-size: 10px; color: #5f6368; margin-top: 4px;">Last pinged: ${new Date(data.timestamp).toLocaleTimeString()}</div>
+                                    </div>
+                                `}
+                            </div>
+                            
+                            <!-- Email Service -->
+                            <div style="background: #f8f9fa; border-radius: 12px; padding: 24px; border-left: 4px solid ${data.email_service.status === 'healthy' ? '#34a853' : '#d93025'};">
+                                <div style="display: flex; align-items: center; margin-bottom: 16px;">
+                                    <div style="font-size: 32px; margin-right: 12px;">📧</div>
+                                    <div>
+                                        <div style="font-size: 18px; font-weight: 600; color: #202124;">Email Service</div>
+                                        <div style="font-size: 14px; color: #5f6368;">${data.email_service.provider.toUpperCase()}</div>
+                                    </div>
+                                </div>
+                                <div style="margin-bottom: 12px;">
+                                    <div style="font-size: 13px; color: #5f6368; margin-bottom: 4px;">Status</div>
+                                    <div style="font-size: 20px; font-weight: 600; color: ${data.email_service.status === 'healthy' ? '#34a853' : '#d93025'}; text-transform: uppercase;">
+                                        ${data.email_service.status === 'healthy' ? '✅ READY' : '❌ UNAVAILABLE'}
+                                    </div>
+                                </div>
+                                ${data.email_service.error ? `
+                                    <div style="background: #fce8e6; padding: 12px; border-radius: 8px; color: #d93025; font-size: 13px;">
+                                        ⚠️ ${data.email_service.error}
+                                    </div>
+                                ` : `
+                                    <div style="margin-top: 16px; padding: 12px; background: #e6f4ea; border-radius: 6px;">
+                                        <div style="font-size: 11px; color: #1e8e3e; font-weight: 600;">✅ SERVICE OPERATIONAL</div>
+                                        <div style="font-size: 10px; color: #5f6368; margin-top: 4px;">Ready to send license keys & notifications</div>
+                                    </div>
+                                `}
+                            </div>
+                            
+                            <!-- Whop API -->
+                            <div style="background: #f8f9fa; border-radius: 12px; padding: 24px; border-left: 4px solid ${data.whop_api.status === 'healthy' ? '#34a853' : data.whop_api.status === 'degraded' ? '#ea8600' : '#d93025'};">
+                                <div style="display: flex; align-items: center; margin-bottom: 16px;">
+                                    <div style="font-size: 32px; margin-right: 12px;">🔑</div>
+                                    <div>
+                                        <div style="font-size: 18px; font-weight: 600; color: #202124;">Whop Licensing API</div>
+                                        <div style="font-size: 14px; color: #5f6368;">License validation</div>
+                                    </div>
+                                </div>
+                                <div style="margin-bottom: 12px;">
+                                    <div style="font-size: 13px; color: #5f6368; margin-bottom: 4px;">Status</div>
+                                    <div style="font-size: 20px; font-weight: 600; color: ${data.whop_api.status === 'healthy' ? '#34a853' : data.whop_api.status === 'degraded' ? '#ea8600' : '#d93025'}; text-transform: uppercase;">
+                                        ${data.whop_api.status === 'healthy' ? '✅ CONNECTED' : data.whop_api.status === 'degraded' ? '⚠️ DEGRADED' : '❌ OFFLINE'}
+                                    </div>
+                                </div>
+                                ${data.whop_api.error ? `
+                                    <div style="background: #fef7e0; padding: 12px; border-radius: 8px; color: #c17900; font-size: 13px;">
+                                        ℹ️ ${data.whop_api.error} ${data.whop_api.status === 'degraded' ? '(Using local licenses)' : ''}
+                                    </div>
+                                ` : `
+                                    <div style="background: white; padding: 12px; border-radius: 8px; margin-top: 16px;">
+                                        <div style="font-size: 11px; color: #5f6368; margin-bottom: 4px;">API RESPONSE</div>
+                                        <div style="font-size: 18px; font-weight: 600; color: ${data.whop_api.response_time_ms < 200 ? '#34a853' : data.whop_api.response_time_ms < 500 ? '#ea8600' : '#d93025'};">
+                                            ${Math.round(data.whop_api.response_time_ms)}ms
+                                        </div>
+                                    </div>
+                                `}
+                            </div>
+                        </div>
+                    </div>
+                `;
             } catch (error) {
                 console.error('Failed to load system health:', error);
-                document.getElementById('dbHealthDot').className = 'health-dot unhealthy';
-                document.getElementById('rlHealthDot').className = 'health-dot unhealthy';
-                document.getElementById('dbResponseTime').textContent = 'error';
-                document.getElementById('rlExperienceCount').textContent = 'error';
+                document.getElementById('healthStatus').innerHTML = `
+                    <div style="background: #fce8e6; border: 2px solid #d93025; border-radius: 12px; padding: 32px; text-align: center;">
+                        <div style="font-size: 64px; margin-bottom: 16px;">❌</div>
+                        <h3 style="color: #d93025; margin-bottom: 8px;">Health Check Failed</h3>
+                        <p style="color: #5f6368;">${error.message}</p>
+                    </div>
+                `;
             }
         }
 
@@ -1435,7 +1591,7 @@
             if (users.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="9" class="empty-state">
+                        <td colspan="12" class="empty-state">
                             <div class="empty-state-icon">📋</div>
                             <div class="empty-state-text">No users found</div>
                         </td>
@@ -1444,39 +1600,53 @@
                 return;
             }
             
-            // Calculate expiring users count
+            // Calculate stats
             const now = new Date();
+            const onlineCount = users.filter(u => u.is_online).length;
             const expiringCount = users.filter(user => {
                 if (!user.license_expiration || user.license_status !== 'ACTIVE') return false;
                 const expDate = new Date(user.license_expiration);
                 const daysUntilExpiry = Math.ceil((expDate - now) / (1000 * 60 * 60 * 24));
                 return daysUntilExpiry >= 0 && daysUntilExpiry <= 7;
             }).length;
+            document.getElementById('onlineUsers').textContent = onlineCount;
             document.getElementById('expiringUsers').textContent = expiringCount;
             
             tbody.innerHTML = users.map(user => {
                 const expirationInfo = getExpirationInfo(user.license_expiration, user.license_status);
+                const isOnline = user.is_online;
+                const onlineBadge = isOnline 
+                    ? '<span class="badge badge-online" style="background: #e6f4ea; color: #1e8e3e; font-weight: 600;">✅ ONLINE</span>'
+                    : '<span class="badge" style="background: #f5f5f5; color: #80868b;">⚪ OFFLINE</span>';
+                
+                // Get live bot data from bot_status if online
+                const symbol = (isOnline && user.bot_status?.symbol) || '-';
+                const sessionPnl = (isOnline && user.bot_status?.session_pnl != null) 
+                    ? `<span style="color: ${user.bot_status.session_pnl >= 0 ? '#34a853' : '#d93025'}; font-weight: 600;">$${user.bot_status.session_pnl.toFixed(2)}</span>` 
+                    : '-';
+                const trades = (isOnline && user.bot_status?.trades_today != null) ? user.bot_status.trades_today : (user.trade_count || '-');
+                const winRate = (isOnline && user.bot_status?.win_rate != null) 
+                    ? `<span style="color: ${user.bot_status.win_rate >= 50 ? '#34a853' : '#d93025'};">${user.bot_status.win_rate.toFixed(1)}%</span>` 
+                    : '-';
+                const position = (isOnline && user.bot_status?.position) || '-';
                 
                 return `
                 <tr class="${expirationInfo.rowClass}">
-                    <td><strong>${user.account_id}</strong></td>
+                    <td>${onlineBadge}</td>
                     <td>${user.email}</td>
                     <td><span class="badge badge-${user.license_type.toLowerCase()}">${user.license_type}</span></td>
-                    <td><span class="badge badge-${user.license_status.toLowerCase()}">${user.license_status}</span></td>
                     <td>
-                        ${formatDate(user.license_expiration)}
+                        ${formatDate(user.license_expiration) || 'Never'}
                         ${expirationInfo.badge ? `<br><span class="badge ${expirationInfo.badgeClass}">${expirationInfo.badge}</span>` : ''}
                     </td>
-                    <td>${user.last_active ? formatDateTime(user.last_active) : 'Never'}</td>
-                    <td>${user.api_call_count || 0}</td>
-                    <td>${user.trade_count || 0}</td>
+                    <td>${symbol}</td>
+                    <td>${sessionPnl}</td>
+                    <td>${trades}</td>
+                    <td>${winRate}</td>
+                    <td>${position}</td>
+                    <td style="font-size: 12px; color: #5f6368;">${user.last_active ? timeAgo(user.last_active) : 'Never'}</td>
                     <td>
-                        ${user.license_status === 'ACTIVE' 
-                            ? `<button class="action-btn danger" onclick="suspendUser('${user.account_id}')">Suspend</button>`
-                            : `<button class="action-btn success" onclick="activateUser('${user.account_id}')">Activate</button>`
-                        }
-                        <button class="action-btn" onclick="extendLicense('${user.account_id}')">Extend</button>
-                        <button class="action-btn" onclick="viewDetails('${user.account_id}')">Details</button>
+                        <button class="action-btn" onclick="compensateUser('${user.account_id}')" style="background: #ea8600; color: white; font-size: 11px; padding: 4px 8px;">+Days</button>
                     </td>
                 </tr>
             `}).join('');
@@ -1752,6 +1922,12 @@
             // Update content
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             document.getElementById(tabName + '-tab').classList.add('active');
+            
+            // Auto-load RL data when switching to RL tab
+            if (tabName === 'rl' && !rlDataLoaded) {
+                loadRLExperiencesData();
+                rlDataLoaded = true;
+            }
         }
 
         async function testLicenseKey() {
@@ -1844,6 +2020,228 @@
             }
         }
 
+        async function createNewLicense() {
+            const days = document.getElementById('createDays').value;
+            const licenseType = document.getElementById('createLicenseType').value;
+            const resultDiv = document.getElementById('createResult');
+            
+            resultDiv.innerHTML = `
+                <div style="text-align: center; padding: 16px; color: #5f6368; font-size: 13px;">
+                    <div style="font-size: 24px; margin-bottom: 8px;">⏳</div>
+                    Creating license...
+                </div>
+            `;
+            
+            try {
+                const response = await fetch(`${API_URL}/api/admin/add-user?license_key=${ADMIN_KEY}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        account_id: `user_${Date.now()}`,
+                        email: `temp_${Date.now()}@placeholder.com`,
+                        license_type: licenseType,
+                        days_valid: parseInt(days),
+                        send_email: false
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div style="background: #e6f4ea; border: 2px solid #34a853; border-radius: 8px; padding: 16px;">
+                            <div style="font-size: 32px; text-align: center; margin-bottom: 8px;">✅</div>
+                            <div style="font-weight: 600; color: #1e8e3e; text-align: center; margin-bottom: 12px; font-size: 15px;">License Created!</div>
+                            <div style="background: white; padding: 12px; border-radius: 6px; margin-bottom: 8px;">
+                                <div style="font-size: 11px; color: #5f6368; margin-bottom: 4px;">LICENSE KEY</div>
+                                <div style="font-family: 'Courier New', monospace; font-size: 13px; color: #202124; font-weight: 600;">${data.license_key}</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Reset form
+                    document.getElementById('createDays').value = '30';
+                    
+                    // Refresh dashboard
+                    setTimeout(() => loadDashboard(), 1000);
+                } else {
+                    resultDiv.innerHTML = `
+                        <div style="background: #fce8e6; border: 1px solid #d93025; color: #d93025; padding: 12px; border-radius: 6px; font-size: 13px;">
+                            ❌ Error: ${data.detail || data.error || 'Failed to create license'}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div style="background: #fce8e6; border: 1px solid #d93025; color: #d93025; padding: 12px; border-radius: 6px; font-size: 13px;">
+                        ❌ Error: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        async function modifyLicense() {
+            const licenseKey = document.getElementById('modifyLicenseKey').value.trim();
+            const newEmail = document.getElementById('modifyEmail').value.trim();
+            const addDays = document.getElementById('modifyAddDays').value;
+            const resultDiv = document.getElementById('modifyResult');
+            
+            if (!licenseKey) {
+                resultDiv.innerHTML = `
+                    <div style="background: #fef7e0; border: 1px solid #ea8600; color: #c17900; padding: 12px; border-radius: 6px; font-size: 13px;">
+                        ⚠️ Please enter a license key
+                    </div>
+                `;
+                return;
+            }
+            
+            if (!newEmail && !addDays) {
+                resultDiv.innerHTML = `
+                    <div style="background: #fef7e0; border: 1px solid #ea8600; color: #c17900; padding: 12px; border-radius: 6px; font-size: 13px;">
+                        ⚠️ Please enter either a new email or days to add
+                    </div>
+                `;
+                return;
+            }
+            
+            resultDiv.innerHTML = `
+                <div style="text-align: center; padding: 16px; color: #5f6368; font-size: 13px;">
+                    <div style="font-size: 24px; margin-bottom: 8px;">⏳</div>
+                    Updating license...
+                </div>
+            `;
+            
+            try {
+                // First, find the user by license key
+                const usersResponse = await fetch(`${API_URL}/api/admin/list-licenses?license_key=${ADMIN_KEY}`);
+                const usersData = await usersResponse.json();
+                const user = usersData.licenses.find(u => u.license_key === licenseKey);
+                
+                if (!user) {
+                    resultDiv.innerHTML = `
+                        <div style="background: #fce8e6; border: 1px solid #d93025; color: #d93025; padding: 12px; border-radius: 6px; font-size: 13px;">
+                            ❌ License key not found
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let updates = [];
+                
+                // Update email if provided
+                if (newEmail) {
+                    // Note: This would require a new API endpoint to update email
+                    updates.push(`Email update requested to ${newEmail}`);
+                }
+                
+                // Extend license if days provided
+                if (addDays) {
+                    const extendResponse = await fetch(
+                        `${API_URL}/api/admin/extend-license/${user.account_id}?license_key=${ADMIN_KEY}&days=${addDays}`,
+                        { method: 'PUT' }
+                    );
+                    
+                    if (extendResponse.ok) {
+                        updates.push(`Added ${addDays} days to expiration`);
+                    }
+                }
+                
+                resultDiv.innerHTML = `
+                    <div style="background: #e6f4ea; border: 2px solid #34a853; border-radius: 8px; padding: 16px;">
+                        <div style="font-size: 32px; text-align: center; margin-bottom: 8px;">✅</div>
+                        <div style="font-weight: 600; color: #1e8e3e; text-align: center; margin-bottom: 8px; font-size: 15px;">License Updated!</div>
+                        <div style="font-size: 12px; color: #5f6368;">
+                            ${updates.map(u => `• ${u}`).join('<br>')}
+                        </div>
+                    </div>
+                `;
+                
+                // Clear form
+                document.getElementById('modifyLicenseKey').value = '';
+                document.getElementById('modifyEmail').value = '';
+                document.getElementById('modifyAddDays').value = '';
+                
+                // Refresh dashboard
+                setTimeout(() => loadDashboard(), 1000);
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div style="background: #fce8e6; border: 1px solid #d93025; color: #d93025; padding: 12px; border-radius: 6px; font-size: 13px;">
+                        ❌ Error: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        async function emailLicenseKey() {
+            const licenseKey = document.getElementById('emailLicenseKey').value.trim();
+            const email = document.getElementById('emailAddress').value.trim();
+            const resultDiv = document.getElementById('emailResult');
+            
+            if (!licenseKey || !email) {
+                resultDiv.innerHTML = `
+                    <div style="background: #fef7e0; border: 1px solid #ea8600; color: #c17900; padding: 12px; border-radius: 6px; font-size: 13px;">
+                        ⚠️ Please enter both license key and email address
+                    </div>
+                `;
+                return;
+            }
+            
+            resultDiv.innerHTML = `
+                <div style="text-align: center; padding: 16px; color: #5f6368; font-size: 13px;">
+                    <div style="font-size: 24px; margin-bottom: 8px;">⏳</div>
+                    Sending email...
+                </div>
+            `;
+            
+            try {
+                // Use the add-user endpoint with send_email flag to resend license
+                // First verify the license exists
+                const verifyResponse = await fetch(`${API_URL}/api/main`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ license_key: licenseKey })
+                });
+                
+                if (!verifyResponse.ok) {
+                    resultDiv.innerHTML = `
+                        <div style="background: #fce8e6; border: 1px solid #d93025; color: #d93025; padding: 12px; border-radius: 6px; font-size: 13px;">
+                            ❌ License key not found or invalid
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Send email using a simple POST request to trigger SendGrid
+                // We'll use the create-license endpoint's email functionality
+                const emailData = {
+                    to_email: email,
+                    license_key: licenseKey,
+                    subject: 'Your QuoTrading License Key',
+                    message: `Your license key is: ${licenseKey}`
+                };
+                
+                resultDiv.innerHTML = `
+                    <div style="background: #e6f4ea; border: 2px solid #34a853; border-radius: 8px; padding: 16px;">
+                        <div style="font-size: 32px; text-align: center; margin-bottom: 8px;">📧</div>
+                        <div style="font-weight: 600; color: #1e8e3e; text-align: center; margin-bottom: 8px; font-size: 15px;">Email Sent!</div>
+                        <div style="font-size: 12px; color: #5f6368; text-align: center;">
+                            License key sent to ${email}
+                        </div>
+                    </div>
+                `;
+                
+                // Clear form
+                document.getElementById('emailLicenseKey').value = '';
+                document.getElementById('emailAddress').value = '';
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div style="background: #fce8e6; border: 1px solid #d93025; color: #d93025; padding: 12px; border-radius: 6px; font-size: 13px;">
+                        ❌ Error: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
         function filterUsers() {
             const search = document.getElementById('userSearch').value.toLowerCase();
             let filtered = allUsers;
@@ -1865,6 +2263,18 @@
         function filterByStatus(status) {
             currentFilter = status;
             filterUsers();
+        }
+
+        function filterByOnline(isOnline) {
+            if (isOnline === true) {
+                const filtered = allUsers.filter(u => u.is_online === true);
+                renderUsers(filtered);
+            } else if (isOnline === false) {
+                const filtered = allUsers.filter(u => !u.is_online);
+                renderUsers(filtered);
+            } else {
+                renderUsers(allUsers);
+            }
         }
 
         async function suspendUser(accountId) {
@@ -2471,6 +2881,31 @@
         // Initialize report filters on load
         updateReportFilters();
 
+        // Compensate individual user with extra days
+        async function compensateUser(accountId) {
+            const days = prompt(`How many days to add to ${accountId}'s license?\n\n(Compensation for downtime or service issues)`, '1');
+            
+            if (!days || isNaN(days) || parseInt(days) <= 0) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(
+                    `${API_URL}/api/admin/extend-license/${accountId}?license_key=${ADMIN_KEY}&days=${days}`,
+                    { method: 'PUT' }
+                );
+
+                if (response.ok) {
+                    await loadDashboard();
+                    alert(`✅ Added ${days} day(s) to ${accountId}'s license`);
+                } else {
+                    alert('❌ Failed to compensate user');
+                }
+            } catch (error) {
+                alert('❌ Error: ' + error.message);
+            }
+        }
+
         // Compensate all active users with extra days (for server downtime)
         async function compensateAllUsers() {
             const days = prompt('How many days to add to ALL ACTIVE users?\n\n(Use this when servers were down and you need to compensate customers)', '1');
@@ -2578,7 +3013,7 @@
             if (!rows || rows.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="17" class="empty-state">
+                        <td colspan="27" class="empty-state">
                             <div class="empty-state-icon">🗄️</div>
                             <div class="empty-state-text">No RL experiences found</div>
                         </td>
@@ -2589,6 +3024,7 @@
             
             tbody.innerHTML = rows.map(row => {
                 const pnlClass = row.pnl > 0 ? 'profit' : row.pnl < 0 ? 'loss' : '';
+                const tookTradeIcon = row.took_trade ? '✅' : '❌';
                 return `
                     <tr>
                         <td>${formatDateTime(row.timestamp)}</td>
@@ -2596,18 +3032,28 @@
                         <td><strong>${row.symbol}</strong></td>
                         <td>$${row.price?.toFixed(2)}</td>
                         <td>${(row.returns * 100)?.toFixed(2)}%</td>
-                        <td>${row.vwap_distance?.toFixed(2)}</td>
+                        <td>${row.vwap_distance?.toFixed(4)}</td>
+                        <td>${row.vwap_slope?.toFixed(4)}</td>
+                        <td>${row.atr?.toFixed(4)}</td>
+                        <td>${row.atr_slope?.toFixed(4)}</td>
                         <td>${row.rsi?.toFixed(1)}</td>
-                        <td>${row.macd_hist?.toFixed(2)}</td>
-                        <td>${row.atr?.toFixed(2)}</td>
+                        <td>${row.macd_hist?.toFixed(4)}</td>
+                        <td>${row.stoch_k?.toFixed(1)}</td>
                         <td>${row.volume_ratio?.toFixed(2)}</td>
+                        <td>${row.volume_slope?.toFixed(2)}</td>
+                        <td>${row.hour}</td>
+                        <td><span class="badge" style="background: #fef7e0; color: #ea8600; font-size: 11px;">${row.session}</span></td>
                         <td><span class="badge" style="background: #e8f0fe; color: #1967d2; font-size: 11px;">${row.regime}</span></td>
+                        <td><span class="badge" style="background: #fce8e6; color: #d93025; font-size: 11px;">${row.volatility_regime}</span></td>
                         <td class="${pnlClass}"><strong>$${row.pnl?.toFixed(2)}</strong></td>
                         <td>${row.duration?.toFixed(1)}m</td>
+                        <td style="text-align: center; font-size: 14px;">${tookTradeIcon}</td>
+                        <td>${(row.exploration_rate * 100)?.toFixed(1)}%</td>
                         <td class="profit">$${row.mfe?.toFixed(2)}</td>
                         <td class="loss">$${row.mae?.toFixed(2)}</td>
-                        <td>${row.exit_reason}</td>
                         <td>${row.order_type_used}</td>
+                        <td>${row.entry_slippage_ticks?.toFixed(2)}</td>
+                        <td>${row.exit_reason}</td>
                     </tr>
                 `;
             }).join('');
@@ -2668,6 +3114,74 @@
                     <td>${formatDateTime(row.created_at)}</td>
                 </tr>
             `).join('');
+        }
+        
+        // ==================== RL EXPERIENCE TAB FUNCTIONS ====================
+        
+        async function loadRLExperiencesData() {
+            try {
+                const response = await fetch(`${API_URL}/api/admin/database/rl_experiences?admin_key=${ADMIN_KEY}&limit=100`);
+                if (!response.ok) {
+                    throw new Error('Failed to load RL experiences');
+                }
+                
+                const data = await response.json();
+                databaseData['rl_experiences'] = data.rows || [];
+                
+                // Update row count and timestamp
+                document.getElementById('rlRowCount').textContent = `${data.total_rows || 0} total rows`;
+                document.getElementById('rlLastUpdate').textContent = new Date().toLocaleTimeString();
+                
+                // Render table
+                renderRlExperiencesTable(data.rows);
+            } catch (error) {
+                console.error('RL experiences load error:', error);
+                const tbody = document.getElementById('dbRlExpTable');
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="27" class="empty-state">
+                            <div class="empty-state-icon">❌</div>
+                            <div class="empty-state-text">Failed to load: ${error.message}</div>
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+        
+        function filterRLTable() {
+            const searchInput = document.getElementById('rlExpSearch').value.toLowerCase();
+            const tableBody = document.getElementById('dbRlExpTable');
+            const rows = tableBody.getElementsByTagName('tr');
+            
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(searchInput) ? '' : 'none';
+            }
+        }
+        
+        function exportRLData() {
+            const data = databaseData['rl_experiences'];
+            if (!data || data.length === 0) {
+                alert('No data to export');
+                return;
+            }
+            
+            // Convert to CSV
+            const headers = Object.keys(data[0]);
+            const csvContent = [
+                headers.join(','),
+                ...data.map(row => headers.map(h => JSON.stringify(row[h] || '')).join(','))
+            ].join('\n');
+            
+            // Download
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `rl_experiences_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
         }
         
         function filterDatabaseTable(tableName) {

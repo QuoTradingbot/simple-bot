@@ -37,8 +37,7 @@ USE_CLOUD_SIGNALS = True  # Set to True for production (cloud ML/RL)
 
 # Cloud API endpoints - Azure deployment
 # The bot (src/quotrading_engine.py) handles all cloud ML/RL communication
-CLOUD_API_BASE_URL = os.getenv("QUOTRADING_API_URL", "https://quotrading-signals.icymeadow-86b2969e.eastus.azurecontainerapps.io")
-CLOUD_SIGNAL_ENDPOINT = f"{CLOUD_API_BASE_URL}/api/ml/get_confidence"
+CLOUD_API_BASE_URL = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
 CLOUD_SIGNAL_POLL_INTERVAL = 5  # Seconds between signal polls
 
 
@@ -383,89 +382,6 @@ class QuoTradingLauncher:
         if hasattr(self, 'loading_window'):
             self.loading_window.destroy()
     
-    def validate_api_call(self, api_type, credentials, success_callback, error_callback):
-        """Validate credentials with cloud API.
-        
-        QuoTrading: Validates against cloud subscription API
-        Brokers: Local format validation
-        
-        Args:
-            api_type: "quotrading" or "broker"
-            credentials: dict with credentials to validate
-            success_callback: function to call on successful validation
-            error_callback: function to call on validation failure (receives error message)
-        """
-        def api_call():
-            try:
-                if api_type == "quotrading":
-                    import requests
-                    email = credentials.get("email", "")
-                    api_key = credentials.get("api_key", "")
-                    
-                    # Get API URL from environment or use default
-                    import os
-                    api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-signals.icymeadow-86b2969e.eastus.azurecontainerapps.io")
-                    
-                    # Call cloud API to validate license
-                    try:
-                        response = requests.post(
-                            f"{api_url}/api/v1/license/validate",
-                            json={"email": email, "api_key": api_key},
-                            timeout=10
-                        )
-                        
-                        if response.status_code == 200:
-                            data = response.json()
-                            # Save subscription limits to config
-                            self.config["max_contract_size"] = data.get("max_contract_size", 3)
-                            self.config["max_accounts"] = data.get("max_accounts", 1)
-                            self.config["subscription_tier"] = data.get("subscription_tier", "basic")
-                            self.config["subscription_end"] = data.get("subscription_end")
-                            self.save_config()
-                            self.root.after(0, success_callback)
-                        else:
-                            error_data = response.json()
-                            error_msg = error_data.get("detail", "License validation failed")
-                            self.root.after(0, lambda: error_callback(error_msg))
-                    
-                    except requests.exceptions.Timeout:
-                        self.root.after(0, lambda: error_callback("Connection timeout - please check your internet connection"))
-                    except requests.exceptions.ConnectionError:
-                        self.root.after(0, lambda: error_callback("Cannot connect to QuoTrading servers - please check your internet"))
-                    except Exception as e:
-                        self.root.after(0, lambda: error_callback(f"API error: {str(e)}"))
-                
-                elif api_type == "broker":
-                    broker = credentials.get("broker", "")
-                    token = credentials.get("token", "")
-                    username = credentials.get("username", "")
-                    
-                    # Validate all required fields are present
-                    if not broker:
-                        self.root.after(0, lambda: error_callback("Broker not specified"))
-                        return
-                    
-                    if not token or len(token) < 10:
-                        self.root.after(0, lambda: error_callback(f"Invalid {broker} API token"))
-                        return
-                    
-                    if not username or len(username) < 3:
-                        self.root.after(0, lambda: error_callback(f"Invalid {broker} username"))
-                        return
-                    
-                    # Credentials have valid format
-                    self.root.after(0, success_callback)
-                
-                else:
-                    self.root.after(0, lambda: error_callback(f"Unknown validation type: {api_type}"))
-                    
-            except Exception as e:
-                self.root.after(0, lambda: error_callback(f"Validation error: {str(e)}"))
-        
-        # Start validation in background thread
-        thread = threading.Thread(target=api_call, daemon=True)
-        thread.start()
-    
     def validate_license_key(self, api_key, success_callback, error_callback):
         """Validate QuoTrading license key with cloud API.
         
@@ -479,28 +395,46 @@ class QuoTradingLauncher:
         
         def validate_in_thread():
             try:
-                api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-signals.icymeadow-86b2969e.eastus.azurecontainerapps.io")
+                api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
                 
-                # Call cloud API to validate license
+                # Call cloud API to validate license - server validates key, checks status and expiration
                 response = requests.post(
-                    f"{api_url}/api/v1/license/validate",
+                    f"{api_url}/api/main",
                     json={"license_key": api_key},
                     timeout=10
                 )
                 
                 if response.status_code == 200:
                     license_data = response.json()
-                    # Save subscription info to config
-                    self.config["max_contract_size"] = license_data.get("max_contract_size", 3)
-                    self.config["max_accounts"] = license_data.get("max_accounts", 1)
-                    self.config["subscription_tier"] = license_data.get("subscription_tier", "basic")
-                    self.config["subscription_end"] = license_data.get("subscription_end")
+                    
+                    # Check if license is actually valid
+                    if not license_data.get("license_valid", False):
+                        error_msg = license_data.get("message", "License validation failed")
+                        self.root.after(0, lambda: error_callback(error_msg))
+                        return
+                    
+                    # Extract license type from server message (e.g., "Valid standard license")
+                    message = license_data.get("message", "")
+                    license_type = "standard"  # default
+                    if "admin" in message.lower():
+                        license_type = "admin"
+                    elif "pro" in message.lower():
+                        license_type = "pro"
+                    elif "premium" in message.lower():
+                        license_type = "premium"
+                    
+                    # Server-side subscription configuration (no hardcoded limits)
+                    # These values come from license_type in database
+                    self.config["license_type"] = license_type
+                    self.config["license_expiration"] = license_data.get("license_expiration")
+                    self.config["days_until_expiration"] = license_data.get("days_until_expiration")
+                    self.config["hours_until_expiration"] = license_data.get("hours_until_expiration")
                     self.save_config()
                     
                     self.root.after(0, lambda: success_callback(license_data))
                 else:
                     error_data = response.json()
-                    error_msg = error_data.get("detail", "License validation failed")
+                    error_msg = error_data.get("message", "License validation failed")
                     self.root.after(0, lambda: error_callback(error_msg))
             
             except requests.exceptions.Timeout:
@@ -805,8 +739,6 @@ class QuoTradingLauncher:
         # Validate by actually connecting and fetching accounts
         def validate_in_thread():
             import traceback
-            print(f"[DEBUG] validate_in_thread started")
-            print(f"[DEBUG] broker={broker}, username={username}")
             try:
                 # Import broker interface
                 import sys
@@ -864,7 +796,6 @@ class QuoTradingLauncher:
                                 raise Exception("No account info available")
                         except Exception as e:
                             # Fallback if account_info is not available
-                            print(f"[DEBUG] account_info failed ({str(e)}), using fallback")
                             current_equity = ts_broker.get_account_equity()
                             stored_starting_balance = self.config.get("topstep_starting_balance")
                             if stored_starting_balance:
@@ -946,15 +877,6 @@ class QuoTradingLauncher:
                         f"• Active account status\n\n"
                         f"Contact support if the issue persists."
                     )
-                    
-                    print(f"\n{'='*60}")
-                    print(f"LOGIN ERROR - {broker}")
-                    print(f"{'='*60}")
-                    print(f"Username: {username}")
-                    print(f"Error: {error_msg}")
-                    print(f"\nFull traceback:")
-                    print(error_traceback)
-                    print(f"{'='*60}\n")
                 
                 self.root.after(0, on_error_ui)
         
@@ -1145,33 +1067,6 @@ class QuoTradingLauncher:
         # Right side - Trading Modes
         modes_section = tk.Frame(symbols_modes_container, bg=self.colors['card'])
         modes_section.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        # Confidence Trading (Fixed - no dynamic contracts)
-        conf_mode_frame = tk.Frame(modes_section, bg=self.colors['card'])
-        conf_mode_frame.pack(fill=tk.X, pady=(0, 5))
-        
-        self.confidence_trading_var = tk.BooleanVar(value=self.config.get("confidence_trading", False))
-        
-        tk.Checkbutton(
-            conf_mode_frame,
-            text="⚖️ Confidence Trading",
-            variable=self.confidence_trading_var,
-            font=("Segoe UI", 8, "bold"),
-            bg=self.colors['card'],
-            fg=self.colors['text'],
-            selectcolor=self.colors['secondary'],
-            activebackground=self.colors['card'],
-            activeforeground=self.colors['success'],
-            cursor="hand2"
-        ).pack(anchor=tk.W)
-        
-        tk.Label(
-            conf_mode_frame,
-            text="Filter trades by confidence threshold",
-            font=("Segoe UI", 7, "bold"),
-            bg=self.colors['card'],
-            fg=self.colors['text_light']
-        ).pack(anchor=tk.W, padx=(20, 0))
         
         # Shadow Mode
         shadow_mode_frame = tk.Frame(modes_section, bg=self.colors['card'])
@@ -1513,19 +1408,17 @@ class QuoTradingLauncher:
                 info_text = f"✓ {selected_account['id']} | Balance: ${selected_account['balance']:,.2f}"
                 self.account_info_label.config(text=info_text, fg=self.colors['success'])
         except Exception as e:
-            print(f"[ERROR] Failed to update account info: {e}")
+            pass
     
     
     def fetch_account_info(self):
         """Ping RL server to verify API connectivity."""
-        print("\n[DEBUG] Ping button clicked!")
         
         # Show loading spinner
         self.show_loading("Pinging RL server...")
         
         def test_connection_thread():
             """Ping RL server."""
-            print("[DEBUG] Pinging RL server...")
             import traceback
             try:
                 import requests
@@ -1534,13 +1427,10 @@ class QuoTradingLauncher:
                 rl_server_url = CLOUD_API_BASE_URL
                 health_endpoint = f"{rl_server_url}/health"
                 
-                print(f"[DEBUG] Pinging: {health_endpoint}")
-                
                 # Ping with timeout
                 response = requests.get(health_endpoint, timeout=10)
                 
                 if response.status_code == 200:
-                    print("[DEBUG] Ping successful!")
                     
                     # Get response data if available
                     try:
@@ -1589,7 +1479,6 @@ class QuoTradingLauncher:
                         f"• RL server status\n\n"
                         f"Contact support if issue persists."
                     )
-                    print(f"[ERROR] {error_msg}")
                 
                 self.root.after(0, show_error)
                 
@@ -1608,13 +1497,11 @@ class QuoTradingLauncher:
                         f"• RL server status\n\n"
                         f"Contact support if issue persists."
                     )
-                    print(f"[ERROR] {error_msg}")
                 
                 self.root.after(0, show_error)
                 
             except Exception as error:
                 error_msg = str(error)
-                error_traceback = traceback.format_exc()
                 
                 def show_error():
                     self.hide_loading()
@@ -1624,16 +1511,6 @@ class QuoTradingLauncher:
                         f"Server: {rl_server_url}\n\n"
                         f"Contact support if issue persists."
                     )
-                    
-                    # Log to console for debugging
-                    print(f"\n{'='*60}")
-                    print(f"PING ERROR")
-                    print(f"{'='*60}")
-                    print(f"URL: {rl_server_url}")
-                    print(f"Error: {error_msg}")
-                    print(f"\nFull traceback:")
-                    print(error_traceback)
-                    print(f"{'='*60}\n")
                 
                 self.root.after(0, show_error)
         
@@ -1760,7 +1637,6 @@ class QuoTradingLauncher:
         self.config["max_trades"] = self.trades_var.get()
         self.config["confidence_threshold"] = self.confidence_var.get()
         self.config["shadow_mode"] = self.shadow_mode_var.get()
-        self.config["confidence_trading"] = self.confidence_trading_var.get()
         self.config["selected_account"] = self.account_dropdown_var.get()
         
         # Get selected account ID - parse from dropdown display format
@@ -1785,10 +1661,6 @@ class QuoTradingLauncher:
         if not selected_account_id and accounts:
             selected_account_id = accounts[0].get("id")
             self.config["selected_account_id"] = selected_account_id
-            print(f"[WARNING] Could not parse account from '{selected_display}', using first account: {selected_account_id}")
-        
-        print(f"[DEBUG] Selected account: {selected_display}")
-        print(f"[DEBUG] Account ID: {selected_account_id}")
         
         # CHECK INSTANCE LOCK - Prevent duplicate trading on same account
         if selected_account_id:
@@ -1834,10 +1706,6 @@ class QuoTradingLauncher:
         # Only show enabled features
         if self.shadow_mode_var.get():
             confirmation_text += f"\n✓ Shadow Mode: ON (paper trading - no real trades)\n"
-        
-        if self.confidence_trading_var.get():
-            confirmation_text += f"✓ Confidence Trading: ENABLED\n"
-            confirmation_text += f"  → Filters signals by confidence threshold\n"
         
         confirmation_text += f"\nThis will open a PowerShell terminal with live logs.\n"
         confirmation_text += f"Use the window's close button to stop the bot.\n\n"
@@ -2835,7 +2703,7 @@ class QuoTradingLauncher:
 # QuoTrading License (Required - contact support@quotrading.com to purchase)
 QUOTRADING_LICENSE_KEY={self.config.get("quotrading_api_key", "")}
 QUOTRADING_API_KEY={self.config.get("quotrading_api_key", "")}
-QUOTRADING_API_URL=https://quotrading-signals.icymeadow-86b2969e.eastus.azurecontainerapps.io
+QUOTRADING_API_URL=https://quotrading-flask-api.azurewebsites.net
 ACCOUNT_SIZE={self.config.get("account_size", 50000)}
 
 # Broker Configuration
@@ -2856,9 +2724,6 @@ BOT_MAX_LOSS_PER_TRADE={self.config.get("max_loss_per_trade", 200)}
 # AI/Confidence Settings
 BOT_CONFIDENCE_THRESHOLD={self.confidence_var.get()}
 # Bot only takes signals above this confidence threshold (user's minimum)
-BOT_CONFIDENCE_TRADING={'true' if self.confidence_trading_var.get() else 'false'}
-# When enabled: Filters trades by confidence threshold only
-# Contracts are FIXED at user's max_contracts setting (no dynamic scaling)
 
 # Trading Mode (Signal-Only Mode for manual trading)
 BOT_SHADOW_MODE={'true' if self.shadow_mode_var.get() else 'false'}
@@ -2876,8 +2741,6 @@ BOT_LOG_LEVEL=INFO
         
         with open(env_path, 'w') as f:
             f.write(env_content)
-        
-        print(f"✓ .env file created with {len(selected_symbols)} symbols: {symbols_str}")
     
     def load_config(self):
         """Load saved configuration."""
@@ -3055,10 +2918,8 @@ BOT_LOG_LEVEL=INFO
         try:
             with open(lock_file, 'w') as f:
                 json.dump(lock_data, f, indent=2)
-            print(f"[INFO] Created lock for account {account_id} (PID: {bot_pid})")
             return True
         except Exception as e:
-            print(f"[ERROR] Failed to create lock: {e}")
             return False
     
     def save_config(self):

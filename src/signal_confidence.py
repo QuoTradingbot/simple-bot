@@ -721,19 +721,12 @@ class SignalConfidenceRL:
         """Load past experiences from file."""
         # Skip loading if no experience file is configured (cloud-based RL)
         if self.experience_file is None:
-            logger.debug("[DEBUG] No local experience file configured (using cloud-based RL)")
             return
-        
-        logger.debug(f"[DEBUG] Attempting to load experiences from: {self.experience_file}")
-        logger.debug(f"[DEBUG] File exists check: {os.path.exists(self.experience_file)}")
         
         if os.path.exists(self.experience_file):
             try:
-                logger.debug(f"[DEBUG] Opening file...")
                 with open(self.experience_file, 'r') as f:
-                    logger.debug(f"[DEBUG] Loading JSON...")
                     data = json.load(f)
-                    logger.debug(f"[DEBUG] JSON loaded successfully. Keys: {list(data.keys())}")
                     self.experiences = data.get('experiences', [])
                     
                     # Populate experience_keys set for O(1) duplicate detection
@@ -743,24 +736,20 @@ class SignalConfidenceRL:
                         exp_key = self._generate_experience_key(exp)
                         self.experience_keys.add(exp_key)
                     
-                    logger.debug(f"Γ£ô Loaded {len(self.experiences)} past signal experiences")
+                    logger.info(f"Loaded {len(self.experiences)} past signal experiences")
             except Exception as e:
                 logger.error(f"Failed to load experiences: {e}")
                 import traceback
                 logger.error(traceback.format_exc())
-        else:
-            logger.debug(f"[DEBUG] Experience file not found: {self.experience_file}")
     
     def save_experience(self):
         """Save experiences to file."""
         # Skip saving if disabled (e.g., live mode with cloud-only saving)
         if not self.save_local:
-            logger.debug("[DEBUG] Local saving disabled - skipping save (cloud-only mode)")
             return
         
         # Skip saving if no experience file is configured (cloud-based RL)
         if self.experience_file is None:
-            logger.debug("[DEBUG] No local experience file configured - skipping save (cloud-based RL)")
             return
         
         try:

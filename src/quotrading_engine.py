@@ -219,12 +219,8 @@ try:
         CONFIG["slippage_ticks"] = SYMBOL_SPEC.typical_slippage_ticks
         _bot_config.slippage_ticks = SYMBOL_SPEC.typical_slippage_ticks
     
-    print(f"Γ£ô Symbol specs loaded: {SYMBOL_SPEC.name} ({SYMBOL_SPEC.symbol})")
-    print(f"  Tick Value: ${SYMBOL_SPEC.tick_value:.2f} | Tick Size: ${SYMBOL_SPEC.tick_size}")
-    print(f"  Slippage: {SYMBOL_SPEC.typical_slippage_ticks} ticks")
 except Exception as e:
     # Symbol specs not available - will use defaults from config
-    print(f"Symbol specs not loaded (using defaults): {e}")
     pass
 
 # String constants
@@ -525,7 +521,7 @@ def check_cloud_kill_switch() -> None:
     try:
         import requests
         
-        cloud_api_url = CONFIG.get("cloud_api_url", "https://quotrading-api-v2.azurewebsites.net")
+        cloud_api_url = CONFIG.get("cloud_api_url", "https://quotrading-flask-api.azurewebsites.net")
         
         response = requests.get(
             f"{cloud_api_url}/api/main",
@@ -650,7 +646,7 @@ def check_azure_time_service() -> str:
     try:
         import requests
         
-        cloud_api_url = CONFIG.get("cloud_api_url", "https://quotrading-api-v2.azurewebsites.net")
+        cloud_api_url = CONFIG.get("cloud_api_url", "https://quotrading-flask-api.azurewebsites.net")
         
         response = requests.get(
             f"{cloud_api_url}/api/main",
@@ -1708,8 +1704,8 @@ def inject_complete_bar(symbol: str, bar: Dict[str, Any]) -> None:
     if is_backtest_mode() and 'timestamp' in bar:
         backtest_current_time = bar['timestamp']
     
-    # DEBUG: Check what we're getting
-    if len(state[symbol]["bars_1min"]) == 0:  # First bar only
+    # First bar check
+    if len(state[symbol]["bars_1min"]) == 0:
         logger.info(f"[INJECT_BAR] First bar: H={bar.get('high', 'MISSING'):.2f} L={bar.get('low', 'MISSING'):.2f}")
     
     # Finalize any pending bar first
@@ -7675,7 +7671,7 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
         
         # Validate license via API
         import requests
-        api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-api-v2.azurewebsites.net")
+        api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
         
         response = requests.post(
             f"{api_url}/api/main",

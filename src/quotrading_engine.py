@@ -736,8 +736,14 @@ def check_broker_connection() -> None:
         eastern_time = current_time.astimezone(eastern_tz)
         
         # Determine if maintenance or weekend
-        is_weekend = eastern_time.weekday() in [5, 6]  # Saturday=5, Sunday=6
-        is_maintenance = (eastern_time.weekday() < 5 and 
+        # Weekend: Friday 4:45 PM - Sunday 6:00 PM ET
+        # Maintenance: Mon-Thu 4:45 PM - 6:00 PM ET
+        is_friday_close = (eastern_time.weekday() == 4 and eastern_time.time() >= datetime_time(16, 45))
+        is_saturday = eastern_time.weekday() == 5
+        is_sunday_before_open = (eastern_time.weekday() == 6 and eastern_time.time() < datetime_time(18, 0))
+        is_weekend = is_friday_close or is_saturday or is_sunday_before_open
+        
+        is_maintenance = (eastern_time.weekday() < 4 and  # Mon-Thu only
                          eastern_time.time() >= datetime_time(16, 45) and 
                          eastern_time.time() < datetime_time(18, 0))
         
@@ -745,7 +751,7 @@ def check_broker_connection() -> None:
             # Determine idle reason for clear messaging
             if is_weekend:
                 idle_type = "WEEKEND"
-                idle_msg = "Weekend market closure"
+                idle_msg = "Weekend market closure (Fri 4:45 PM - Sun 6:00 PM ET)"
                 reopen_msg = "Will auto-reconnect Sunday at 6:00 PM ET"
             else:
                 idle_type = "MAINTENANCE"
@@ -2376,6 +2382,8 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
     
     # Check daily trade limit (skip in backtest mode)
     # If trader is profitable for the day, allow bonus trades based on profit
+    # NOTE: This calculation is lightweight (simple arithmetic) and only runs when evaluating signals,
+    # not continuously. Performance impact is negligible.
     if not is_backtest_mode():
         base_trade_limit = CONFIG["max_trades_per_day"]
         current_pnl = state[symbol]["daily_pnl"]

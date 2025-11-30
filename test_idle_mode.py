@@ -72,8 +72,14 @@ def test_time_windows():
     ]
     
     for description, test_time, expected in test_times:
-        is_weekend = test_time.weekday() in [5, 6]  # Saturday=5, Sunday=6
-        is_maintenance = (test_time.weekday() < 5 and 
+        # Correct weekend detection to match bot logic
+        # Weekend: Friday 4:45 PM - Sunday 6:00 PM ET
+        is_friday_close = (test_time.weekday() == 4 and test_time.time() >= datetime_time(16, 45))
+        is_saturday = test_time.weekday() == 5
+        is_sunday_before_open = (test_time.weekday() == 6 and test_time.time() < datetime_time(18, 0))
+        is_weekend = is_friday_close or is_saturday or is_sunday_before_open
+        
+        is_maintenance = (test_time.weekday() < 4 and  # Mon-Thu only
                          test_time.time() >= datetime_time(16, 45) and 
                          test_time.time() < datetime_time(18, 0))
         

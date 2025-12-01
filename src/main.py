@@ -239,9 +239,9 @@ def main():
     # Load configuration for production
     bot_config = load_config(environment=args.environment, backtest_mode=False)
     
-    # Apply learned parameters if available
-    from config import apply_learned_parameters
-    apply_learned_parameters(bot_config)
+    # Apply learned parameters if available (feature not yet implemented)
+    # from config import apply_learned_parameters
+    # apply_learned_parameters(bot_config)
     
     # Override symbol if specified
     if args.symbol:

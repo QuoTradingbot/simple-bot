@@ -22,7 +22,7 @@ class MockSessionManager:
     
     def __init__(self):
         self.sessions = {}  # license_key -> (device_fp, last_heartbeat)
-        self.SESSION_TIMEOUT_SECONDS = 120
+        self.SESSION_TIMEOUT_SECONDS = 60  # Reduced from 120s to 60s for faster crash detection
         
     def get_device_fingerprint(self) -> str:
         """Generate device fingerprint (same logic as production)"""
@@ -120,9 +120,9 @@ def test_scenario_1_fresh_login():
 
 
 def test_scenario_2_crash_recovery():
-    """Test: Bot crashed, relaunch after 120s timeout"""
+    """Test: Bot crashed, relaunch after 60s timeout"""
     print("="*70)
-    print("SCENARIO 2: Bot Crashed, Relaunch After 120s Timeout")
+    print("SCENARIO 2: Bot Crashed, Relaunch After 60s Timeout")
     print("="*70)
     
     mgr = MockSessionManager()
@@ -130,18 +130,18 @@ def test_scenario_2_crash_recovery():
     device_fp = mgr.get_device_fingerprint()
     
     print(f"1. Bot was running, created session")
-    # Simulate crash 125 seconds ago (beyond 120s timeout)
-    mgr.sessions[license_key] = (device_fp, datetime.now() - timedelta(seconds=125))
+    # Simulate crash 65 seconds ago (beyond 60s timeout)
+    mgr.sessions[license_key] = (device_fp, datetime.now() - timedelta(seconds=65))
     
-    print(f"2. Bot crashed 125 seconds ago (session expired)")
+    print(f"2. Bot crashed 65 seconds ago (session expired)")
     print(f"3. User relaunches")
     
     # Launcher validates - should allow (session expired)
     success, msg = mgr.validate_and_create_session(license_key, device_fp)
     print(f"4. Bot validation: {msg}")
     
-    assert success, "Should allow relaunch after 120s timeout"
-    print("✅ PASS: Relaunch allowed after 120s timeout\n")
+    assert success, "Should allow relaunch after 60s timeout"
+    print("✅ PASS: Relaunch allowed after 60s timeout\n")
 
 
 def test_scenario_3_stale_session():

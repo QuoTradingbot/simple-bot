@@ -52,8 +52,8 @@ ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "ADMIN-DEV-KEY-2026")  # For cre
 # Session locking configuration
 # A session is considered "active" if heartbeat received within this threshold
 # Heartbeats are sent every 30 seconds by the bot
-# Session expires after 2 minutes (120 seconds) of no heartbeat - allows detection of crashes while preventing false timeouts
-SESSION_TIMEOUT_SECONDS = 120  # 2 minutes - session expires if no heartbeat for 2 minutes
+# Session expires after 60 seconds of no heartbeat - 2x heartbeat interval for crash detection while tolerating network issues
+SESSION_TIMEOUT_SECONDS = 60  # 1 minute - session expires if no heartbeat for 60 seconds (2x heartbeat interval)
 WHOP_API_BASE_URL = "https://api.whop.com/api/v5"
 
 # Email configuration (for SendGrid or SMTP)
@@ -1183,15 +1183,18 @@ def validate_license_endpoint():
                         if stored_device:
                             from datetime import datetime, timedelta
                             
-                            # STRICT ENFORCEMENT: Block ALL logins if any session exists with heartbeat
+                            # STRICT ENFORCEMENT: Check heartbeat EXISTS first, then check age
+                            # This prevents bypassing restrictions - we don't blindly clear sessions
                             # Prevents API key sharing on same OR different devices
                             if last_heartbeat:
+                                # Heartbeat EXISTS - calculate age
                                 time_since_last = datetime.now() - last_heartbeat
                                 
-                                # If heartbeat exists and is recent enough (< SESSION_TIMEOUT_SECONDS)
-                                # Block ALL logins regardless of device
+                                # If heartbeat exists and is recent (< SESSION_TIMEOUT_SECONDS = 60s)
+                                # Block ALL logins regardless of device - NO EXCEPTIONS
                                 if time_since_last < timedelta(seconds=SESSION_TIMEOUT_SECONDS):
                                     # Session is still within timeout window - BLOCK
+                                    # This ensures ONLY ONE active instance per API key
                                     if stored_device == device_fingerprint:
                                         logging.warning(f"⚠️ BLOCKED - Same device {device_fingerprint[:8]}... but session EXISTS (last heartbeat {int(time_since_last.total_seconds())}s ago). Only 1 instance allowed per API key.")
                                         return jsonify({
@@ -1210,11 +1213,12 @@ def validate_license_endpoint():
                                             "active_device": stored_device[:20] + "..."
                                         }), 403
                                 
-                                # Session fully expired (>= 120s) - allow takeover
+                                # Session fully expired (>= 60s) - allow takeover
+                                # Only after checking heartbeat EXISTS and is OLD do we allow login
                                 else:
                                     logging.info(f"🧹 Expired session (last seen {int(time_since_last.total_seconds())}s ago) - allowing takeover by {device_fingerprint[:8]}...")
                             else:
-                                # No heartbeat timestamp - allow
+                                # No heartbeat timestamp - session was cleanly released, allow login
                                 logging.info(f"✅ No heartbeat found - allowing {device_fingerprint[:8]}...")
                     
                     # No conflict detected

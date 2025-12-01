@@ -8,11 +8,6 @@ import sys
 import os
 
 
-# Fade effect thresholds for subtitle
-FADE_THRESHOLD_DARK = 0.4   # Below this: very faded (almost invisible)
-FADE_THRESHOLD_MEDIUM = 0.7  # Below this: medium fade (dark gray)
-
-
 # ANSI color codes for rainbow effect
 class Colors:
     """ANSI color codes for terminal output"""
@@ -86,29 +81,6 @@ def color_char_with_gradient(char, position, total_chars, color_offset=0):
     color = rainbow[color_index]
     
     return f"{color}{char}{Colors.RESET}"
-
-
-def get_faded_color(fade_progress):
-    """
-    Get a faded grayscale color based on fade progress.
-    
-    Args:
-        fade_progress: Float from 0.0 (fully faded) to 1.0 (full intensity)
-    
-    Returns:
-        ANSI color code with appropriate intensity (grayscale)
-    """
-    # Map fade progress to grayscale intensity (for fade effect)
-    # 0.0 = almost invisible (super dark), 1.0 = bright white
-    if fade_progress < FADE_THRESHOLD_DARK:
-        # Very faded - almost invisible dark gray
-        return '\033[38;5;232m'  # Almost black (barely visible)
-    elif fade_progress < FADE_THRESHOLD_MEDIUM:
-        # Medium fade - dark gray
-        return '\033[90m'  # Dark gray
-    else:
-        # Fully visible - use bright white
-        return '\033[97m'  # Bright white
 
 
 def color_line_with_gradient(line, color_offset):

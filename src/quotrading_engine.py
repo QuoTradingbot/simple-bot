@@ -460,10 +460,10 @@ def validate_license_at_startup() -> None:
         import requests
         api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
         
-        # Validate with server (server handles both regular and admin keys)
-        # Include device fingerprint for session locking
+        # Validate with server and establish session lock
+        # Use validate-license endpoint which properly handles session locking
         response = requests.post(
-            f"{api_url}/api/main",
+            f"{api_url}/api/validate-license",
             json={
                 "license_key": license_key,
                 "device_fingerprint": get_device_fingerprint()  # Session locking

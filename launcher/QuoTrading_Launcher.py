@@ -560,12 +560,14 @@ class QuoTradingLauncher:
                 api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
                 
                 # Call cloud API to validate license - server validates key, checks status and expiration
-                # Include device fingerprint for session locking
+                # Note: Don't establish session lock here - let the bot establish it when it starts
+                # This prevents session conflicts from the launcher not releasing its lock
                 response = requests.post(
-                    f"{api_url}/api/main",
+                    f"{api_url}/api/validate-license",
                     json={
                         "license_key": api_key,
-                        "device_fingerprint": get_device_fingerprint()  # For session locking
+                        "device_fingerprint": get_device_fingerprint(),  # For session locking
+                        "validate_only": True  # Don't establish session, just validate
                     },
                     timeout=10
                 )

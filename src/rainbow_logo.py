@@ -120,7 +120,8 @@ def display_logo_line(line, color_offset=0, center_width=80):
 def display_animated_logo(duration=8.0, fps=15, with_headers=True):
     """
     Display the QuoTrading AI logo with animated rainbow colors.
-    Professional splash screen - shows logo ONCE with flowing rainbow gradient.
+    Professional splash screen - shows logo and subtitle with flowing rainbow gradient.
+    Both the main logo text and the subtitle use the same rainbow color animation.
     
     Args:
         duration: How long to display in seconds (default: 8.0)

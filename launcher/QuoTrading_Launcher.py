@@ -2051,36 +2051,7 @@ class QuoTradingLauncher:
         # Create .env file
         self.create_env_file()
         
-        # Show confirmation with new settings
-        symbols_str = ", ".join(selected_symbols)
-        broker = self.config.get("broker", "TopStep")
-        
-        confirmation_text = f"Ready to start AI with these settings:\n\n"
-        confirmation_text += f"Broker: {broker}\n"
-        confirmation_text += f"Account: {self.account_dropdown_var.get()}\n"
-        confirmation_text += f"Symbols: {symbols_str}\n"
-        confirmation_text += f"Contracts Per Trade: {self.contracts_var.get()}\n"
-        confirmation_text += f"Daily Loss Limit: ${loss_limit}\n"
-        confirmation_text += f"Max Trades/Day: {self.trades_var.get()}\n"
-        confirmation_text += f"Confidence Threshold: {self.confidence_var.get()}%\n"
-        
-        # Only show enabled features
-        if self.shadow_mode_var.get():
-            confirmation_text += f"\n✓ Shadow Mode: ON (shadow trading - signals only, no executions)\n"
-        
-        confirmation_text += f"\nThis will open a PowerShell terminal with live logs.\n"
-        confirmation_text += f"Use the window's close button to stop the bot.\n\n"
-        confirmation_text += f"Continue?"
-        
-        result = messagebox.askyesno(
-            "Launch Trading Bot?",
-            confirmation_text
-        )
-        
-        if not result:
-            return
-        
-        # Show countdown dialog before launching
+        # Show countdown dialog before launching (no confirmation popup needed)
         self.show_countdown_and_launch(selected_symbols, selected_account_id, loss_limit)
     
     def show_countdown_and_launch(self, selected_symbols, selected_account_id, loss_limit):
@@ -2245,17 +2216,7 @@ Shadow Mode: {shadow_mode}
             if selected_account_id:
                 self.create_account_lock(selected_account_id, bot_pid)
             
-            # Success message
-            messagebox.showinfo(
-                "Bot Launched!",
-                f"✓ QuoTrading AI bot launched successfully!\n\n"
-                f"Symbols: {symbols_str}\n\n"
-                f"PowerShell terminal opened with live logs.\n"
-                f"To stop the bot, close the PowerShell window.\n\n"
-                f"You can close this setup window now."
-            )
-            
-            # Close the GUI and release launcher lock
+            # Close the GUI immediately and release launcher lock
             # The bot will maintain its own runtime session via heartbeats
             if self.current_api_key:
                 release_launcher_lock(self.current_api_key)

@@ -7261,15 +7261,6 @@ def main(symbol_override: str = None) -> None:
     """
     global event_loop, timer_manager, bid_ask_manager, cloud_api_client, rl_brain
     
-    # Display animated rainbow logo while bot is getting ready
-    # This shows in the PowerShell terminal when the bot starts
-    if RAINBOW_LOGO_AVAILABLE:
-        try:
-            display_animated_logo(duration=3.0, fps=15)
-        except Exception as e:
-            # Logo display failed - log it but continue (not critical)
-            logger.warning(f"Could not display rainbow logo: {e}")
-    
     # CRITICAL: Validate license FIRST, before any initialization
     # This is the "login screen" - fail fast if license invalid or session conflict
     validate_license_at_startup()
@@ -8232,4 +8223,33 @@ def cleanup_on_shutdown() -> None:
 
 
 if __name__ == "__main__":
+    # Display rainbow logo immediately when PowerShell opens (before any logs)
+    # This creates a splash screen effect while the bot initializes
+    if RAINBOW_LOGO_AVAILABLE:
+        try:
+            # Clear screen for clean presentation, show logo, then clear for logs
+            # Use hardcoded commands for security (no user input)
+            if os.name == 'nt':
+                # Windows
+                os.system('cls')
+            else:
+                # Unix/Linux/Mac
+                os.system('clear')
+            
+            # Show logo without headers - full screen splash
+            display_animated_logo(duration=3.0, fps=15, with_headers=False)
+            
+            # Clear screen after logo to make room for logs
+            if os.name == 'nt':
+                os.system('cls')
+            else:
+                os.system('clear')
+        except Exception as e:
+            # Logo display failed - log and continue (not critical)
+            # Use logger if available, otherwise print
+            try:
+                logger.debug(f"Could not display startup logo: {e}")
+            except:
+                pass  # Logger not initialized yet, silently continue
+    
     main()

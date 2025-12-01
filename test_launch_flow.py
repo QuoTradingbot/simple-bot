@@ -23,8 +23,7 @@ def test_launch_flow():
         content = f.read()
     
     # Test 1: Verify the "Launch Trading Bot?" confirmation is removed
-    assert 'messagebox.askyesno' not in content or \
-           '"Launch Trading Bot?"' not in content, \
+    assert '"Launch Trading Bot?"' not in content, \
            "FAIL: 'Launch Trading Bot?' confirmation popup still exists"
     print("✓ Test 1 PASSED: 'Launch Trading Bot?' confirmation popup removed")
     
@@ -43,25 +42,31 @@ def test_launch_flow():
            "FAIL: GUI destroy call not found"
     
     # Count occurrences - should be called right after bot launch
-    launch_bot_section = content[content.find('def launch_bot_process'):content.find('def show_settings_dialog')]
+    # Find the launch_bot_process function section
+    launch_bot_start = content.find('def launch_bot_process')
+    show_settings_start = content.find('def show_settings_dialog')
+    
+    # If show_settings_dialog not found, use the next function or end of file
+    if show_settings_start == -1:
+        # Try to find the next function definition after launch_bot_process
+        next_def_start = content.find('\n    def ', launch_bot_start + 20)
+        if next_def_start != -1:
+            show_settings_start = next_def_start
+        else:
+            show_settings_start = len(content)
+    
+    launch_bot_section = content[launch_bot_start:show_settings_start]
     assert 'self.root.destroy()' in launch_bot_section, \
            "FAIL: GUI destroy not called in launch_bot_process"
     print("✓ Test 4 PASSED: GUI closes immediately after launch")
     
-    # Test 5: Verify no success messagebox before destroy
-    lines = launch_bot_section.split('\n')
-    destroy_index = None
-    messagebox_after_launch = False
-    
-    for i, line in enumerate(lines):
-        if 'self.root.destroy()' in line:
-            destroy_index = i
-        if destroy_index is None and i > 0 and 'messagebox.showinfo' in line and 'Bot Launched' in lines[i-1:i+2]:
-            messagebox_after_launch = True
-    
-    assert not messagebox_after_launch, \
-           "FAIL: Success messagebox found before GUI destroy"
-    print("✓ Test 5 PASSED: No success popup before GUI close")
+    # Test 5: Verify no success messagebox anywhere in launch_bot_process
+    assert '"Bot Launched!"' not in launch_bot_section, \
+           "FAIL: 'Bot Launched!' success messagebox found in launch_bot_process"
+    assert 'messagebox.showinfo' not in launch_bot_section or \
+           'Launch Error' in launch_bot_section, \
+           "FAIL: Unexpected messagebox.showinfo found in launch_bot_process (only error messages allowed)"
+    print("✓ Test 5 PASSED: No success popup in launch flow")
     
     print("\n" + "="*60)
     print("ALL TESTS PASSED! ✓")

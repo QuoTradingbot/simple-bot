@@ -55,25 +55,27 @@ class MockSessionManager:
         return False
     
     def validate_and_create_session(self, license_key: str, device_fp: str) -> tuple[bool, str]:
-        """Validate license and create/update session"""
-        # Auto-clear stale sessions FIRST
-        self.auto_clear_stale_sessions(license_key)
-        
-        # Check for active session
+        """Validate license and create/update session - matches production behavior"""
+        # Get current session info FIRST (before any clearing)
         if license_key in self.sessions:
             stored_fp, last_heartbeat = self.sessions[license_key]
             
-            # Same device - allow reconnection
+            # If it's the SAME device, always allow reconnection
             if stored_fp == device_fp:
-                print(f"  ✅ Same device reconnection allowed")
+                # Same device reconnecting - allow immediately
+                print(f"  ✅ Same device {device_fp[:8]}... reconnecting - allowing")
                 self.sessions[license_key] = (device_fp, datetime.now())
-                return True, "Session updated"
+                return True, "Session updated (same device)"
             
-            # Different device - check if active
+            # Different device - NEVER auto-clear, always check if active
             time_since = datetime.now() - last_heartbeat
             if time_since < timedelta(seconds=self.SESSION_TIMEOUT_SECONDS):
+                # Active session on different device - BLOCK
                 print(f"  ❌ Different device, active session (last seen {int(time_since.total_seconds())}s ago)")
                 return False, "LICENSE ALREADY IN USE"
+            else:
+                # Stale session on different device (>120s) - allow takeover
+                print(f"  🧹 Stale session from different device (last seen {int(time_since.total_seconds())}s ago) - allowing takeover")
         
         # Create new session
         print(f"  ✅ Creating new session")

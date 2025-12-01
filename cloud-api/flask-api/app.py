@@ -1166,22 +1166,7 @@ def validate_license_endpoint():
         if conn:
             try:
                 with conn.cursor() as cursor:
-                    # FIRST: Auto-clear stale sessions (no heartbeat for SESSION_TIMEOUT_SECONDS)
-                    # This ensures users can immediately log back in after bot crashes/closes
-                    cursor.execute("""
-                        UPDATE users 
-                        SET device_fingerprint = NULL,
-                            last_heartbeat = NULL
-                        WHERE license_key = %s 
-                        AND (last_heartbeat IS NULL OR last_heartbeat < NOW() - make_interval(secs => %s))
-                    """, (license_key, SESSION_TIMEOUT_SECONDS))
-                    
-                    stale_cleared = cursor.rowcount
-                    if stale_cleared > 0:
-                        logging.info(f"🧹 Auto-cleared stale session for {license_key} on login (older than {SESSION_TIMEOUT_SECONDS}s)")
-                        conn.commit()
-                    
-                    # NOW: Get current session info (after clearing stale sessions)
+                    # Get current session info FIRST (before any clearing)
                     cursor.execute("""
                         SELECT device_fingerprint, last_heartbeat, license_type
                         FROM users
@@ -1196,25 +1181,32 @@ def validate_license_endpoint():
                         
                         # If there's a stored session, check if it's active
                         if stored_device:
-                            # If it's the SAME device, allow reconnection
+                            # If it's the SAME device, always allow reconnection (clear stale session if needed)
                             if stored_device == device_fingerprint:
-                                # Same device - allow (reconnection after crash/restart)
+                                # Same device reconnecting - allow immediately
+                                # This handles crashes/force-kills for same device
+                                logging.info(f"✅ Same device {device_fingerprint[:8]}... reconnecting - allowing")
                                 pass
                             else:
-                                # Different device - check if the stored session is still alive
-                                # This should rarely happen since we just cleared stale sessions
+                                # Different device - NEVER auto-clear, always check if active
                                 from datetime import datetime, timedelta
                                 if last_heartbeat:
                                     time_since_last = datetime.now() - last_heartbeat
                                     if time_since_last < timedelta(seconds=SESSION_TIMEOUT_SECONDS):
-                                        # Active session exists - BLOCK
-                                        logging.warning(f"⚠️ BLOCKED - License {license_key} already in use by {stored_device[:20]}... (tried: {device_fingerprint[:20]}...)")
+                                        # Active session exists on different device - BLOCK
+                                        logging.warning(f"⚠️ BLOCKED - License {license_key} already in use by {stored_device[:20]}... (tried: {device_fingerprint[:20]}..., last seen {int(time_since_last.total_seconds())}s ago)")
                                         return jsonify({
                                             "license_valid": False,
                                             "session_conflict": True,
                                             "message": "LICENSE ALREADY IN USE - Only one instance allowed per API key",
                                             "active_device": stored_device[:20] + "..."
                                         }), 403
+                                    else:
+                                        # Stale session on different device (>120s) - allow takeover
+                                        logging.info(f"🧹 Stale session from different device {stored_device[:8]}... (last seen {int(time_since_last.total_seconds())}s ago) - allowing takeover by {device_fingerprint[:8]}...")
+                                else:
+                                    # No heartbeat - allow takeover
+                                    logging.info(f"🧹 No heartbeat for session from {stored_device[:8]}... - allowing takeover by {device_fingerprint[:8]}...")
                     
                     # No conflict detected
                     if check_only:

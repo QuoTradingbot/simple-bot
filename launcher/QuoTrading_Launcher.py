@@ -47,15 +47,21 @@ CLOUD_SIGNAL_POLL_INTERVAL = 5  # Seconds between signal polls
 def get_device_fingerprint() -> str:
     """
     Generate a unique device fingerprint for session locking.
-    Prevents license key sharing across multiple computers.
+    Prevents license key sharing across multiple computers AND multiple instances on same machine.
     
     Components:
     - Machine ID (from platform UUID)
     - Username
     - Platform name
+    - Process ID (ensures uniqueness per instance)
     
     Returns:
         Unique device fingerprint (hashed for privacy)
+    
+    Security Note: Including PID makes each launcher/bot instance unique, preventing:
+    - Multiple launchers on same computer with same license key
+    - Users deleting local lock files to bypass protection
+    - Users modifying device fingerprint to create fake instances
     """
     # Get platform-specific machine ID
     try:
@@ -72,13 +78,114 @@ def get_device_fingerprint() -> str:
     # Get platform info
     platform_name = platform.system()  # Windows, Darwin (Mac), Linux
     
-    # Combine all components
-    fingerprint_raw = f"{machine_id}:{username}:{platform_name}"
+    # Get process ID (makes each instance unique)
+    pid = os.getpid()
     
-    # Hash for privacy (don't send raw MAC address to server)
+    # Combine all components INCLUDING PID for per-instance uniqueness
+    fingerprint_raw = f"{machine_id}:{username}:{platform_name}:{pid}"
+    
+    # Hash for privacy (don't send raw MAC address/PID to server)
     fingerprint_hash = hashlib.sha256(fingerprint_raw.encode()).hexdigest()[:16]
     
     return fingerprint_hash
+
+
+def check_launcher_lock(api_key: str) -> tuple[bool, dict]:
+    """
+    Check if another launcher instance is using this API key on this machine.
+    
+    Returns:
+        (is_locked, lock_info) - is_locked=True if another launcher is active
+    """
+    locks_dir = Path("locks")
+    locks_dir.mkdir(exist_ok=True)
+    
+    # Hash the API key for filename (don't store raw key in filename)
+    key_hash = hashlib.sha256(api_key.encode()).hexdigest()[:16]
+    lock_file = locks_dir / f"launcher_{key_hash}.lock"
+    
+    if not lock_file.exists():
+        return False, {}
+    
+    try:
+        with open(lock_file, 'r') as f:
+            lock_data = json.load(f)
+        
+        # Check if the process is still running (stale lock detection)
+        pid = lock_data.get("pid")
+        if pid and psutil.pid_exists(pid):
+            try:
+                proc = psutil.Process(pid)
+                # Check if it's actually a Python process (launcher)
+                if proc.is_running() and 'python' in proc.name().lower():
+                    return True, lock_data
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
+        
+        # Stale lock - remove it
+        lock_file.unlink()
+        return False, {}
+    except Exception:
+        return False, {}
+
+
+def create_launcher_lock(api_key: str) -> bool:
+    """
+    Create a lock file for this launcher instance.
+    
+    Returns:
+        True if lock created successfully
+    """
+    locks_dir = Path("locks")
+    locks_dir.mkdir(exist_ok=True)
+    
+    # Hash the API key for filename
+    key_hash = hashlib.sha256(api_key.encode()).hexdigest()[:16]
+    lock_file = locks_dir / f"launcher_{key_hash}.lock"
+    
+    lock_data = {
+        "api_key_hash": key_hash,
+        "pid": os.getpid(),
+        "created_at": datetime.now().isoformat(),
+        "device_fingerprint": get_device_fingerprint()
+    }
+    
+    try:
+        with open(lock_file, 'w') as f:
+            json.dump(lock_data, f, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+def release_launcher_lock(api_key: str) -> bool:
+    """
+    Release the launcher lock for this API key.
+    
+    Returns:
+        True if lock released successfully
+    """
+    locks_dir = Path("locks")
+    if not locks_dir.exists():
+        return True
+    
+    # Hash the API key for filename
+    key_hash = hashlib.sha256(api_key.encode()).hexdigest()[:16]
+    lock_file = locks_dir / f"launcher_{key_hash}.lock"
+    
+    if lock_file.exists():
+        try:
+            # Only remove if it's our lock
+            with open(lock_file, 'r') as f:
+                lock_data = json.load(f)
+            
+            if lock_data.get("pid") == os.getpid():
+                lock_file.unlink()
+                return True
+        except Exception:
+            pass
+    
+    return True
 
 
 class QuoTradingLauncher:
@@ -162,8 +269,23 @@ class QuoTradingLauncher:
         # AI process reference
         self.bot_process = None  # Keep variable name for compatibility
         
+        # Track current API key for lock management
+        self.current_api_key = None
+        
+        # Register cleanup on window close
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
         # Start with broker screen (Screen 0)
         self.setup_broker_screen()
+    
+    def on_closing(self):
+        """Handle launcher window closing."""
+        # Release launcher lock if we have one
+        if self.current_api_key:
+            release_launcher_lock(self.current_api_key)
+        
+        # Destroy the window
+        self.root.destroy()
     
     def create_mousewheel_handler(self, canvas):
         """
@@ -774,11 +896,33 @@ class QuoTradingLauncher:
             )
             return
         
+        # CHECK LAUNCHER LOCK - Prevent multiple launchers with same API key on this machine
+        is_locked, lock_info = check_launcher_lock(quotrading_api_key)
+        if is_locked:
+            pid = lock_info.get("pid", "unknown")
+            created_at = lock_info.get("created_at", "unknown time")
+            messagebox.showerror(
+                "License Already in Use",
+                f"⚠️ ANOTHER LAUNCHER INSTANCE IS ALREADY RUNNING ⚠️\n\n"
+                f"This license key is currently in use by another\n"
+                f"launcher instance on this computer.\n\n"
+                f"Process ID: {pid}\n"
+                f"Started: {created_at}\n\n"
+                f"You can only run ONE launcher instance per license key.\n\n"
+                f"To fix this:\n"
+                f"1. Close the other launcher window\n"
+                f"2. Or use a different license key"
+            )
+            return
+        
         # Validate license key with Azure server (server will check if it's admin or regular)
         self.show_loading("Validating license...")
         
         def on_license_success(license_data):
             self.hide_loading()
+            # Create launcher lock after successful validation
+            if create_launcher_lock(quotrading_api_key):
+                self.current_api_key = quotrading_api_key
             # License valid - proceed with broker validation
             self._continue_broker_validation(broker, token, username, quotrading_api_key, account_size)
         
@@ -1845,8 +1989,10 @@ class QuoTradingLauncher:
                 f"You can close this setup window now."
             )
             
-            # Close the GUI - DON'T remove lock (bot still running)
-            # Lock will be cleaned up by stale detection when bot process ends
+            # Close the GUI and release launcher lock
+            # The bot will maintain its own runtime session via heartbeats
+            if self.current_api_key:
+                release_launcher_lock(self.current_api_key)
             self.root.destroy()
             
         except Exception as e:

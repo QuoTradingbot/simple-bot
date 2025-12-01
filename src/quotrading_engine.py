@@ -100,15 +100,21 @@ def get_application_path() -> 'Path':
 def get_device_fingerprint() -> str:
     """
     Generate a unique device fingerprint for session locking.
-    Prevents license key sharing across multiple computers.
+    Prevents license key sharing across multiple computers AND multiple instances on same machine.
     
     Components:
     - Machine ID (from platform UUID)
     - Username
     - Platform name
+    - Process ID (ensures uniqueness per instance)
     
     Returns:
         Unique device fingerprint (hashed for privacy)
+    
+    Security Note: Including PID makes each launcher/bot instance unique, preventing:
+    - Multiple launchers on same computer with same license key
+    - Users deleting local lock files to bypass protection
+    - Users modifying device fingerprint to create fake instances
     """
     import hashlib
     import platform
@@ -130,10 +136,13 @@ def get_device_fingerprint() -> str:
     # Get platform info
     platform_name = platform.system()  # Windows, Darwin (Mac), Linux
     
-    # Combine all components
-    fingerprint_raw = f"{machine_id}:{username}:{platform_name}"
+    # Get process ID (makes each instance unique)
+    pid = os.getpid()
     
-    # Hash for privacy (don't send raw MAC address to server)
+    # Combine all components INCLUDING PID for per-instance uniqueness
+    fingerprint_raw = f"{machine_id}:{username}:{platform_name}:{pid}"
+    
+    # Hash for privacy (don't send raw MAC address/PID to server)
     fingerprint_hash = hashlib.sha256(fingerprint_raw.encode()).hexdigest()[:16]
     
     return fingerprint_hash
@@ -7683,7 +7692,7 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
     - If expires on weekend: Stop on Friday at close
     - Otherwise: Stop immediately and flatten positions
     """
-    global cloud_api_client
+    global cloud_api_client, broker
     
     # Skip if in backtest mode or no cloud client
     if is_backtest_mode() or cloud_api_client is None:
@@ -7916,10 +7925,11 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
                 if data.get("session_conflict"):
                     logger.critical("=" * 70)
                     logger.critical("")
-                    logger.critical("  LICENSE ALREADY IN USE")
+                    logger.critical("  ⚠️ LICENSE ALREADY IN USE - AUTO SHUTDOWN")
                     logger.critical("")
-                    logger.critical("  Your license key is currently active on another device.")
-                    logger.critical("  Only one device can use a license at a time.")
+                    logger.critical("  Your license key is currently active on another device/instance.")
+                    logger.critical("  Only one instance can use a license at a time.")
+                    logger.critical("  This bot instance will now shut down automatically.")
                     logger.critical("")
                     logger.critical("  Contact: support@quotrading.com")
                     logger.critical("")
@@ -7928,6 +7938,19 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
                     bot_status["trading_enabled"] = False
                     bot_status["emergency_stop"] = True
                     bot_status["stop_reason"] = "License in use on another device"
+                    
+                    # Disconnect broker
+                    if broker is not None:
+                        try:
+                            broker.disconnect()
+                        except:
+                            pass
+                    
+                    # Exit the bot completely
+                    logger.critical("Shutting down bot in 5 seconds...")
+                    time_module.sleep(5)
+                    logger.critical("BOT SHUTDOWN - Session conflict detected")
+                    sys.exit(1)  # Exit with error code
                 else:
                     logger.critical("LICENSE VALIDATION FAILED - Forbidden")
                     bot_status["license_expired"] = True
@@ -7960,6 +7983,8 @@ def send_heartbeat() -> None:
     Called every 30 seconds to show bot is alive.
     Admin dashboard uses this to show online users and performance.
     """
+    global broker
+    
     # Skip in backtest mode
     if is_backtest_mode():
         return
@@ -8048,13 +8073,13 @@ def send_heartbeat() -> None:
             if data.get("session_conflict", False):
                 logger.critical("=" * 70)
                 logger.critical("")
-                logger.critical("  ⚠️ LICENSE ALREADY IN USE")
+                logger.critical("  ⚠️ LICENSE ALREADY IN USE - AUTO SHUTDOWN")
                 logger.critical("")
-                logger.critical("  Your license key is currently active on another device.")
+                logger.critical("  Your license key is currently active on another device/instance.")
                 logger.critical(f"  Active device: {data.get('active_device', 'Unknown')}")
                 logger.critical("")
-                logger.critical("  Only one device can use a license at a time.")
-                logger.critical("  Please stop the bot on the other device first.")
+                logger.critical("  Only one instance can use a license at a time.")
+                logger.critical("  This bot instance will now shut down automatically.")
                 logger.critical("")
                 logger.critical("  Contact: support@quotrading.com")
                 logger.critical("")
@@ -8066,39 +8091,50 @@ def send_heartbeat() -> None:
                 bot_status["stop_reason"] = "session_conflict"
                 
                 # Disconnect broker
-                global broker
                 if broker is not None:
                     try:
                         broker.disconnect()
                     except:
                         pass
                 
-                # Bot stays ON but IDLE - never exits
-                logger.critical("Bot will remain ON but IDLE (no trading)")
-                logger.critical("Press Ctrl+C to stop bot")
+                # Exit the bot completely
+                logger.critical("Shutting down bot in 5 seconds...")
+                time_module.sleep(5)
+                logger.critical("BOT SHUTDOWN - Session conflict detected")
+                sys.exit(1)  # Exit with error code
             
             logger.debug("Heartbeat sent successfully")
         elif response.status_code == 403:
             # Session conflict detected by server
             logger.critical("=" * 70)
             logger.critical("")
-            logger.critical("  ⚠️ LICENSE ALREADY IN USE")
+            logger.critical("  ⚠️ LICENSE ALREADY IN USE - AUTO SHUTDOWN")
             logger.critical("")
-            logger.critical("  Your license key is currently active on another device.")
-            logger.critical("  Only one device can use a license at a time.")
+            logger.critical("  Your license key is currently active on another device/instance.")
+            logger.critical("  Only one instance can use a license at a time.")
+            logger.critical("  This bot instance will now shut down automatically.")
             logger.critical("")
             logger.critical("  Contact: support@quotrading.com")
             logger.critical("")
             logger.critical("=" * 70)
             
-            # Disable trading but keep bot running
+            # Disable trading and shut down
             bot_status["trading_enabled"] = False
             bot_status["emergency_stop"] = True
             bot_status["stop_reason"] = "license_conflict"
             
-            # Bot stays ON but IDLE - never exits
-            logger.critical("Bot will remain ON but IDLE (no trading)")
-            logger.critical("Press Ctrl+C to stop bot")
+            # Disconnect broker
+            if broker is not None:
+                try:
+                    broker.disconnect()
+                except:
+                    pass
+            
+            # Exit the bot completely
+            logger.critical("Shutting down bot in 5 seconds...")
+            time_module.sleep(5)
+            logger.critical("BOT SHUTDOWN - Session conflict detected")
+            sys.exit(1)  # Exit with error code
         else:
             logger.debug(f"Heartbeat returned HTTP {response.status_code}")
     

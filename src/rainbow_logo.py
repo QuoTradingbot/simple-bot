@@ -98,14 +98,14 @@ def display_logo_line(line, color_offset=0):
     print(colored_line)
 
 
-def display_animated_logo(duration=3.0, fps=10):
+def display_animated_logo(duration=3.0, fps=15):
     """
     Display the QUO AI logo with animated rainbow colors.
     Colors slowly transition across the logo.
     
     Args:
-        duration: How long to animate in seconds
-        fps: Frames per second for animation
+        duration: How long to animate in seconds (default: 3.0)
+        fps: Frames per second for animation (default: 15, higher = smoother)
     """
     # Don't clear screen - just display the logo with animation
     frames = int(duration * fps)

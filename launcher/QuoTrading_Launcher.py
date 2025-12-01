@@ -1906,10 +1906,12 @@ class QuoTradingLauncher:
             if is_locked:
                 broker_username = lock_info.get("broker_username", "unknown")
                 created_at = lock_info.get("created_at", "unknown time")
+                # Use the display string from dropdown for account name
+                selected_account_display = self.account_dropdown_var.get()
                 messagebox.showerror(
                     "Account Already Trading",
                     f"❌ This account is already being traded!\n\n"
-                    f"Account: {selected_account_name}\n"
+                    f"Account: {selected_account_display}\n"
                     f"Broker: {broker_username}\n"
                     f"Started: {created_at}\n\n"
                     f"You cannot run multiple bots on the same trading account.\n"

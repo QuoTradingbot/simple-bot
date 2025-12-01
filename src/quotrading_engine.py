@@ -425,117 +425,134 @@ def save_trade_experience(
 # PHASE TWO: SDK Integration
 # ============================================================================
 
+def validate_license_at_startup() -> None:
+    """
+    Validate license at bot startup BEFORE any initialization.
+    This is the "login screen" - checks license and session lock.
+    Called at the very beginning of main() to fail fast if license is invalid.
+    """
+    # Skip in backtest mode
+    if is_backtest_mode():
+        logger.info("Backtest mode - skipping license validation")
+        return
+    
+    license_key = os.getenv("QUOTRADING_LICENSE_KEY")
+    
+    if not license_key:
+        logger.critical("=" * 70)
+        logger.critical("NO LICENSE KEY FOUND")
+        logger.critical("Please set QUOTRADING_LICENSE_KEY in your .env file")
+        logger.critical("Contact support@quotrading.com to purchase a license")
+        logger.critical("=" * 70)
+        sys.exit(1)
+    
+    logger.info("🔐 Validating license...")
+    try:
+        import requests
+        api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
+        
+        # Validate with server (server handles both regular and admin keys)
+        # Include device fingerprint for session locking
+        response = requests.post(
+            f"{api_url}/api/main",
+            json={
+                "license_key": license_key,
+                "device_fingerprint": get_device_fingerprint()  # Session locking
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("license_valid"):
+                logger.info(f"✅ License validated - {data.get('message', 'Access Granted')}")
+            else:
+                reason = data.get('message', 'Unknown error')
+                logger.critical("=" * 70)
+                logger.critical("INVALID OR EXPIRED LICENSE")
+                logger.critical(f"Reason: {reason}")
+                if "expired" in reason.lower():
+                    logger.critical("Your license has expired. Please renew to continue trading.")
+                logger.critical("Contact: support@quotrading.com")
+                logger.critical("=" * 70)
+                sys.exit(1)
+        elif response.status_code == 403:
+            # Check if it's a session conflict
+            data = response.json()
+            if data.get("session_conflict"):
+                logger.warning("⚠️ Session conflict detected - attempting to clear stale session...")
+                
+                # Try to clear stale sessions
+                try:
+                    clear_response = requests.post(
+                        f"{api_url}/api/session/clear",
+                        json={"license_key": license_key},
+                        timeout=10
+                    )
+                    
+                    if clear_response.status_code == 200:
+                        logger.info("✅ Stale session cleared, retrying validation...")
+                        
+                        # Retry validation
+                        retry_response = requests.post(
+                            f"{api_url}/api/validate-license",
+                            json={
+                                "license_key": license_key,
+                                "device_fingerprint": get_device_fingerprint()
+                            },
+                            timeout=10
+                        )
+                        
+                        if retry_response.status_code == 200:
+                            retry_data = retry_response.json()
+                            if retry_data.get("license_valid"):
+                                logger.info(f"✅ License validated - {retry_data.get('message', 'Access Granted')}")
+                            else:
+                                logger.critical("License validation failed after clearing stale session")
+                                sys.exit(1)
+                        else:
+                            logger.critical("License validation failed after clearing stale session")
+                            sys.exit(1)
+                    else:
+                        # Stale session clear failed, still a real conflict
+                        logger.critical("=" * 70)
+                        logger.critical("")
+                        logger.critical("  ⚠️ LICENSE ALREADY IN USE")
+                        logger.critical("")
+                        logger.critical("  Your license key is currently active on another device.")
+                        logger.critical("  Only one device can use a license at a time.")
+                        logger.critical("")
+                        logger.critical("  Contact: support@quotrading.com")
+                        logger.critical("")
+                        logger.critical("=" * 70)
+                        sys.exit(1)
+                except Exception as clear_error:
+                    logger.critical(f"Failed to clear stale session: {clear_error}")
+                    sys.exit(1)
+            else:
+                logger.critical(f"License validation failed - HTTP {response.status_code}")
+                logger.critical("Please contact support@quotrading.com")
+                sys.exit(1)
+        else:
+            logger.critical(f"License validation failed - HTTP {response.status_code}")
+            logger.critical("Please contact support@quotrading.com")
+            sys.exit(1)
+    except Exception as e:
+        logger.critical(f"License validation error: {e}")
+        logger.critical("Cannot start bot without valid license")
+        sys.exit(1)
+
+
 def initialize_broker() -> None:
     """
     Initialize the broker interface using configuration.
     Uses configured broker with error recovery and circuit breaker.
     SHADOW MODE: Shows trading signals without executing (manual trading mode).
+    
+    Note: License validation is done at startup in validate_license_at_startup().
+    This function only handles broker connection.
     """
     global broker, recovery_manager
-    
-    # ===== LICENSE VALIDATION =====
-    # Check if user has valid license before connecting to broker
-    # Both regular licenses and admin keys must be validated by the server
-    license_key = os.getenv("QUOTRADING_LICENSE_KEY")
-    
-    if license_key:
-        logger.info("🔐 Validating license...")
-        try:
-            import requests
-            api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
-            
-            # Validate with server (server handles both regular and admin keys)
-            # Include device fingerprint for session locking
-            response = requests.post(
-                f"{api_url}/api/main",
-                json={
-                    "license_key": license_key,
-                    "device_fingerprint": get_device_fingerprint()  # Session locking
-                },
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("license_valid"):
-                    logger.info(f"Γ£à License validated - {data.get('message', 'Access Granted')}")
-                else:
-                    reason = data.get('message', 'Unknown error')
-                    logger.error("=" * 70)
-                    logger.error("INVALID OR EXPIRED LICENSE - Bot will not start")
-                    logger.error(f"Reason: {reason}")
-                    if "expired" in reason.lower():
-                        logger.error("Your license has expired. Please renew to continue trading.")
-                    logger.error("Contact: support@quotrading.com")
-                    logger.error("=" * 70)
-                    sys.exit(1)
-            elif response.status_code == 403:
-                # Check if it's a session conflict
-                data = response.json()
-                if data.get("session_conflict"):
-                    logger.warning("⚠️ Session conflict detected - attempting to clear stale session...")
-                    
-                    # Try to clear stale sessions
-                    try:
-                        clear_response = requests.post(
-                            f"{api_url}/api/session/clear",
-                            json={"license_key": license_key},
-                            timeout=10
-                        )
-                        
-                        if clear_response.status_code == 200:
-                            logger.info("✅ Stale session cleared, retrying validation...")
-                            
-                            # Retry validation
-                            retry_response = requests.post(
-                                f"{api_url}/api/validate-license",
-                                json={
-                                    "license_key": license_key,
-                                    "device_fingerprint": get_device_fingerprint()
-                                },
-                                timeout=10
-                            )
-                            
-                            if retry_response.status_code == 200:
-                                retry_data = retry_response.json()
-                                if retry_data.get("license_valid"):
-                                    logger.info(f"Γ£à License validated - {retry_data.get('message', 'Access Granted')}")
-                                else:
-                                    logger.error("License validation failed after clearing stale session")
-                                    sys.exit(1)
-                            else:
-                                logger.error("License validation failed after clearing stale session")
-                                sys.exit(1)
-                        else:
-                            # Stale session clear failed, still a real conflict
-                            logger.error("=" * 70)
-                            logger.error("LICENSE ALREADY IN USE")
-                            logger.error(f"Active device: {data.get('active_device', 'Unknown')}")
-                            logger.error("Another device is actively using this license.")
-                            logger.error("Please stop the bot on the other device first.")
-                            logger.error("Contact: support@quotrading.com")
-                            logger.error("=" * 70)
-                            sys.exit(1)
-                    except Exception as clear_error:
-                        logger.error(f"Failed to clear stale session: {clear_error}")
-                        sys.exit(1)
-                else:
-                    logger.error(f"Γ¥î License validation failed - HTTP {response.status_code}")
-                    logger.error("Please contact support@quotrading.com")
-                    sys.exit(1)
-            else:
-                logger.error(f"Γ¥î License validation failed - HTTP {response.status_code}")
-                logger.error("Please contact support@quotrading.com")
-                sys.exit(1)
-        except Exception as e:
-            logger.error(f"Γ¥î License validation error: {e}")
-            logger.error("Cannot start bot without valid license")
-            sys.exit(1)
-    else:
-        logger.error("Γ¥î NO LICENSE KEY FOUND")
-        logger.error("Please set QUOTRADING_LICENSE_KEY in your .env file")
-        logger.error("Contact support@quotrading.com to purchase a license")
-        sys.exit(1)
     
     # In shadow mode, show signals only (no execution)
     if CONFIG.get("shadow_mode", False):
@@ -7258,6 +7275,10 @@ def main(symbol_override: str = None) -> None:
     """
     global event_loop, timer_manager, bid_ask_manager, cloud_api_client, rl_brain
     
+    # CRITICAL: Validate license FIRST, before any initialization
+    # This is the "login screen" - fail fast if license invalid or session conflict
+    validate_license_at_startup()
+    
     # Use symbol override if provided (for multi-symbol support)
     trading_symbol = symbol_override if symbol_override else CONFIG["instrument"]
     
@@ -7380,7 +7401,7 @@ def main(symbol_override: str = None) -> None:
     if broker is not None and hasattr(broker, 'subscribe_quotes'):
         logger.info(f"[{trading_symbol}] Subscribing to bid/ask quotes...")
         try:
-            broker.subscribe_quotes(symbol, on_quote)
+            broker.subscribe_quotes(trading_symbol, on_quote)
         except Exception as e:
             logger.warning(f"Failed to subscribe to quotes: {e}")
             logger.warning("Continuing without bid/ask quote data")

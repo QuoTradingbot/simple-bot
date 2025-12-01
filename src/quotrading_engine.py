@@ -8227,15 +8227,18 @@ if __name__ == "__main__":
     # This creates a splash screen effect while the bot initializes
     if RAINBOW_LOGO_AVAILABLE:
         try:
-            # Clear screen first for clean presentation
-            import os
-            os.system('cls' if os.name == 'nt' else 'clear')
+            # Clear screen for clean presentation, show logo, then clear for logs
+            # Note: os module already imported at top of file
+            clear_cmd = 'cls' if os.name == 'nt' else 'clear'
+            
+            # Clear screen first
+            os.system(clear_cmd)
             
             # Show logo without headers - full screen splash
             display_animated_logo(duration=3.0, fps=15, with_headers=False)
             
             # Clear screen after logo to make room for logs
-            os.system('cls' if os.name == 'nt' else 'clear')
+            os.system(clear_cmd)
         except Exception:
             # Logo display failed - continue without it (not critical)
             pass

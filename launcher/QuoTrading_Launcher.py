@@ -1954,6 +1954,148 @@ class QuoTradingLauncher:
         if not result:
             return
         
+        # Show countdown dialog before launching
+        self.show_countdown_and_launch(selected_symbols, selected_account_id, loss_limit)
+    
+    def show_countdown_and_launch(self, selected_symbols, selected_account_id, loss_limit):
+        """Show 8-second countdown with settings display and cancel option."""
+        # Create countdown dialog
+        countdown_dialog = tk.Toplevel(self.root)
+        countdown_dialog.title("Launching QuoTrading AI")
+        countdown_dialog.geometry("500x450")
+        countdown_dialog.resizable(False, False)
+        countdown_dialog.configure(bg=self.colors['card'])
+        
+        # Make it modal
+        countdown_dialog.transient(self.root)
+        countdown_dialog.grab_set()
+        
+        # Remove window decorations for modern look
+        countdown_dialog.overrideredirect(True)
+        
+        # Center the dialog
+        countdown_dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (countdown_dialog.winfo_width() // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (countdown_dialog.winfo_height() // 2)
+        countdown_dialog.geometry(f"+{x}+{y}")
+        
+        # Add border frame
+        border_frame = tk.Frame(countdown_dialog, bg=self.colors['border'], bd=0)
+        border_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        
+        # Inner frame
+        inner_frame = tk.Frame(border_frame, bg=self.colors['card'])
+        inner_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
+        
+        # Header
+        header_label = tk.Label(
+            inner_frame,
+            text="🚀 LAUNCHING IN...",
+            font=("Segoe UI", 16, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['success']
+        )
+        header_label.pack(pady=(20, 10))
+        
+        # Countdown display
+        countdown_label = tk.Label(
+            inner_frame,
+            text="8",
+            font=("Segoe UI", 48, "bold"),
+            bg=self.colors['card'],
+            fg=self.colors['success']
+        )
+        countdown_label.pack(pady=10)
+        
+        # Settings display
+        settings_frame = tk.Frame(inner_frame, bg=self.colors['secondary'], relief=tk.FLAT)
+        settings_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        
+        tk.Label(
+            settings_frame,
+            text="📋 Your Trading Configuration:",
+            font=("Segoe UI", 11, "bold"),
+            bg=self.colors['secondary'],
+            fg=self.colors['text']
+        ).pack(pady=(10, 5))
+        
+        # Display all settings
+        symbols_str = ", ".join(selected_symbols)
+        broker = self.config.get("broker", "TopStep")
+        account = self.account_dropdown_var.get()
+        contracts = self.contracts_var.get()
+        max_trades = self.trades_var.get()
+        confidence = self.confidence_var.get()
+        shadow_mode = "ON" if self.shadow_mode_var.get() else "OFF"
+        
+        settings_text = f"""
+Broker: {broker}
+Account: {account}
+Symbols: {symbols_str}
+Contracts Per Trade: {contracts}
+Daily Loss Limit: ${loss_limit}
+Max Trades/Day: {max_trades}
+Confidence Threshold: {confidence}%
+Shadow Mode: {shadow_mode}
+        """
+        
+        settings_label = tk.Label(
+            settings_frame,
+            text=settings_text.strip(),
+            font=("Segoe UI", 9),
+            bg=self.colors['secondary'],
+            fg=self.colors['text'],
+            justify=tk.LEFT
+        )
+        settings_label.pack(pady=(5, 10))
+        
+        # Cancel button
+        self.countdown_cancelled = False
+        
+        def cancel_launch():
+            self.countdown_cancelled = True
+            countdown_dialog.destroy()
+        
+        cancel_btn = tk.Button(
+            inner_frame,
+            text="❌ CANCEL",
+            font=("Segoe UI", 10, "bold"),
+            bg=self.colors['error'],
+            fg='white',
+            activebackground='#B91C1C',
+            activeforeground='white',
+            relief=tk.FLAT,
+            bd=0,
+            command=cancel_launch,
+            cursor="hand2",
+            width=20,
+            height=2
+        )
+        cancel_btn.pack(pady=(5, 20))
+        
+        # Countdown logic
+        countdown_value = [8]  # Use list to allow modification in nested function
+        
+        def update_countdown():
+            if self.countdown_cancelled:
+                return
+            
+            if countdown_value[0] > 0:
+                countdown_label.config(text=str(countdown_value[0]))
+                countdown_value[0] -= 1
+                countdown_dialog.after(1000, update_countdown)
+            else:
+                # Countdown finished - launch bot
+                countdown_dialog.destroy()
+                self.launch_bot_process(selected_symbols, selected_account_id)
+        
+        # Start countdown
+        update_countdown()
+    
+    def launch_bot_process(self, selected_symbols, selected_account_id):
+        """Launch the bot process after countdown completes."""
+        symbols_str = ", ".join(selected_symbols)
+        
         # Launch AI in PowerShell terminal
         try:
             # Get the AI directory (parent of launcher folder)

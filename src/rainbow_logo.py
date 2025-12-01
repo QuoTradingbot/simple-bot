@@ -25,13 +25,14 @@ class Colors:
     MAGENTA = '\033[35m'
 
 
-# ASCII Art for "QuoTrading AI" - Pixel/Dotted style version (all on one line)
+# ASCII Art for "QUOTRADING AI" - Outline style that clearly spells the words
 QUO_AI_LOGO = [
-    "      ░▒▓███▓▒░                 ▀▀█▀▀                          ▓▒░       ▓▒░                 ░▒▓█▓▒░  ▀▀█▀▀",
-    "     ░▓█▀░░▀█▓░ █▒░  ░▒█  ▒█▀▀█   █     ▄▀▀▄ █▀▀█ █▀▀▄ ░▀░ █▀▀▄ █▀▀█      ░▓█▀▀█▓░   █",
-    "     ░▓█░  ░█▓░ █▒░  ░▒█  ▒█░░█   █     █▄▄█ █▄▄▀ █░░█ ▀█▀ █░░█ █░▄▄      ░▓█▄▄█▓░   █",
-    "     ░▓█▄░░▄█▓░ ░▒█▄▄▄█▒  ▒█░▄█   █     ▀░░▀ ▀░▀▀ ▀▀▀░ ▀▀▀ ▀░░▀ ▀▄▄▀       ░▒▓█▓▒░ ▀▀▀▀▀",
-    "      ░▒▓███▓▒░   ░▒▒▒▒░   ▒▒▒▒▒   ▀"
+    "  ██████╗ ██╗   ██╗ ██████╗ ████████╗██████╗  █████╗ ██████╗ ██╗███╗   ██╗ ██████╗      █████╗ ██╗",
+    " ██╔═══██╗██║   ██║██╔═══██╗╚══██╔══╝██╔══██╗██╔══██╗██╔══██╗██║████╗  ██║██╔════╝     ██╔══██╗██║",
+    " ██║   ██║██║   ██║██║   ██║   ██║   ██████╔╝███████║██║  ██║██║██╔██╗ ██║██║  ███╗    ███████║██║",
+    " ██║▄▄ ██║██║   ██║██║   ██║   ██║   ██╔══██╗██╔══██║██║  ██║██║██║╚██╗██║██║   ██║    ██╔══██║██║",
+    " ╚██████╔╝╚██████╔╝╚██████╔╝   ██║   ██║  ██║██║  ██║██████╔╝██║██║ ╚████║╚██████╔╝    ██║  ██║██║",
+    "  ╚═════╝  ╚═════╝  ╚═════╝    ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝     ╚═╝  ╚═╝╚═╝"
 ]
 
 # Subtitle for professional branding
@@ -101,6 +102,55 @@ def color_line_with_gradient(line, color_offset):
     return colored_line
 
 
+def color_line_with_gradient_and_fade(line, color_offset, fade_progress):
+    """
+    Color a line with rainbow gradient and fade-in effect.
+    Starts super dark and gradually becomes more visible.
+    
+    Args:
+        line: Line of text to color
+        color_offset: Offset for rainbow animation
+        fade_progress: Progress of fade (0.0 = super dark, 1.0 = fully visible)
+    
+    Returns:
+        Colored line string with fade effect
+    """
+    total_chars = len(line)
+    colored_line = ""
+    
+    # Calculate brightness based on fade progress
+    # Start at 0 (invisible/super dark) and go to 100 (fully visible)
+    brightness = int(fade_progress * 100)
+    
+    # Use dim text ANSI code for fade effect
+    if fade_progress < 0.3:
+        # Super dark - use dark gray color
+        dim_code = '\033[2m\033[90m'  # Dim + dark gray
+    elif fade_progress < 0.6:
+        # Medium - use regular gray
+        dim_code = '\033[90m'  # Dark gray
+    elif fade_progress < 0.9:
+        # Getting visible - use light gray
+        dim_code = '\033[37m'  # Light gray
+    else:
+        # Fully visible - use rainbow colors
+        dim_code = ''
+    
+    if fade_progress < 0.9:
+        # Apply dim effect during fade-in
+        for char in line:
+            if char.strip():
+                colored_line += dim_code + char + Colors.RESET
+            else:
+                colored_line += char
+    else:
+        # Fully visible - use rainbow gradient
+        for i, char in enumerate(line):
+            colored_line += color_char_with_gradient(char, i, total_chars, color_offset)
+    
+    return colored_line
+
+
 def display_logo_line(line, color_offset=0, center_width=80):
     """
     Display a single line of the logo with rainbow gradient, centered.
@@ -117,33 +167,33 @@ def display_logo_line(line, color_offset=0, center_width=80):
     print(" " * padding + colored_line)
 
 
-def display_animated_logo(duration=8.0, fps=15, with_headers=True):
+def display_animated_logo(duration=3.0, fps=20, with_headers=True):
     """
     Display the QuoTrading AI logo with animated rainbow colors.
-    Professional splash screen - shows logo and subtitle with flowing rainbow gradient.
-    Both the main logo text and the subtitle use the same rainbow color animation.
+    Professional splash screen - shows logo with flowing rainbow gradient.
+    Subtitle fades in from dark to visible over time.
     
     Args:
-        duration: How long to display in seconds (default: 8.0)
-        fps: Frames per second for animation (default: 15, higher = smoother)
+        duration: How long to display in seconds (default: 3.0, reduced for faster startup)
+        fps: Frames per second for animation (default: 20, increased for smoother animation)
         with_headers: Whether to show header/footer text (default: True)
     """
     frames = int(duration * fps)
     delay = 1.0 / fps
     
-    # Get terminal width for centering (default to 80 if not available)
+    # Get terminal dimensions for centering
     try:
-        terminal_width = os.get_terminal_size().columns
+        terminal_size = os.get_terminal_size()
+        terminal_width = terminal_size.columns
+        terminal_height = terminal_size.lines
     except OSError:
         # Terminal size cannot be determined (e.g., output redirected)
-        terminal_width = 80
+        terminal_width = 120
+        terminal_height = 30
     
-    # Calculate vertical centering
-    vertical_padding = 5  # Add some top padding
-    
-    if not with_headers:
-        # Professional splash - add top padding
-        print("\n" * vertical_padding)
+    # Calculate vertical centering - center the logo in the middle of screen
+    logo_lines = len(QUO_AI_LOGO) + 2  # Logo + blank + subtitle
+    vertical_padding = max(0, (terminal_height - logo_lines) // 2)
     
     # We'll update the display in place using carriage return and line clearing
     # Number of lines we'll be updating
@@ -153,28 +203,35 @@ def display_animated_logo(duration=8.0, fps=15, with_headers=True):
         # Calculate color offset for flowing rainbow effect
         color_offset = (frame / frames) * len(get_rainbow_colors())
         
-        # If not first frame, move cursor up to redraw
-        if frame > 0:
-            # Move cursor up to beginning of logo
+        # Calculate fade-in progress for subtitle (0.0 to 1.0)
+        fade_progress = frame / max(1, frames - 1)
+        
+        # If first frame, add vertical padding to center logo
+        if frame == 0:
+            # Add top padding for vertical centering
+            print("\n" * vertical_padding, end='')
+            sys.stdout.flush()
+        else:
+            # Move cursor up to beginning of logo (not including top padding)
             sys.stdout.write(f'\033[{total_display_lines}A')
         
         # Display each line of logo with rainbow colors
         for line in QUO_AI_LOGO:
             # Clear the line first
             sys.stdout.write('\033[2K')
-            # Get colored line and center it
+            # Get colored line and center it horizontally
             colored_line = color_line_with_gradient(line, color_offset)
-            padding = (terminal_width - len(line)) // 2
+            padding = max(0, (terminal_width - len(line)) // 2)
             sys.stdout.write(" " * padding + colored_line + "\n")
         
         # Blank line
         sys.stdout.write('\033[2K\n')
         
-        # Subtitle with rainbow gradient (centered)
+        # Subtitle with fade-in effect (centered)
         sys.stdout.write('\033[2K')  # Clear line
-        # Apply rainbow gradient to subtitle
-        subtitle_colored = color_line_with_gradient(SUBTITLE, color_offset)
-        subtitle_padding = (terminal_width - len(SUBTITLE)) // 2
+        # Apply rainbow gradient to subtitle with fade-in
+        subtitle_colored = color_line_with_gradient_and_fade(SUBTITLE, color_offset, fade_progress)
+        subtitle_padding = max(0, (terminal_width - len(SUBTITLE)) // 2)
         sys.stdout.write(" " * subtitle_padding + subtitle_colored + "\n")
         
         # Flush to ensure immediate display

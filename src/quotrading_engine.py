@@ -8223,21 +8223,13 @@ def cleanup_on_shutdown() -> None:
 
 
 if __name__ == "__main__":
-    # Display rainbow logo immediately when PowerShell opens (before any logs)
-    # This creates a splash screen effect while the bot initializes
+    # Display rainbow logo IMMEDIATELY when PowerShell opens (no initial clear screen)
+    # This ensures the logo appears instantly instead of showing a black screen first
     if RAINBOW_LOGO_AVAILABLE:
         try:
-            # Clear screen for clean presentation, show logo, then clear for logs
-            # Use hardcoded commands for security (no user input)
-            if os.name == 'nt':
-                # Windows
-                os.system('cls')
-            else:
-                # Unix/Linux/Mac
-                os.system('clear')
-            
-            # Show logo without headers - full screen splash
-            display_animated_logo(duration=8.0, fps=15, with_headers=False)
+            # Show logo immediately without clearing first - instant display
+            # This creates a professional loading screen effect
+            display_animated_logo(duration=3.0, fps=20, with_headers=False)
             
             # Clear screen after logo to make room for logs
             if os.name == 'nt':

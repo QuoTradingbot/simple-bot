@@ -412,7 +412,7 @@ async def save_trade_experience_async(
             execution_data  # Pass execution metrics to cloud
         )
         
-        logger.info(f"☁️ Outcome reported to cloud: ${pnl:+.2f} in {duration_minutes:.1f}min")
+        pass  # Silent - cloud outcome reporting is transparent
         
     except Exception as e:
         pass  # Silent - cloud sync is transparent to customer
@@ -447,7 +447,7 @@ def validate_license_at_startup() -> None:
     """
     # Skip in backtest mode
     if is_backtest_mode():
-        logger.info("Backtest mode - skipping license validation")
+        pass  # Silent - backtest mode initialization
         return
     
     license_key = os.getenv("QUOTRADING_LICENSE_KEY")
@@ -460,7 +460,7 @@ def validate_license_at_startup() -> None:
         logger.critical("=" * 70)
         sys.exit(1)
     
-    logger.info("🔐 Validating license...")
+    pass  # Silent - license validation in progress
     try:
         import requests
         api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
@@ -469,7 +469,7 @@ def validate_license_at_startup() -> None:
         device_fp = get_device_fingerprint()
         import os as os_mod
         pid = os_mod.getpid()
-        logger.info(f"📱 Device fingerprint: {device_fp} (PID: {pid})")
+        pass  # Silent - device fingerprint internal
         
         # Validate with server using /api/validate-license (session locking)
         # Include device fingerprint for session locking
@@ -544,7 +544,7 @@ def initialize_broker() -> None:
     if CONFIG.get("shadow_mode", False):
         logger.info("≡ƒôè SIGNAL-ONLY MODE - Shows signals without executing trades")
     
-    logger.info("Initializing broker interface...")
+    pass  # Silent - broker initialization is internal
     
     # Create error recovery manager
     recovery_manager = ErrorRecoveryManager(CONFIG)
@@ -554,13 +554,13 @@ def initialize_broker() -> None:
     broker = create_broker(_bot_config.api_token, _bot_config.username, CONFIG["instrument"])
     
     # Connect to broker (initial connection doesn't use circuit breaker)
-    logger.info("Connecting to broker...")
+    pass  # Silent - connection in progress
     if not broker.connect():
         logger.error("Failed to connect to broker")
         return False
         raise RuntimeError("Broker connection failed")
     
-    logger.info("Broker connected successfully")
+    logger.info("✅ Bot Ready - Connected to broker")
     
     # Send bot startup alert
     try:
@@ -855,7 +855,7 @@ def get_account_equity() -> float:
         success, equity = breaker.call(broker.get_account_equity)
         
         if success:
-            logger.info(f"Account equity: ${equity:.2f}")
+            pass  # Silent - account equity query internal
             return equity
         else:
             logger.error("Failed to get account equity")
@@ -882,7 +882,7 @@ def place_market_order(symbol: str, side: str, quantity: int) -> Optional[Dict[s
     """
     # Backtest mode: Simulate order without broker
     if is_backtest_mode():
-        logger.info(f"[BACKTEST] Market Order: {side} {quantity} {symbol}")
+        pass  # Silent - backtest order simulated
         return {
             "order_id": f"BACKTEST_{datetime.now().timestamp()}",
             "symbol": symbol,
@@ -893,7 +893,7 @@ def place_market_order(symbol: str, side: str, quantity: int) -> Optional[Dict[s
             "backtest": True
         }
     
-    logger.info(f"Market Order: {side} {quantity} {symbol}")
+    pass  # Silent - order logged at higher level (entry/exit)
     
     if broker is None:
         logger.error("Broker not initialized")
@@ -966,7 +966,7 @@ def place_stop_order(symbol: str, side: str, quantity: int, stop_price: float) -
     """
     # Backtest mode: Simulate order without broker
     if is_backtest_mode():
-        logger.info(f"[BACKTEST] Stop Order: {side} {quantity} {symbol} @ {stop_price}")
+        pass  # Silent - backtest stop order simulated
         return {
             "order_id": f"BACKTEST_STOP_{datetime.now().timestamp()}",
             "symbol": symbol,
@@ -979,7 +979,7 @@ def place_stop_order(symbol: str, side: str, quantity: int, stop_price: float) -
         }
     
     shadow_mode = _bot_config.shadow_mode
-    logger.info(f"{'[SHADOW MODE] ' if shadow_mode else ''}Stop Order: {side} {quantity} {symbol} @ {stop_price}")
+    pass  # Silent - stop order logged at higher level
     
     if shadow_mode:
         return {
@@ -1036,7 +1036,7 @@ def place_limit_order(symbol: str, side: str, quantity: int, limit_price: float)
     """
     # Backtest mode: Simulate order without broker
     if is_backtest_mode():
-        logger.info(f"[BACKTEST] Limit Order: {side} {quantity} {symbol} @ {limit_price}")
+        pass  # Silent - backtest limit order simulated
         return {
             "order_id": f"BACKTEST_LIMIT_{datetime.now().timestamp()}",
             "symbol": symbol,
@@ -1049,7 +1049,7 @@ def place_limit_order(symbol: str, side: str, quantity: int, limit_price: float)
         }
     
     shadow_mode = _bot_config.shadow_mode
-    logger.info(f"{'[SHADOW MODE] ' if shadow_mode else ''}Limit Order: {side} {quantity} {symbol} @ {limit_price}")
+    pass  # Silent - limit order logged at higher level
     
     if shadow_mode:
         return {
@@ -1107,7 +1107,7 @@ def cancel_order(symbol: str, order_id: str) -> bool:
         return True
     
     shadow_mode = _bot_config.shadow_mode
-    logger.info(f"{'[SHADOW MODE] ' if shadow_mode else ''}Cancelling Order: {order_id} for {symbol}")
+    pass  # Silent - order cancellation logged at higher level
     
     if shadow_mode:
         logger.info(f"[SHADOW MODE] Order {order_id} cancelled (simulated)")
@@ -1204,7 +1204,7 @@ def subscribe_market_data(symbol: str, callback: Callable[[str, float, int, int]
         symbol: Instrument symbol
         callback: Function to call with tick data (symbol, price, volume, timestamp)
     """
-    logger.info(f"Subscribing to market data: {symbol}")
+    pass  # Silent - market data subscription internal
     
     if broker is None:
         logger.error("Broker not initialized")
@@ -1213,7 +1213,7 @@ def subscribe_market_data(symbol: str, callback: Callable[[str, float, int, int]
     try:
         # Subscribe through broker interface
         broker.subscribe_market_data(symbol, callback)
-        logger.info(f"Subscribed to market data for {symbol}")
+        pass  # Silent - subscription successful
     except Exception as e:
         logger.error(f"Error subscribing to market data: {e}")
         action = recovery_manager.handle_error(
@@ -1234,7 +1234,7 @@ def fetch_historical_bars(symbol: str, timeframe: int, count: int) -> List[Dict[
     Returns:
         List of bar dictionaries with OHLCV data
     """
-    logger.info(f"Fetching {count} historical {timeframe}min bars for {symbol}")
+    pass  # Silent - historical data fetch internal
     
     
     if broker is None:
@@ -1247,7 +1247,7 @@ def fetch_historical_bars(symbol: str, timeframe: int, count: int) -> List[Dict[
         success, bars = breaker.call(broker.fetch_historical_bars, symbol, f"{timeframe}m", count)
         
         if success and bars:
-            logger.info(f"Fetched {len(bars)} bars")
+            pass  # Silent - bars fetched
             return bars
         else:
             logger.warning("Failed to fetch historical bars")
@@ -1386,7 +1386,7 @@ def initialize_state(symbol: str) -> None:
         "volume_history": deque(maxlen=CONFIG["max_bars_storage"])
     }
     
-    logger.info(f"State initialized for {symbol}")
+    pass  # Silent - state initialization internal
 
 
 # ============================================================================
@@ -1514,7 +1514,7 @@ def load_position_state(symbol: str) -> bool:
         account_id = os.getenv('SELECTED_ACCOUNT_ID', 'default')
         state_file = get_data_file_path(f"data/bot_state_{account_id}.json")
         if not state_file.exists():
-            logger.info("No saved position state found (clean start)")
+            pass  # Silent - clean start
             return False
         
         with open(state_file, 'r') as f:
@@ -1522,11 +1522,11 @@ def load_position_state(symbol: str) -> bool:
         
         # Check if saved state is for this symbol and has an active position
         if saved_state.get("symbol") != symbol:
-            logger.info(f"Saved state is for different symbol: {saved_state.get('symbol')}")
+            pass  # Silent - different symbol
             return False
         
         if not saved_state.get("active"):
-            logger.info("Saved state shows no active position")
+            pass  # Silent - no active position
             return False
         
         # CRITICAL: Verify with broker before restoring state
@@ -1675,7 +1675,7 @@ def inject_complete_bar(symbol: str, bar: Dict[str, Any]) -> None:
     
     # First bar check
     if len(state[symbol]["bars_1min"]) == 0:
-        logger.info(f"[INJECT_BAR] First bar: H={bar.get('high', 'MISSING'):.2f} L={bar.get('low', 'MISSING'):.2f}")
+        pass  # Silent - bar injection internal (backtest mode)
     
     # Finalize any pending bar first
     if state[symbol]["current_1min_bar"] is not None:
@@ -2219,7 +2219,7 @@ def calculate_vwap(symbol: str) -> None:
     # Log VWAP update every 10 bars to show bot is working
     bar_count = len(bars)
     if bar_count % 10 == 0:
-        logger.info(f"[MARKET] ${vwap:.2f} | StdDev: ${std_dev:.2f} | Bars: {bar_count} | "
+        pass  # Silent - VWAP calculation internal
                    f"U2: ${state[symbol]['vwap_bands']['upper_2']:.2f} | "
                    f"L2: ${state[symbol]['vwap_bands']['lower_2']:.2f}")
     else:
@@ -2353,13 +2353,13 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
     
     # Check data availability
     if len(state[symbol]["bars_1min"]) < 2:
-        logger.info(f"Not enough bars for signal: {len(state[symbol]['bars_1min'])}/2")
+        pass  # Silent - signal check skipped (not enough bars)
         return False, "Insufficient bars"
     
     # Check VWAP bands
     vwap_bands = state[symbol]["vwap_bands"]
     if any(v is None for v in vwap_bands.values()):
-        logger.info("Price bands not yet calculated")
+        pass  # Silent - price bands not ready
         return False, "VWAP not ready"
     
     # Check trend (optional - DOES NOT block signals if neutral)
@@ -2371,7 +2371,7 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
     if use_trend_filter:
         trend = state[symbol]["trend_direction"]
         if trend is None:
-            logger.info(f"Trend not yet established")
+            pass  # Silent - trend not ready
             return False, "Trend not established"
         # Neutral trend is OK - will trade both directions
     
@@ -2409,13 +2409,13 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
         # Validate spread (Requirement 8)
         is_acceptable, spread_reason = bid_ask_manager.validate_entry_spread(symbol)
         if not is_acceptable:
-            logger.info(f"Spread check failed: {spread_reason}")
+            pass  # Silent - spread check (internal filter)
             return False, spread_reason
         
         # Classify market condition (Requirement 11)
         try:
             condition, condition_reason = bid_ask_manager.classify_market_condition(symbol)
-            logger.info(f"Market Condition: {condition.upper()} - {condition_reason}")
+            pass  # Silent - market condition check (internal filter)
             
             # Skip trading in stressed markets
             if condition == "stressed":
@@ -2908,10 +2908,7 @@ def check_for_signals(symbol: str) -> None:
         take_signal, confidence, reason = get_ml_confidence(market_state, "long")
         
         if not take_signal:
-            logger.info(f"Γ¥î RL REJECTED LONG: {reason} (conf: {confidence:.0%})")
-            # Always show details (for debugging)
-            logger.info(f"   RSI: {market_state['rsi']:.1f}, VWAP dist: {market_state['vwap_distance']:.2f}, "
-                      f"Vol ratio: {market_state['volume_ratio']:.2f}x")
+            pass  # Silent - signal rejected by RL (not customer-facing)
             # Store the rejected signal state for potential future learning
             state[symbol]["last_rejected_signal"] = {
                 "time": get_current_time(),
@@ -2924,11 +2921,7 @@ def check_for_signals(symbol: str) -> None:
         
         # RL approved - adjust position size based on confidence
         regime = market_state.get('regime', 'NORMAL')
-        logger.info(f"Γ£à RL APPROVED LONG: {reason} (conf: {confidence:.0%}) | {regime}")
-        if not is_backtest_mode():
-            # Only show details in live mode
-            logger.info(f"   RSI: {market_state['rsi']:.1f}, VWAP dist: {market_state['vwap_distance']:.2f}, "
-                      f"Vol ratio: {market_state['volume_ratio']:.2f}x")
+        pass  # Silent - RL approval logged with entry signal
         
         # Store market state for outcome recording
         state[symbol]["entry_market_state"] = market_state
@@ -2948,10 +2941,7 @@ def check_for_signals(symbol: str) -> None:
         take_signal, confidence, reason = get_ml_confidence(market_state, "short")
         
         if not take_signal:
-            logger.info(f"Γ¥î RL REJECTED SHORT: {reason} (conf: {confidence:.0%})")
-            # Always show details (for debugging)
-            logger.info(f"   RSI: {market_state['rsi']:.1f}, VWAP dist: {market_state['vwap_distance']:.2f}, "
-                      f"Vol ratio: {market_state['volume_ratio']:.2f}x")
+            pass  # Silent - signal rejected by RL (not customer-facing)
             # Store the rejected signal state for potential future learning
             state[symbol]["last_rejected_signal"] = {
                 "time": get_current_time(),
@@ -2964,11 +2954,7 @@ def check_for_signals(symbol: str) -> None:
         
         # RL approved - adjust position size based on confidence
         regime = market_state.get('regime', 'NORMAL')
-        logger.info(f"Γ£à RL APPROVED SHORT: {reason} (conf: {confidence:.0%}) | {regime}")
-        if not is_backtest_mode():
-            # Only show details in live mode
-            logger.info(f"   RSI: {market_state['rsi']:.1f}, VWAP dist: {market_state['vwap_distance']:.2f}, "
-                      f"Vol ratio: {market_state['volume_ratio']:.2f}x")
+        pass  # Silent - RL approval logged with entry signal
         
         # Store market state for outcome recording
         state[symbol]["entry_market_state"] = market_state

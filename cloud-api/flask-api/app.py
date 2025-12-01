@@ -53,7 +53,7 @@ ADMIN_API_KEY = os.environ.get("ADMIN_API_KEY", "ADMIN-DEV-KEY-2026")  # For cre
 # A session is considered "active" if heartbeat received within this threshold
 # Heartbeats are sent every 20 seconds by the bot
 # Session expires after 40 seconds of no heartbeat - 2x heartbeat interval for crash detection while tolerating network issues
-SESSION_TIMEOUT_SECONDS = 40  # 40 seconds - session expires if no heartbeat for 40 seconds (2x heartbeat interval)
+SESSION_TIMEOUT_SECONDS = 60  # 60 seconds - session expires if no heartbeat for 60 seconds (3x heartbeat interval)
 WHOP_API_BASE_URL = "https://api.whop.com/api/v5"
 
 # Email configuration (for SendGrid or SMTP)
@@ -1190,7 +1190,7 @@ def validate_license_endpoint():
                                 # Heartbeat EXISTS - calculate age
                                 time_since_last = datetime.now() - last_heartbeat
                                 
-                                # If heartbeat exists and is recent (< SESSION_TIMEOUT_SECONDS = 60s)
+                                # If heartbeat exists and is recent (< SESSION_TIMEOUT_SECONDS)
                                 # Block ALL logins regardless of device - NO EXCEPTIONS
                                 if time_since_last < timedelta(seconds=SESSION_TIMEOUT_SECONDS):
                                     # Session is still within timeout window - BLOCK
@@ -1200,7 +1200,7 @@ def validate_license_endpoint():
                                         return jsonify({
                                             "license_valid": False,
                                             "session_conflict": True,
-                                            "message": "Instance Already Running - Another session is currently active. Please wait approximately 40 seconds after closing the other instance before trying again.",
+                                            "message": "Instance Already Running - Another session is currently active. Please wait approximately 60 seconds after closing the other instance before trying again.",
                                             "active_device": stored_device[:20] + "...",
                                             "estimated_wait_seconds": max(0, SESSION_TIMEOUT_SECONDS - int(time_since_last.total_seconds()))
                                         }), 403
@@ -1215,7 +1215,7 @@ def validate_license_endpoint():
                                             "estimated_wait_seconds": max(0, SESSION_TIMEOUT_SECONDS - int(time_since_last.total_seconds()))
                                         }), 403
                                 
-                                # Session fully expired (>= 40s) - allow takeover
+                                # Session fully expired (>= 60s) - allow takeover
                                 # Only after checking heartbeat EXISTS and is OLD do we allow login
                                 else:
                                     logging.info(f"🧹 Expired session (last seen {int(time_since_last.total_seconds())}s ago) - allowing takeover by {device_fingerprint[:8]}...")

@@ -3,7 +3,7 @@ Test: Strict Session Blocking - User Requirement
 =================================================
 This test demonstrates that NO login is allowed past the first screen
 while ANY session with that API key exists, regardless of:
-- How long it's been (as long as < 40s timeout)
+- How long it's been (as long as < 60s timeout)
 - Same device or different device
 - Any other factors
 
@@ -25,7 +25,7 @@ class StrictSessionManager:
     
     def __init__(self):
         self.sessions = {}
-        self.SESSION_TIMEOUT_SECONDS = 40  # Reduced to 40s (20s heartbeat × 2) for faster crash detection
+        self.SESSION_TIMEOUT_SECONDS = 60  # Session expires if no heartbeat for 60 seconds (3x heartbeat interval of 20s)
     
     def get_device_fingerprint(self, suffix=""):
         """Generate device fingerprint"""
@@ -37,7 +37,7 @@ class StrictSessionManager:
     
     def login(self, license_key: str, device_fp: str) -> tuple[bool, str]:
         """
-        STRICT BLOCKING: If session exists with heartbeat < 40s, BLOCK ALL
+        STRICT BLOCKING: If session exists with heartbeat < 60s, BLOCK ALL
         No exceptions for same device, no transition window, no crash recovery grace period
         """
         if license_key in self.sessions:
@@ -45,14 +45,14 @@ class StrictSessionManager:
             
             time_since = datetime.now() - last_heartbeat
             
-            # If heartbeat exists and is < 40s, BLOCK ALL
+            # If heartbeat exists and is < 60s, BLOCK ALL
             if time_since < timedelta(seconds=self.SESSION_TIMEOUT_SECONDS):
                 if stored_fp == device_fp:
                     return False, f"❌ BLOCKED - Same device, session exists ({int(time_since.total_seconds())}s ago)"
                 else:
                     return False, f"❌ BLOCKED - Different device, session exists ({int(time_since.total_seconds())}s ago)"
             else:
-                # Fully expired (>= 40s)
+                # Fully expired (>= 60s)
                 self.sessions[license_key] = (device_fp, datetime.now())
                 return True, f"✅ Allowed - Session expired ({int(time_since.total_seconds())}s ago)"
         
@@ -63,7 +63,7 @@ class StrictSessionManager:
 
 def test_strict_blocking_same_device():
     """
-    Test: Same device CANNOT login if session exists (any age < 40s)
+    Test: Same device CANNOT login if session exists (any age < 60s)
     """
     print("\n" + "="*70)
     print("TEST: Strict Blocking - Same Device")
@@ -91,21 +91,21 @@ def test_strict_blocking_same_device():
         print(f"   {msg}")
         assert not success, f"Should be BLOCKED at {seconds}s"
     
-    # At 40s, should be allowed
-    mgr.sessions[license_key] = (device_fp, datetime.now() - timedelta(seconds=40))
-    print(f"\n4. Try again (heartbeat 40s ago - EXPIRED)")
+    # At 60s, should be allowed
+    mgr.sessions[license_key] = (device_fp, datetime.now() - timedelta(seconds=60))
+    print(f"\n4. Try again (heartbeat 60s ago - EXPIRED)")
     success, msg = mgr.login(license_key, device_fp)
     print(f"   {msg}")
-    assert success, "Should be ALLOWED at 40s (expired)"
+    assert success, "Should be ALLOWED at 60s (expired)"
     
     print("\n" + "="*70)
-    print("✅ PASS: Same device strictly blocked until 40s timeout")
+    print("✅ PASS: Same device strictly blocked until 60s timeout")
     print("="*70)
 
 
 def test_strict_blocking_different_device():
     """
-    Test: Different device CANNOT login if session exists (any age < 40s)
+    Test: Different device CANNOT login if session exists (any age < 60s)
     """
     print("\n" + "="*70)
     print("TEST: Strict Blocking - Different Device")
@@ -134,15 +134,15 @@ def test_strict_blocking_different_device():
         print(f"   {msg}")
         assert not success, f"Should be BLOCKED at {seconds}s"
     
-    # At 40s, should be allowed
-    mgr.sessions[license_key] = (device_a_fp, datetime.now() - timedelta(seconds=40))
-    print(f"\n4. Device B tries again (Device A heartbeat 40s ago - EXPIRED)")
+    # At 60s, should be allowed
+    mgr.sessions[license_key] = (device_a_fp, datetime.now() - timedelta(seconds=60))
+    print(f"\n4. Device B tries again (Device A heartbeat 60s ago - EXPIRED)")
     success, msg = mgr.login(license_key, device_b_fp)
     print(f"   {msg}")
-    assert success, "Should be ALLOWED at 40s (expired)"
+    assert success, "Should be ALLOWED at 60s (expired)"
     
     print("\n" + "="*70)
-    print("✅ PASS: Different device strictly blocked until 40s timeout")
+    print("✅ PASS: Different device strictly blocked until 60s timeout")
     print("="*70)
 
 
@@ -189,7 +189,7 @@ def test_no_exceptions_whatsoever():
     assert not success, "Should be BLOCKED at 39s (just before timeout)"
     
     print("\n" + "="*70)
-    print("✅ PASS: Absolutely NO exceptions - all logins blocked until 40s")
+    print("✅ PASS: Absolutely NO exceptions - all logins blocked until 60s")
     print("="*70)
 
 
@@ -214,20 +214,20 @@ def main():
         print("ALL TESTS PASSED - STRICT BLOCKING ENFORCED")
         print("="*70)
         print("\n✅ Implementation:")
-        print("   • If session exists (heartbeat < 40s): BLOCK ALL")
+        print("   • If session exists (heartbeat < 60s): BLOCK ALL")
         print("   • No transition window (was 10s, now removed)")
         print("   • No crash recovery grace (was 60s, now removed)")
         print("   • Same device: BLOCKED if session exists")
         print("   • Different device: BLOCKED if session exists")
         print("\n✅ User requirement met:")
         print("   • NO login past 1st screen if session running")
-        print("   • Doesn't matter how long (as long as < 40s)")
+        print("   • Doesn't matter how long (as long as < 60s)")
         print("   • Doesn't matter same or different device")
-        print("   • Only exception: session fully expired (>= 40s)")
+        print("   • Only exception: session fully expired (>= 60s)")
         print("\n✅ Faster crash detection:")
-        print("   • Reduced timeout from 60s to 40s")
+        print("   • Reduced timeout from 60s to 60s")
         print("   • Heartbeat interval reduced from 30s to 20s")
-        print("   • Bot crashes detected in 40 seconds")
+        print("   • Bot crashes detected in 60 seconds")
         print("   • Still 2x heartbeat interval (20s) for network tolerance")
         print("="*70)
         return 0

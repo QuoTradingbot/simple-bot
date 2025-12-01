@@ -10,8 +10,9 @@ def test_timer_calculation():
     """Test the timer calculation logic"""
     
     # Test 1: Future expiration
-    future_expiration = datetime.now() + timedelta(days=10, hours=5, minutes=30, seconds=45)
-    time_remaining = future_expiration - datetime.now()
+    now = datetime.now()
+    future_expiration = now + timedelta(days=10, hours=5, minutes=30, seconds=45)
+    time_remaining = future_expiration - now
     total_seconds = int(time_remaining.total_seconds())
     
     days = total_seconds // 86400
@@ -25,8 +26,9 @@ def test_timer_calculation():
     print()
     
     # Test 2: Hours remaining
-    hours_expiration = datetime.now() + timedelta(hours=5, minutes=30, seconds=15)
-    time_remaining = hours_expiration - datetime.now()
+    now = datetime.now()
+    hours_expiration = now + timedelta(hours=5, minutes=30, seconds=15)
+    time_remaining = hours_expiration - now
     total_seconds = int(time_remaining.total_seconds())
     
     days = total_seconds // 86400
@@ -40,8 +42,9 @@ def test_timer_calculation():
     print()
     
     # Test 3: Minutes remaining
-    minutes_expiration = datetime.now() + timedelta(minutes=45, seconds=30)
-    time_remaining = minutes_expiration - datetime.now()
+    now = datetime.now()
+    minutes_expiration = now + timedelta(minutes=45, seconds=30)
+    time_remaining = minutes_expiration - now
     total_seconds = int(time_remaining.total_seconds())
     
     days = total_seconds // 86400
@@ -55,8 +58,9 @@ def test_timer_calculation():
     print()
     
     # Test 4: Past expiration
-    past_expiration = datetime.now() - timedelta(hours=1)
-    time_remaining = past_expiration - datetime.now()
+    now = datetime.now()
+    past_expiration = now - timedelta(hours=1)
+    time_remaining = past_expiration - now
     
     print(f"Test 4 - Past expiration:")
     print(f"  Total seconds: {time_remaining.total_seconds()}")

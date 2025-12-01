@@ -1661,8 +1661,6 @@ class QuoTradingLauncher:
         
         try:
             # Parse the expiration datetime (format: "2025-12-31T23:59:59" or similar)
-            from datetime import datetime
-            
             # Handle different possible formats
             if isinstance(license_expiration, str):
                 # Try ISO format first

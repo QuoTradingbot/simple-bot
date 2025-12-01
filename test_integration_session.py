@@ -60,22 +60,41 @@ class MockSessionManager:
         if license_key in self.sessions:
             stored_fp, last_heartbeat = self.sessions[license_key]
             
-            # If it's the SAME device, always allow reconnection
-            if stored_fp == device_fp:
-                # Same device reconnecting - allow immediately
-                print(f"  ✅ Same device {device_fp[:8]}... reconnecting - allowing")
-                self.sessions[license_key] = (device_fp, datetime.now())
-                return True, "Session updated (same device)"
-            
-            # Different device - NEVER auto-clear, always check if active
+            # Check if session has recent heartbeat
             time_since = datetime.now() - last_heartbeat
-            if time_since < timedelta(seconds=self.SESSION_TIMEOUT_SECONDS):
-                # Active session on different device - BLOCK
-                print(f"  ❌ Different device, active session (last seen {int(time_since.total_seconds())}s ago)")
+            
+            # VERY RECENT (< 10s) from SAME device - allow (launcher->bot transition)
+            if time_since < timedelta(seconds=10) and stored_fp == device_fp:
+                print(f"  ✅ Same device taking over recent session (launcher->bot, {int(time_since.total_seconds())}s ago)")
+                self.sessions[license_key] = (device_fp, datetime.now())
+                return True, "Session updated (takeover)"
+            
+            # Recent heartbeat (< 60s) - session is ACTIVE, block ALL
+            elif time_since < timedelta(seconds=60):
+                if stored_fp == device_fp:
+                    print(f"  ❌ Same device but session ACTIVE (heartbeat {int(time_since.total_seconds())}s ago) - BLOCKED")
+                    return False, "SESSION ALREADY ACTIVE - Only 1 instance allowed"
+                else:
+                    print(f"  ❌ Different device, session ACTIVE (heartbeat {int(time_since.total_seconds())}s ago) - BLOCKED")
+                    return False, "LICENSE ALREADY IN USE"
+            
+            # Heartbeat is OLD (>= 60s) - check device
+            elif stored_fp == device_fp:
+                # Same device, stale session - allow (crash recovery)
+                print(f"  ✅ Same device reconnecting after crash (heartbeat {int(time_since.total_seconds())}s ago)")
+                self.sessions[license_key] = (device_fp, datetime.now())
+                return True, "Session updated (crash recovery)"
+            
+            # Different device with OLD heartbeat
+            elif time_since < timedelta(seconds=self.SESSION_TIMEOUT_SECONDS):
+                # Still within timeout grace period - block
+                print(f"  ❌ Different device, session stale but within timeout (heartbeat {int(time_since.total_seconds())}s ago) - BLOCKED")
                 return False, "LICENSE ALREADY IN USE"
             else:
-                # Stale session on different device (>120s) - allow takeover
-                print(f"  🧹 Stale session from different device (last seen {int(time_since.total_seconds())}s ago) - allowing takeover")
+                # Fully expired (>= 120s) - allow takeover
+                print(f"  🧹 Stale session from different device (heartbeat {int(time_since.total_seconds())}s ago) - allowing takeover")
+                self.sessions[license_key] = (device_fp, datetime.now())
+                return True, "Session created (takeover)"
         
         # Create new session
         print(f"  ✅ Creating new session")
@@ -119,9 +138,9 @@ def test_scenario_1_fresh_login():
 
 
 def test_scenario_2_crash_recovery():
-    """Test: Bot crashed, immediate relaunch"""
+    """Test: Bot crashed, relaunch after 60s"""
     print("="*70)
-    print("SCENARIO 2: Bot Crashed, Immediate Relaunch (Same Device)")
+    print("SCENARIO 2: Bot Crashed, Relaunch After 60s (Same Device)")
     print("="*70)
     
     mgr = MockSessionManager()
@@ -129,17 +148,17 @@ def test_scenario_2_crash_recovery():
     device_fp = mgr.get_device_fingerprint()
     
     print(f"1. Bot was running, created session")
-    mgr.sessions[license_key] = (device_fp, datetime.now() - timedelta(seconds=5))
+    mgr.sessions[license_key] = (device_fp, datetime.now() - timedelta(seconds=65))
     
-    print(f"2. Bot crashed 5 seconds ago (session still in DB)")
-    print(f"3. User immediately relaunches")
+    print(f"2. Bot crashed 65 seconds ago (session is stale)")
+    print(f"3. User relaunches")
     
-    # Launcher validates - should allow (same device)
+    # Launcher validates - should allow (same device, stale session)
     success, msg = mgr.validate_and_create_session(license_key, device_fp)
     print(f"4. Launcher validation: {msg}")
     
-    assert success, "Should allow relaunch (same device)"
-    print("✅ PASS: Instant relaunch on same device\n")
+    assert success, "Should allow relaunch after crash (same device, stale session)"
+    print("✅ PASS: Relaunch allowed after 60s (crash recovery)\n")
 
 
 def test_scenario_3_stale_session():

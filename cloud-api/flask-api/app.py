@@ -1181,19 +1181,34 @@ def validate_license_endpoint():
                         
                         # If there's a stored session, check if it's active
                         if stored_device:
-                            # If it's the SAME device, always allow reconnection (clear stale session if needed)
-                            if stored_device == device_fingerprint:
-                                # Same device reconnecting - allow immediately
-                                # This handles crashes/force-kills for same device
-                                logging.info(f"✅ Same device {device_fingerprint[:8]}... reconnecting - allowing")
-                                pass
-                            else:
-                                # Different device - NEVER auto-clear, always check if active
-                                from datetime import datetime, timedelta
-                                if last_heartbeat:
-                                    time_since_last = datetime.now() - last_heartbeat
-                                    if time_since_last < timedelta(seconds=SESSION_TIMEOUT_SECONDS):
-                                        # Active session exists on different device - BLOCK
+                            from datetime import datetime, timedelta
+                            
+                            # Check if session has recent heartbeat (indicates active bot/GUI)
+                            # This prevents multiple instances on same OR different devices
+                            if last_heartbeat:
+                                time_since_last = datetime.now() - last_heartbeat
+                                
+                                # VERY RECENT heartbeat (< 10s) from SAME device
+                                # This is the launcher->bot transition window
+                                # Allow same device to "take over" during this brief window
+                                if time_since_last < timedelta(seconds=10) and stored_device == device_fingerprint:
+                                    logging.info(f"✅ Same device {device_fingerprint[:8]}... taking over recent session (launcher->bot transition, {int(time_since_last.total_seconds())}s ago)")
+                                    pass
+                                
+                                # Recent heartbeat (< 60s) - session is ACTIVELY running
+                                # BLOCK all logins (same device OR different device) to prevent multiple instances
+                                elif time_since_last < timedelta(seconds=60):
+                                    # If it's the SAME device, still block (prevents 2 instances on same computer)
+                                    if stored_device == device_fingerprint:
+                                        logging.warning(f"⚠️ BLOCKED - Same device {device_fingerprint[:8]}... but session is ACTIVE (last heartbeat {int(time_since_last.total_seconds())}s ago). Only 1 instance allowed.")
+                                        return jsonify({
+                                            "license_valid": False,
+                                            "session_conflict": True,
+                                            "message": "SESSION ALREADY ACTIVE - Only one instance allowed per API key. If bot crashed, wait 60 seconds and try again.",
+                                            "active_device": stored_device[:20] + "..."
+                                        }), 403
+                                    else:
+                                        # Different device - BLOCK
                                         logging.warning(f"⚠️ BLOCKED - License {license_key} already in use by {stored_device[:20]}... (tried: {device_fingerprint[:20]}..., last seen {int(time_since_last.total_seconds())}s ago)")
                                         return jsonify({
                                             "license_valid": False,
@@ -1201,11 +1216,32 @@ def validate_license_endpoint():
                                             "message": "LICENSE ALREADY IN USE - Only one instance allowed per API key",
                                             "active_device": stored_device[:20] + "..."
                                         }), 403
-                                    else:
-                                        # Stale session on different device (>120s) - allow takeover
-                                        logging.info(f"🧹 Stale session from different device {stored_device[:8]}... (last seen {int(time_since_last.total_seconds())}s ago) - allowing takeover by {device_fingerprint[:8]}...")
+                                
+                                # Heartbeat is OLD (>= 60s) - session likely crashed
+                                # Allow reconnection for SAME device (crash recovery)
+                                elif stored_device == device_fingerprint:
+                                    logging.info(f"✅ Same device {device_fingerprint[:8]}... reconnecting after crash (last heartbeat {int(time_since_last.total_seconds())}s ago)")
+                                    pass
+                                
+                                # Different device with stale session (>= 60s but < 120s)
+                                # Still block during grace period to prevent quick takeovers
+                                elif time_since_last < timedelta(seconds=SESSION_TIMEOUT_SECONDS):
+                                    logging.warning(f"⚠️ BLOCKED - License {license_key} in use by {stored_device[:20]}... (tried: {device_fingerprint[:20]}..., last seen {int(time_since_last.total_seconds())}s ago). Wait for timeout.")
+                                    return jsonify({
+                                        "license_valid": False,
+                                        "session_conflict": True,
+                                        "message": "LICENSE ALREADY IN USE - Only one instance allowed per API key",
+                                        "active_device": stored_device[:20] + "..."
+                                    }), 403
+                                
+                                # Session fully expired (>= 120s) - allow takeover by different device
                                 else:
-                                    # No heartbeat - allow takeover
+                                    logging.info(f"🧹 Stale session from different device {stored_device[:8]}... (last seen {int(time_since_last.total_seconds())}s ago) - allowing takeover by {device_fingerprint[:8]}...")
+                            else:
+                                # No heartbeat timestamp - allow reconnection
+                                if stored_device == device_fingerprint:
+                                    logging.info(f"✅ Same device {device_fingerprint[:8]}... reconnecting (no heartbeat found)")
+                                else:
                                     logging.info(f"🧹 No heartbeat for session from {stored_device[:8]}... - allowing takeover by {device_fingerprint[:8]}...")
                     
                     # No conflict detected

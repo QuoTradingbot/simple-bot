@@ -44,28 +44,34 @@ def test_launch_flow():
     # Count occurrences - should be called right after bot launch
     # Find the launch_bot_process function section
     launch_bot_start = content.find('def launch_bot_process')
-    show_settings_start = content.find('def show_settings_dialog')
+    if launch_bot_start == -1:
+        raise ValueError("launch_bot_process function not found")
     
-    # If show_settings_dialog not found, use the next function or end of file
-    if show_settings_start == -1:
-        # Try to find the next function definition after launch_bot_process
-        next_def_start = content.find('\n    def ', launch_bot_start + 20)
-        if next_def_start != -1:
-            show_settings_start = next_def_start
-        else:
-            show_settings_start = len(content)
+    # Find the end of the launch_bot_process function (next function definition)
+    # Look for the next 'def ' at the same indentation level
+    next_func_pattern = '\n    def '
+    next_func_start = content.find(next_func_pattern, launch_bot_start + len('def launch_bot_process'))
     
-    launch_bot_section = content[launch_bot_start:show_settings_start]
+    if next_func_start != -1:
+        launch_bot_section = content[launch_bot_start:next_func_start]
+    else:
+        # If no next function found, use end of file
+        launch_bot_section = content[launch_bot_start:]
+    
     assert 'self.root.destroy()' in launch_bot_section, \
            "FAIL: GUI destroy not called in launch_bot_process"
     print("✓ Test 4 PASSED: GUI closes immediately after launch")
     
     # Test 5: Verify no success messagebox anywhere in launch_bot_process
+    # Only error messages (showerror) are allowed, not showinfo
     assert '"Bot Launched!"' not in launch_bot_section, \
            "FAIL: 'Bot Launched!' success messagebox found in launch_bot_process"
-    assert 'messagebox.showinfo' not in launch_bot_section or \
-           'Launch Error' in launch_bot_section, \
-           "FAIL: Unexpected messagebox.showinfo found in launch_bot_process (only error messages allowed)"
+    
+    # Check for any showinfo calls (success messages) - these should not exist
+    # The only messagebox allowed is showerror for error handling
+    if 'messagebox.showinfo' in launch_bot_section:
+        raise AssertionError("FAIL: messagebox.showinfo found in launch_bot_process - no success popups allowed")
+    
     print("✓ Test 5 PASSED: No success popup in launch flow")
     
     print("\n" + "="*60)

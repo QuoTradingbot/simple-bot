@@ -25,12 +25,12 @@ def get_device_fingerprint():
     """
     try:
         machine_id = str(uuid.getnode())
-    except:
+    except Exception:
         machine_id = "unknown"
     
     try:
         username = getpass.getuser()
-    except:
+    except Exception:
         username = "unknown"
     
     platform_name = platform.system()
@@ -132,7 +132,12 @@ def test_endpoint_change():
     
     print("\nChecking launcher/QuoTrading_Launcher.py...")
     
-    with open("/home/runner/work/simple-bot/simple-bot/launcher/QuoTrading_Launcher.py", "r") as f:
+    # Use relative path from current directory
+    import os
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    launcher_path = os.path.join(script_dir, "launcher", "QuoTrading_Launcher.py")
+    
+    with open(launcher_path, "r") as f:
         content = f.read()
     
     # Check that /api/validate-license is used

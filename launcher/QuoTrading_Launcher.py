@@ -592,13 +592,12 @@ class QuoTradingLauncher:
                     hours_until_expiration = None
                     
                     if expiry_date_str:
-                        from datetime import datetime
                         try:
                             expiry_date = datetime.fromisoformat(expiry_date_str.replace('Z', '+00:00'))
                             time_until_expiration = expiry_date - datetime.now(expiry_date.tzinfo)
                             days_until_expiration = time_until_expiration.days
                             hours_until_expiration = time_until_expiration.total_seconds() / 3600
-                        except:
+                        except Exception:
                             pass
                     
                     # Server-side subscription configuration (no hardcoded limits)

@@ -197,11 +197,13 @@ def test_server_side_session_locking():
         checks = {
             "/api/heartbeat endpoint": "@app.route('/api/heartbeat', methods=['POST'])",
             "Device fingerprint validation": "if not device_fingerprint:",
-            "Check for active session": "if time_since_last < timedelta(minutes=2):",
+            "SESSION_TIMEOUT_SECONDS constant": "SESSION_TIMEOUT_SECONDS = 90",
+            "Check for active session": "if time_since_last < timedelta(seconds=SESSION_TIMEOUT_SECONDS):",
             "Session conflict response": '"session_conflict": True,',
             "Active device check": "if stored_device and stored_device != device_fingerprint:",
             "Update device fingerprint": "SET last_heartbeat = NOW(),",
-            "/api/main session check": "if time_since_heartbeat < 120 and user['device_fingerprint'] != device_fingerprint:",
+            "/api/main session check": "if time_since_heartbeat < SESSION_TIMEOUT_SECONDS and user['device_fingerprint'] != device_fingerprint:",
+            "Auto-clear stale sessions": "UPDATE users \n                        SET device_fingerprint = NULL,",
         }
         
         all_pass = True

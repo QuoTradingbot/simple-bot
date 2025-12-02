@@ -8306,28 +8306,25 @@ def cleanup_on_shutdown() -> None:
     if recovery_manager:
         try:
             recovery_manager.save_state(state)
-            pass  # Silent - state saved
         except Exception as e:
             cleanup_success = False
-            pass  # Silent - save failed
+            logger.debug(f"Failed to save state: {e}")
     
     # Disconnect broker
     if broker and broker.is_connected():
         try:
             broker.disconnect()
-            pass  # Silent - broker disconnected
         except Exception as e:
             cleanup_success = False
-            pass  # Silent - disconnect failed
+            logger.debug(f"Failed to disconnect broker: {e}")
     
     # Stop timer manager
     if timer_manager:
         try:
             timer_manager.stop()
-            pass  # Silent - timer stopped
         except Exception as e:
             cleanup_success = False
-            pass  # Silent - stop failed
+            logger.debug(f"Failed to stop timer: {e}")
     
     # Log session summary with logout status
     symbol = CONFIG["instrument"]

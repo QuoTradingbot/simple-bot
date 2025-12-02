@@ -2128,7 +2128,7 @@ class QuoTradingLauncher:
         
         # Settings display
         settings_frame = tk.Frame(inner_frame, bg=self.colors['secondary'], relief=tk.FLAT)
-        settings_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        settings_frame.pack(fill=tk.X, padx=20, pady=10)
         
         tk.Label(
             settings_frame,

@@ -1144,19 +1144,19 @@ class QuoTradingLauncher:
         content = tk.Frame(card, bg=self.colors['card'], padx=10, pady=4)
         content.pack(fill=tk.BOTH, expand=True)
         
-        # Account Fetch Section - COMPACT HORIZONTAL STYLE
-        fetch_frame = tk.Frame(content, bg=self.colors['card'])
+        # Account Fetch Section - COMPACT HORIZONTAL STYLE with main background
+        fetch_frame = tk.Frame(content, bg=self.colors['background'])
         fetch_frame.pack(fill=tk.X, pady=(0, 4))
         
         # Left side: Account dropdown
-        account_select_frame = tk.Frame(fetch_frame, bg=self.colors['card'])
+        account_select_frame = tk.Frame(fetch_frame, bg=self.colors['background'])
         account_select_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
         
         tk.Label(
             account_select_frame,
             text="Select Account:",
             font=("Segoe UI", 9, "bold"),
-            bg=self.colors['card'],
+            bg=self.colors['background'],
             fg=self.colors['text']
         ).pack(anchor=tk.W)
         
@@ -1183,14 +1183,14 @@ class QuoTradingLauncher:
         self.account_dropdown.bind("<<ComboboxSelected>>", self.on_account_selected)
         
         # Middle: Ping button with label
-        fetch_button_frame = tk.Frame(fetch_frame, bg=self.colors['card'])
+        fetch_button_frame = tk.Frame(fetch_frame, bg=self.colors['background'])
         fetch_button_frame.pack(side=tk.LEFT, padx=5)
         
         sync_label = tk.Label(
             fetch_button_frame,
             text="🔄 Test Connection:",
             font=("Segoe UI", 8, "bold"),
-            bg=self.colors['card'],
+            bg=self.colors['background'],
             fg=self.colors['success']
         )
         sync_label.pack(anchor=tk.W)
@@ -1201,14 +1201,14 @@ class QuoTradingLauncher:
         fetch_btn.pack()
         
         # Right: Auto-adjust button
-        auto_adjust_frame = tk.Frame(fetch_frame, bg=self.colors['card'])
+        auto_adjust_frame = tk.Frame(fetch_frame, bg=self.colors['background'])
         auto_adjust_frame.pack(side=tk.LEFT, padx=5)
         
         tk.Label(
             auto_adjust_frame,
             text="Quick Setup:",
             font=("Segoe UI", 9, "bold"),
-            bg=self.colors['card'],
+            bg=self.colors['background'],
             fg=self.colors['text']
         ).pack(anchor=tk.W)
         
@@ -2167,7 +2167,7 @@ Shadow Mode: {shadow_mode}
         cancel_btn = tk.Button(
             inner_frame,
             text="❌ CANCEL",
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 12, "bold"),
             bg=self.colors['error'],
             fg='white',
             activebackground='#B91C1C',
@@ -2177,9 +2177,9 @@ Shadow Mode: {shadow_mode}
             command=cancel_launch,
             cursor="hand2",
             width=20,
-            height=2
+            height=3
         )
-        cancel_btn.pack(pady=(5, 20))
+        cancel_btn.pack(pady=(10, 20))
         
         # Countdown logic
         countdown_value = 8  # Use simple variable with nonlocal

@@ -263,10 +263,10 @@ class BrokerSDKImplementation(BrokerInterface):
                 if attempt > 0:
                     # Exponential backoff: 2^attempt seconds (2s, 4s, 8s)
                     wait_time = min(2 ** attempt, 30)  # Max 30 seconds
-                    logger.info(f"Retry attempt {attempt + 1}/{max_retries} in {wait_time}s...")
+                    pass  # Silent retry
                     await asyncio.sleep(wait_time)
                 
-                logger.info(f"Connecting to TopStep SDK... (attempt {attempt + 1}/{max_retries})")
+                pass  # Silent connection attempt
                 
                 # Initialize SDK client with username and API key
                 self.sdk_client = ProjectX(
@@ -276,10 +276,10 @@ class BrokerSDKImplementation(BrokerInterface):
                 )
                 
                 # Authenticate first (async method)
-                logger.info("Authenticating with TopStep...")
+                pass  # Silent authentication
                 try:
                     await self.sdk_client.authenticate()
-                    logger.info("[SUCCESS] Authentication successful!")
+                    pass  # Silent - authentication successful
                     # Give SDK a moment to establish session
                     await asyncio.sleep(0.5)
                 except Exception as auth_error:
@@ -297,7 +297,7 @@ class BrokerSDKImplementation(BrokerInterface):
                 # Test connection by getting account info first
                 try:
                     account = self.sdk_client.get_account_info()
-                    logger.info(f"Account info retrieved: {account}")
+                    pass  # Silent - account info retrieved
                 except Exception as account_error:
                     logger.error(f"Failed to get account info: {account_error}")
                     if attempt == max_retries - 1:
@@ -312,10 +312,10 @@ class BrokerSDKImplementation(BrokerInterface):
                 try:
                     session_token = self.sdk_client.get_session_token()
                     if session_token:
-                        logger.info("Initializing WebSocket streamer...")
+                        pass  # Silent - websocket initialization
                         self.websocket_streamer = BrokerWebSocketStreamer(session_token)
                         if self.websocket_streamer.connect():
-                            logger.info("[SUCCESS] WebSocket streamer initialized and connected")
+                            pass  # Silent - websocket connected
                         else:
                             logger.warning("WebSocket connection failed - will use REST API polling")
                     else:
@@ -345,7 +345,7 @@ class BrokerSDKImplementation(BrokerInterface):
                             realtime_client=realtime_client,
                             config=TradingSuiteConfig(instrument=self.instrument)
                         )
-                        logger.info(f"Trading suite initialized for {self.instrument}")
+                        pass  # Silent - trading suite initialized
                     else:
                         logger.warning("Missing JWT token or account ID - order placement disabled")
                         self.trading_suite = None
@@ -358,8 +358,7 @@ class BrokerSDKImplementation(BrokerInterface):
                     account_id = getattr(account, 'account_id', getattr(account, 'id', 'N/A'))
                     account_balance = float(getattr(account, 'balance', getattr(account, 'equity', 0)))
                     
-                    logger.info(f"Connected to TopStep - Account: {account_id}")
-                    logger.info(f"Account Balance: ${account_balance:,.2f}")
+                    logger.info(f"✅ Broker Connected - Account: {account_id} | Balance: ${account_balance:,.2f}")
                     
                     # AUTO-CONFIGURE: Set risk limits based on account size
                     # This makes the bot work on ANY TopStep account automatically!
@@ -380,7 +379,7 @@ class BrokerSDKImplementation(BrokerInterface):
                             first_contract = getattr(instruments[0], 'id', None)
                             if first_contract:
                                 self._contract_id_cache[self.instrument] = first_contract
-                                logger.info(f"Cached contract ID: {self.instrument} -> {first_contract}")
+                                pass  # Silent - contract ID cached
                             else:
                                 logger.warning(f"No contract ID found for {self.instrument}")
                         else:
@@ -391,7 +390,7 @@ class BrokerSDKImplementation(BrokerInterface):
                     # SUCCESS! Connection established
                     self.connected = True
                     self.failure_count = 0
-                    logger.info(f"[SUCCESS] TopStep connection established on attempt {attempt + 1}")
+                    pass  # Silent - connection successful
                     return True
                 else:
                     logger.error("Account info was None")
@@ -429,7 +428,7 @@ class BrokerSDKImplementation(BrokerInterface):
                     self.websocket_streamer.disconnect()
                     self.websocket_streamer = None
                 except Exception as e:
-                    logger.debug(f"Error disconnecting WebSocket: {e}")
+                    pass  # Silent - websocket disconnect error
             
             # Close SDK connections
             if self.trading_suite:
@@ -438,7 +437,7 @@ class BrokerSDKImplementation(BrokerInterface):
             if self.sdk_client:
                 self.sdk_client = None
             self.connected = False
-            logger.info("Disconnected from TopStep SDK")
+            pass  # Silent - disconnected from broker
         except Exception as e:
             logger.error(f"Error disconnecting from TopStep SDK: {e}")
     
@@ -567,7 +566,7 @@ class BrokerSDKImplementation(BrokerInterface):
                 loop = asyncio.get_running_loop()
                 # If loop is already running, we can't use run_until_complete
                 # Return 0 and log debug - position reconciliation will happen async
-                logger.debug("Event loop running - skipping sync position check")
+                pass  # Silent - event loop running
                 return 0
             except RuntimeError:
                 # No running loop, safe to create one
@@ -586,7 +585,7 @@ class BrokerSDKImplementation(BrokerInterface):
         except AttributeError as e:
             # Common Windows asyncio proactor error during shutdown - ignore
             if "'NoneType' object has no attribute 'send'" in str(e):
-                logger.debug("AsyncIO proactor error during position check - returning 0")
+                pass  # Silent - asyncio error during shutdown
                 return 0
             logger.error(f"Error getting position quantity: {e}")
             self._record_failure()
@@ -616,7 +615,7 @@ class BrokerSDKImplementation(BrokerInterface):
             # Convert side to OrderSide enum
             order_side = OrderSide.BUY if side.upper() == "BUY" else OrderSide.SELL
             
-            logger.info(f"Placing market order: {symbol} ({contract_id}) {side} {quantity}")
+            pass  # Silent - order placement is logged at higher level
             
             # Define async wrapper
             async def place_order_async():
@@ -645,7 +644,7 @@ class BrokerSDKImplementation(BrokerInterface):
             logger.info(f"Order response: {order_response}")
             
             if order_response and order_response.success:
-                logger.info(f"Market order placed successfully: {order_response.orderId}")
+                pass  # Silent - order success logged at higher level
                 return {
                     "order_id": order_response.orderId,
                     "symbol": symbol,
@@ -688,7 +687,7 @@ class BrokerSDKImplementation(BrokerInterface):
             # Convert side to OrderSide enum
             order_side = OrderSide.BUY if side.upper() == "BUY" else OrderSide.SELL
             
-            logger.info(f"Placing limit order: {symbol} ({contract_id}) {side} {quantity} @ {limit_price}")
+            pass  # Silent - limit order placement logged at higher level
             
             # Define async wrapper
             async def place_order_async():
@@ -718,7 +717,7 @@ class BrokerSDKImplementation(BrokerInterface):
             logger.info(f"Order response: {order_response}")
             
             if order_response and order_response.success:
-                logger.info(f"Order placed successfully: {order_response.orderId}")
+                pass  # Silent - order success logged at higher level
                 return {
                     "order_id": order_response.orderId,
                     "symbol": symbol,
@@ -769,7 +768,7 @@ class BrokerSDKImplementation(BrokerInterface):
                 cancel_response = asyncio.run(cancel_order_async())
             
             if cancel_response and cancel_response.success:
-                logger.info(f"Order {order_id} cancelled successfully")
+                pass  # Silent - order cancelled logged at higher level
                 return True
             else:
                 error_msg = cancel_response.errorMessage if cancel_response else "Unknown error"
@@ -883,7 +882,7 @@ class BrokerSDKImplementation(BrokerInterface):
             
             # Subscribe to trades via WebSocket
             self.websocket_streamer.subscribe_trades(contract_id, trade_callback)
-            logger.info(f"[SUCCESS] Subscribed to LIVE trade data for {symbol} (contract: {contract_id})")
+            pass  # Silent - data subscription is internal
             
         except Exception as e:
             logger.error(f"Error subscribing to market data: {e}")
@@ -934,7 +933,7 @@ class BrokerSDKImplementation(BrokerInterface):
                         
                         # Only process if we have BOTH valid bid and ask
                         if last_valid_bid[0] <= 0 or last_valid_ask[0] <= 0:
-                            logger.debug(f"Waiting for valid bid/ask - bid={last_valid_bid[0]}, ask={last_valid_ask[0]}")
+                            pass  # Silent - waiting for valid quote
                             return
                         
                         # Sanity check: ask must be >= bid
@@ -975,7 +974,7 @@ class BrokerSDKImplementation(BrokerInterface):
             
             # Subscribe to quotes via WebSocket
             self.websocket_streamer.subscribe_quotes(contract_id, quote_callback)
-            logger.info(f"[SUCCESS] Subscribed to LIVE quote data for {symbol} (contract: {contract_id})")
+            pass  # Silent - quote subscription is internal
             
         except Exception as e:
             logger.error(f"Error subscribing to quotes: {e}")
@@ -988,7 +987,7 @@ class BrokerSDKImplementation(BrokerInterface):
         """
         # Check cache first (populated during connection)
         if symbol in self._contract_id_cache:
-            logger.debug(f"Using cached contract ID for {symbol}: {self._contract_id_cache[symbol]}")
+            pass  # Silent - using cached contract ID
             return self._contract_id_cache[symbol]
         
         # Remove leading slash if present (e.g., /ES -> ES)
@@ -1027,13 +1026,13 @@ class BrokerSDKImplementation(BrokerInterface):
                     if instr.symbol == clean_symbol or instr.symbol.startswith(clean_symbol):
                         contract_id = instr.contract_id
                         self._contract_id_cache[symbol] = contract_id
-                        logger.info(f"Cached contract ID for {symbol}: {contract_id}")
+                        pass  # Silent - contract ID cached
                         return contract_id
                 
                 # No exact match - use first result
                 contract_id = instruments[0].contract_id
                 self._contract_id_cache[symbol] = contract_id
-                logger.info(f"Using first match for {symbol}: {contract_id}")
+                pass  # Silent - using first match
                 return contract_id
             
             logger.error(f"No contracts found for symbol: {symbol}")
@@ -1109,7 +1108,7 @@ class BrokerSDKImplementation(BrokerInterface):
         """Reset circuit breaker (manual recovery)."""
         self.circuit_breaker_open = False
         self.failure_count = 0
-        logger.info("Circuit breaker reset")
+        pass  # Silent - circuit breaker reset
 
 
 def create_broker(api_token: str, username: str = None, instrument: str = None) -> BrokerInterface:

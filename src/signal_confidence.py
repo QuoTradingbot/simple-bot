@@ -75,10 +75,10 @@ class SignalConfidenceRL:
         if not backtest_mode and confidence_threshold is None:
             # LIVE/SHADOW mode with no user config - use safe default of 50%
             self.user_threshold = 0.5
-            logger.debug(" LIVE MODE: No threshold configured, using default 50%")
+            pass  # Silent - live mode configuration
         else:
             self.user_threshold = confidence_threshold
-            logger.debug(f" RL BRAIN CONFIG: threshold={confidence_threshold}, exploration={exploration_rate}, backtest_mode={backtest_mode}")
+            pass  # Silent - RL brain configuration
         
         # Cached optimal threshold (only used in backtest mode when user_threshold is None)
         self.cached_threshold = None
@@ -104,23 +104,23 @@ class SignalConfidenceRL:
         }
         
         self.load_experience()
-        logger.debug(f" Signal Confidence RL initialized: {len(self.experiences)} past experiences")
+        pass  # Silent - RL brain initialized
         
         # Log threshold configuration
         if self.user_threshold is not None:
             if self.backtest_mode:
-                logger.debug(f" CONFIDENCE THRESHOLD: {self.user_threshold:.1%} (USER CONFIGURED for backtest)")
+                pass  # Silent - threshold configuration
             else:
-                logger.debug(f" CONFIDENCE THRESHOLD: {self.user_threshold:.1%} (LIVE/SHADOW MODE - User Setting)")
+                pass  # Silent - threshold configuration
         else:
             # Only happens in backtest mode now
-            logger.debug(f" CONFIDENCE THRESHOLD: Will be calculated from experiences (BACKTEST - ADAPTIVE)")
+            pass  # Silent - threshold will be calculated
         
         # Log exploration mode
         if self.backtest_mode:
-            logger.debug(f" BACKTEST MODE: {self.exploration_rate*100:.1f}% exploration enabled (learning mode)")
+            pass  # Silent - exploration mode
         else:
-            logger.debug(f" LIVE MODE: 0% exploration (pure exploitation - NO RANDOM TRADES!)")
+            pass  # Silent - live mode exploitation
     
     def _generate_experience_key(self, experience: Dict, execution_data: Optional[Dict] = None) -> str:
         """
@@ -511,7 +511,7 @@ class SignalConfidenceRL:
         
         if not valid_thresholds:
             # No threshold meets criteria - use conservative default (50% minimum)
-            logger.debug("No valid thresholds found, using default 50%")
+            pass  # Silent - using default threshold
             return 0.50
         
         # Choose threshold that maximizes AVERAGE PROFIT PER TRADE (not total profit)
@@ -523,8 +523,7 @@ class SignalConfidenceRL:
         best_result = valid_thresholds[best_threshold]
         
         total_profit_potential = best_result['avg_profit'] * best_result['trades']
-        logger.debug(f"LEARNED OPTIMAL THRESHOLD: {best_threshold*100:.0f}%")
-        logger.debug(f"   Expected: {best_result['trades']} trades, {best_result['win_rate']*100:.1f}% WR, ${best_result['avg_profit']:.0f} avg, ${total_profit_potential:.0f} total potential")
+        pass  # Silent - optimal threshold learned
         
         return best_threshold
     
@@ -644,8 +643,7 @@ class SignalConfidenceRL:
             
             # Check if this exact experience already exists (O(1) lookup with set)
             if exp_key in self.experience_keys:
-                logger.debug(f"⚠️  Duplicate experience detected and skipped: {exp_key}")
-                logger.debug(f"   Skipped duplicate at {experience.get('timestamp')}")
+                pass  # Silent - duplicate prevention working
                 # Early return - don't update any state for duplicates
                 # Duplicates should not affect recent_trades, streaks, or trigger saves
                 return
@@ -690,7 +688,7 @@ class SignalConfidenceRL:
                 if exec_notes:
                     log_msg += f" | {', '.join(exec_notes)}"
             
-            logger.info(log_msg)
+            pass  # Silent - learning progress is internal (not customer-facing)
     
     def get_stats(self) -> Dict:
         """Get current performance statistics."""
@@ -736,7 +734,7 @@ class SignalConfidenceRL:
                         exp_key = self._generate_experience_key(exp)
                         self.experience_keys.add(exp_key)
                     
-                    logger.info(f"Loaded {len(self.experiences)} past signal experiences")
+                    pass  # Silent - experiences loaded
             except Exception as e:
                 logger.error(f"Failed to load experiences: {e}")
                 import traceback

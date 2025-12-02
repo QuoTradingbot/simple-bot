@@ -388,7 +388,7 @@ async def save_trade_experience_async(
     
     # LIVE MODE: Report to cloud ONLY (don't save locally)
     if cloud_api_client is None:
-        logger.debug("Cloud API client not initialized - skipping cloud reporting")
+        pass  # Silent - not customer-facing
         return
     
     try:
@@ -412,10 +412,10 @@ async def save_trade_experience_async(
             execution_data  # Pass execution metrics to cloud
         )
         
-        logger.info(f"☁️ Outcome reported to cloud: ${pnl:+.2f} in {duration_minutes:.1f}min")
+        pass  # Silent - cloud outcome reporting is transparent
         
     except Exception as e:
-        logger.debug(f"Non-critical: Could not report outcome to cloud: {e}")
+        pass  # Silent - cloud sync is transparent to customer
 
 
 
@@ -447,7 +447,7 @@ def validate_license_at_startup() -> None:
     """
     # Skip in backtest mode
     if is_backtest_mode():
-        logger.info("Backtest mode - skipping license validation")
+        pass  # Silent - backtest mode initialization
         return
     
     license_key = os.getenv("QUOTRADING_LICENSE_KEY")
@@ -460,7 +460,7 @@ def validate_license_at_startup() -> None:
         logger.critical("=" * 70)
         sys.exit(1)
     
-    logger.info("🔐 Validating license...")
+    pass  # Silent - license validation in progress
     try:
         import requests
         api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
@@ -469,7 +469,7 @@ def validate_license_at_startup() -> None:
         device_fp = get_device_fingerprint()
         import os as os_mod
         pid = os_mod.getpid()
-        logger.info(f"📱 Device fingerprint: {device_fp} (PID: {pid})")
+        pass  # Silent - device fingerprint internal
         
         # Validate with server using /api/validate-license (session locking)
         # Include device fingerprint for session locking
@@ -544,7 +544,7 @@ def initialize_broker() -> None:
     if CONFIG.get("shadow_mode", False):
         logger.info("≡ƒôè SIGNAL-ONLY MODE - Shows signals without executing trades")
     
-    logger.info("Initializing broker interface...")
+    pass  # Silent - broker initialization is internal
     
     # Create error recovery manager
     recovery_manager = ErrorRecoveryManager(CONFIG)
@@ -554,13 +554,13 @@ def initialize_broker() -> None:
     broker = create_broker(_bot_config.api_token, _bot_config.username, CONFIG["instrument"])
     
     # Connect to broker (initial connection doesn't use circuit breaker)
-    logger.info("Connecting to broker...")
+    pass  # Silent - connection in progress
     if not broker.connect():
         logger.error("Failed to connect to broker")
         return False
         raise RuntimeError("Broker connection failed")
     
-    logger.info("Broker connected successfully")
+    logger.info("✅ Bot Ready - Connected to broker")
     
     # Send bot startup alert
     try:
@@ -570,7 +570,7 @@ def initialize_broker() -> None:
             error_type="Bot Started"
         )
     except Exception as e:
-        logger.debug(f"Failed to send startup alert: {e}")
+        pass  # Silent - notification failure not critical
 
 
 def check_azure_time_service() -> str:
@@ -629,13 +629,13 @@ def check_azure_time_service() -> str:
             return state
         else:
             # Azure unreachable - clear cached state to trigger fallback
-            logger.debug(f"Time service returned {response.status_code}, using local time")
+            pass  # Silent fallback to local time
             bot_status["azure_trading_state"] = None
             return None  # Signal to use local get_trading_state()
             
     except Exception as e:
         # Non-critical - if cloud unreachable, fall back to local time
-        logger.debug(f"Time service check skipped (cloud unreachable): {e}")
+        pass  # Silent - cloud service optional
         bot_status["azure_trading_state"] = None
         return None  # Signal to use local get_trading_state()
 
@@ -657,13 +657,13 @@ def check_broker_connection() -> None:
     try:
         check_azure_time_service()
     except Exception as e:
-        logger.debug(f"Time service check failed (non-critical): {e}")
+        pass  # Silent - time service optional
     
     # Send heartbeat to show bot is online
     try:
         send_heartbeat()
     except Exception as e:
-        logger.debug(f"Heartbeat failed (non-critical): {e}")
+        pass  # Silent - heartbeat failure not customer-facing
     
     # AUTO-IDLE: Disconnect broker during maintenance (no data needed)
     current_time = get_current_time()
@@ -785,7 +785,7 @@ def check_broker_connection() -> None:
                 error_type="Connection Error"
             )
         except Exception as e:
-            logger.debug(f"Failed to send connection error alert: {e}")
+            pass  # Silent - notification error not customer-facing
         
         try:
             # Immediate reconnect with 3 retries
@@ -855,7 +855,7 @@ def get_account_equity() -> float:
         success, equity = breaker.call(broker.get_account_equity)
         
         if success:
-            logger.info(f"Account equity: ${equity:.2f}")
+            pass  # Silent - account equity query internal
             return equity
         else:
             logger.error("Failed to get account equity")
@@ -882,7 +882,7 @@ def place_market_order(symbol: str, side: str, quantity: int) -> Optional[Dict[s
     """
     # Backtest mode: Simulate order without broker
     if is_backtest_mode():
-        logger.info(f"[BACKTEST] Market Order: {side} {quantity} {symbol}")
+        pass  # Silent - backtest order simulated
         return {
             "order_id": f"BACKTEST_{datetime.now().timestamp()}",
             "symbol": symbol,
@@ -893,7 +893,7 @@ def place_market_order(symbol: str, side: str, quantity: int) -> Optional[Dict[s
             "backtest": True
         }
     
-    logger.info(f"Market Order: {side} {quantity} {symbol}")
+    pass  # Silent - order logged at higher level (entry/exit)
     
     if broker is None:
         logger.error("Broker not initialized")
@@ -924,7 +924,7 @@ def place_market_order(symbol: str, side: str, quantity: int) -> Optional[Dict[s
                     error_type="Order Error"
                 )
             except Exception as e:
-                logger.debug(f"Failed to send order error alert: {e}")
+                pass  # Silent - alert failure not critical
             
             action = recovery_manager.handle_error(
                 RecoveryErrorType.ORDER_REJECTION,
@@ -942,7 +942,7 @@ def place_market_order(symbol: str, side: str, quantity: int) -> Optional[Dict[s
                 error_type="Order Error"
             )
         except Exception as alert_error:
-            logger.debug(f"Failed to send order error alert: {alert_error}")
+            pass  # Silent - alert failure not critical
         
         action = recovery_manager.handle_error(
             RecoveryErrorType.SDK_CRASH,
@@ -966,7 +966,7 @@ def place_stop_order(symbol: str, side: str, quantity: int, stop_price: float) -
     """
     # Backtest mode: Simulate order without broker
     if is_backtest_mode():
-        logger.info(f"[BACKTEST] Stop Order: {side} {quantity} {symbol} @ {stop_price}")
+        pass  # Silent - backtest stop order simulated
         return {
             "order_id": f"BACKTEST_STOP_{datetime.now().timestamp()}",
             "symbol": symbol,
@@ -979,7 +979,7 @@ def place_stop_order(symbol: str, side: str, quantity: int, stop_price: float) -
         }
     
     shadow_mode = _bot_config.shadow_mode
-    logger.info(f"{'[SHADOW MODE] ' if shadow_mode else ''}Stop Order: {side} {quantity} {symbol} @ {stop_price}")
+    pass  # Silent - stop order logged at higher level
     
     if shadow_mode:
         return {
@@ -1036,7 +1036,7 @@ def place_limit_order(symbol: str, side: str, quantity: int, limit_price: float)
     """
     # Backtest mode: Simulate order without broker
     if is_backtest_mode():
-        logger.info(f"[BACKTEST] Limit Order: {side} {quantity} {symbol} @ {limit_price}")
+        pass  # Silent - backtest limit order simulated
         return {
             "order_id": f"BACKTEST_LIMIT_{datetime.now().timestamp()}",
             "symbol": symbol,
@@ -1049,7 +1049,7 @@ def place_limit_order(symbol: str, side: str, quantity: int, limit_price: float)
         }
     
     shadow_mode = _bot_config.shadow_mode
-    logger.info(f"{'[SHADOW MODE] ' if shadow_mode else ''}Limit Order: {side} {quantity} {symbol} @ {limit_price}")
+    pass  # Silent - limit order logged at higher level
     
     if shadow_mode:
         return {
@@ -1107,7 +1107,7 @@ def cancel_order(symbol: str, order_id: str) -> bool:
         return True
     
     shadow_mode = _bot_config.shadow_mode
-    logger.info(f"{'[SHADOW MODE] ' if shadow_mode else ''}Cancelling Order: {order_id} for {symbol}")
+    pass  # Silent - order cancellation logged at higher level
     
     if shadow_mode:
         logger.info(f"[SHADOW MODE] Order {order_id} cancelled (simulated)")
@@ -1204,7 +1204,7 @@ def subscribe_market_data(symbol: str, callback: Callable[[str, float, int, int]
         symbol: Instrument symbol
         callback: Function to call with tick data (symbol, price, volume, timestamp)
     """
-    logger.info(f"Subscribing to market data: {symbol}")
+    pass  # Silent - market data subscription internal
     
     if broker is None:
         logger.error("Broker not initialized")
@@ -1213,7 +1213,7 @@ def subscribe_market_data(symbol: str, callback: Callable[[str, float, int, int]
     try:
         # Subscribe through broker interface
         broker.subscribe_market_data(symbol, callback)
-        logger.info(f"Subscribed to market data for {symbol}")
+        pass  # Silent - subscription successful
     except Exception as e:
         logger.error(f"Error subscribing to market data: {e}")
         action = recovery_manager.handle_error(
@@ -1234,7 +1234,7 @@ def fetch_historical_bars(symbol: str, timeframe: int, count: int) -> List[Dict[
     Returns:
         List of bar dictionaries with OHLCV data
     """
-    logger.info(f"Fetching {count} historical {timeframe}min bars for {symbol}")
+    pass  # Silent - historical data fetch internal
     
     
     if broker is None:
@@ -1247,7 +1247,7 @@ def fetch_historical_bars(symbol: str, timeframe: int, count: int) -> List[Dict[
         success, bars = breaker.call(broker.fetch_historical_bars, symbol, f"{timeframe}m", count)
         
         if success and bars:
-            logger.info(f"Fetched {len(bars)} bars")
+            pass  # Silent - bars fetched
             return bars
         else:
             logger.warning("Failed to fetch historical bars")
@@ -1386,7 +1386,7 @@ def initialize_state(symbol: str) -> None:
         "volume_history": deque(maxlen=CONFIG["max_bars_storage"])
     }
     
-    logger.info(f"State initialized for {symbol}")
+    pass  # Silent - state initialization internal
 
 
 # ============================================================================
@@ -1483,9 +1483,9 @@ def save_position_state(symbol: str) -> None:
         
         # Safe logging with None checks
         if position.get('entry_price') is not None:
-            logger.debug(f"Position state saved: {position['side']} {position['quantity']} @ ${position['entry_price']:.2f}")
+            pass  # Silent - position state saved internally
         else:
-            logger.debug(f"Position state saved: {position['side']} (inactive)")
+            pass  # Silent - position state saved
         
     except Exception as e:
         logger.error(f"CRITICAL: Failed to save position state: {e}", exc_info=True)
@@ -1514,7 +1514,7 @@ def load_position_state(symbol: str) -> bool:
         account_id = os.getenv('SELECTED_ACCOUNT_ID', 'default')
         state_file = get_data_file_path(f"data/bot_state_{account_id}.json")
         if not state_file.exists():
-            logger.info("No saved position state found (clean start)")
+            pass  # Silent - clean start
             return False
         
         with open(state_file, 'r') as f:
@@ -1522,11 +1522,11 @@ def load_position_state(symbol: str) -> bool:
         
         # Check if saved state is for this symbol and has an active position
         if saved_state.get("symbol") != symbol:
-            logger.info(f"Saved state is for different symbol: {saved_state.get('symbol')}")
+            pass  # Silent - different symbol
             return False
         
         if not saved_state.get("active"):
-            logger.info("Saved state shows no active position")
+            pass  # Silent - no active position
             return False
         
         # CRITICAL: Verify with broker before restoring state
@@ -1621,29 +1621,35 @@ def update_1min_bar(symbol: str, price: float, volume: int, dt: datetime) -> Non
         if current_bar is not None:
             state[symbol]["bars_1min"].append(current_bar)
             bar_count = len(state[symbol]["bars_1min"])
-            logger.info(f"[BAR COMPLETED] 1min bar closed | Price: ${current_bar['close']:.2f} | Vol: {current_bar['volume']} | Total bars: {bar_count}")
             
             # Calculate VWAP after new bar is added
             calculate_vwap(symbol)
             
-            # Log detailed status every 5 minutes
-            if bar_count % 5 == 0:
+            # Show market status every 15 minutes (professional monitoring without spam)
+            if bar_count % 15 == 0:
                 vwap_data = state[symbol].get("vwap", {})
                 position_dict = state[symbol]["position"]
                 position_qty = position_dict.get("quantity", 0) if isinstance(position_dict, dict) else 0
+                position_side = position_dict.get("side", "FLAT") if isinstance(position_dict, dict) and position_qty > 0 else "FLAT"
                 market_cond = state[symbol].get("market_condition", "UNKNOWN")
+                current_regime = state[symbol].get("current_regime", "NORMAL")
                 
-                logger.info("=" * 80)
-                logger.info(f"[STATUS] 5-MIN UPDATE | Bars: {bar_count} | Position: {position_qty} contracts")
+                # Build professional status message
+                status_parts = []
+                status_parts.append(f"📈 Market Status: {symbol}")
+                status_parts.append(f"Bars: {bar_count} | Price: ${current_bar['close']:.2f} | Vol: {current_bar['volume']}")
+                
                 if vwap_data and isinstance(vwap_data, dict):
                     vwap_val = vwap_data.get('vwap', 0)
                     std_dev = vwap_data.get('std_dev', 0)
-                    logger.info(f"[PRICE] ${vwap_val:.2f} | StdDev: ${std_dev:.2f}")
-                    bands = vwap_data.get('bands', {})
-                    if bands and isinstance(bands, dict):
-                        logger.info(f"[BANDS] U2: ${bands.get('upper_2', 0):.2f} | L2: ${bands.get('lower_2', 0):.2f}")
-                logger.info(f"[MARKET] {market_cond}")
-                logger.info("=" * 80)
+                    if vwap_val > 0:
+                        status_parts.append(f"VWAP: ${vwap_val:.2f} ± ${std_dev:.2f}")
+                
+                status_parts.append(f"Condition: {market_cond}")
+                status_parts.append(f"Regime: {current_regime}")
+                status_parts.append(f"Position: {position_qty} contracts {position_side}")
+                
+                logger.info(" | ".join(status_parts))
             
             # Update current regime after bar completion
             update_current_regime(symbol)
@@ -1692,7 +1698,7 @@ def inject_complete_bar(symbol: str, bar: Dict[str, Any]) -> None:
     
     # First bar check
     if len(state[symbol]["bars_1min"]) == 0:
-        logger.info(f"[INJECT_BAR] First bar: H={bar.get('high', 'MISSING'):.2f} L={bar.get('low', 'MISSING'):.2f}")
+        pass  # Silent - bar injection internal (backtest mode)
     
     # Finalize any pending bar first
     if state[symbol]["current_1min_bar"] is not None:
@@ -1768,7 +1774,7 @@ def update_trend_filter(symbol: str) -> None:
     period = CONFIG.get("trend_ema_period", 20)
     
     if len(bars) < period:
-        logger.debug(f"Not enough bars for trend filter: {len(bars)}/{period}")
+        pass  # Silent - technical detail not for customers
         return
     
     # Calculate EMA
@@ -1789,7 +1795,7 @@ def update_trend_filter(symbol: str) -> None:
         else:
             state[symbol]["trend_direction"] = "neutral"
         
-        logger.debug(f"Trend EMA: {ema:.2f}, Direction: {state[symbol]['trend_direction']}")
+        pass  # Silent - trend calculation internal
 
 
 def calculate_ema(values: List[float], period: int) -> Optional[float]:
@@ -2019,7 +2025,7 @@ def update_rsi(symbol: str) -> None:
     rsi_period = CONFIG.get("rsi_period", 10)  # Iteration 3 - fast RSI
     
     if len(bars) < rsi_period + 1:
-        logger.debug(f"Not enough bars for RSI: {len(bars)}/{rsi_period + 1}")
+        pass  # Silent - RSI calculation internal
         return
     
     # Use recent bars for calculation
@@ -2028,7 +2034,7 @@ def update_rsi(symbol: str) -> None:
     
     if rsi is not None:
         state[symbol]["rsi"] = rsi
-        logger.debug(f"RSI: {rsi:.2f}")
+        pass  # Silent - RSI value internal
 
 
 def update_macd(symbol: str) -> None:
@@ -2047,7 +2053,7 @@ def update_macd(symbol: str) -> None:
     signal_period = CONFIG.get("macd_signal", 9)
     
     if len(bars) < slow_period + signal_period:
-        logger.debug(f"Not enough bars for MACD: {len(bars)}/{slow_period + signal_period}")
+        pass  # Silent - MACD calculation internal
         return
     
     # Use recent bars for calculation
@@ -2056,8 +2062,7 @@ def update_macd(symbol: str) -> None:
     
     if macd_data is not None:
         state[symbol]["macd"] = macd_data
-        logger.debug(f"MACD: {macd_data['macd']:.2f}, Signal: {macd_data['signal']:.2f}, "
-                    f"Histogram: {macd_data['histogram']:.2f}")
+        pass  # Silent - MACD value internal
 
 
 def update_volume_average(symbol: str) -> None:
@@ -2072,7 +2077,7 @@ def update_volume_average(symbol: str) -> None:
     lookback = CONFIG.get("volume_lookback", 20)
     
     if len(bars) < lookback:
-        logger.debug(f"Not enough bars for volume average: {len(bars)}/{lookback}")
+        pass  # Silent - volume calculation internal
         return
     
     # Calculate average volume over lookback period
@@ -2088,7 +2093,7 @@ def update_volume_average(symbol: str) -> None:
         current_volume = bars_1min[-1]["volume"]
         state[symbol]["recent_volume_history"].append(current_volume)
     
-    logger.debug(f"Average volume (last {lookback} bars): {avg_volume:.0f}")
+    pass  # Silent - volume average internal
 
 
 def detect_volume_surge(symbol: str) -> Tuple[bool, float]:
@@ -2236,9 +2241,7 @@ def calculate_vwap(symbol: str) -> None:
     # Log VWAP update every 10 bars to show bot is working
     bar_count = len(bars)
     if bar_count % 10 == 0:
-        logger.info(f"[MARKET] ${vwap:.2f} | StdDev: ${std_dev:.2f} | Bars: {bar_count} | "
-                   f"U2: ${state[symbol]['vwap_bands']['upper_2']:.2f} | "
-                   f"L2: ${state[symbol]['vwap_bands']['lower_2']:.2f}")
+        pass  # Silent - VWAP calculation internal
     else:
         logger.debug(f"VWAP: {vwap:.2f}, StdDev: {std_dev:.2f}")
         logger.debug(f"Bands - U3: {state[symbol]['vwap_bands']['upper_3']:.2f}, "
@@ -2370,13 +2373,13 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
     
     # Check data availability
     if len(state[symbol]["bars_1min"]) < 2:
-        logger.info(f"Not enough bars for signal: {len(state[symbol]['bars_1min'])}/2")
+        pass  # Silent - signal check skipped (not enough bars)
         return False, "Insufficient bars"
     
     # Check VWAP bands
     vwap_bands = state[symbol]["vwap_bands"]
     if any(v is None for v in vwap_bands.values()):
-        logger.info("Price bands not yet calculated")
+        pass  # Silent - price bands not ready
         return False, "VWAP not ready"
     
     # Check trend (optional - DOES NOT block signals if neutral)
@@ -2388,7 +2391,7 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
     if use_trend_filter:
         trend = state[symbol]["trend_direction"]
         if trend is None:
-            logger.info(f"Trend not yet established")
+            pass  # Silent - trend not ready
             return False, "Trend not established"
         # Neutral trend is OK - will trade both directions
     
@@ -2426,13 +2429,13 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
         # Validate spread (Requirement 8)
         is_acceptable, spread_reason = bid_ask_manager.validate_entry_spread(symbol)
         if not is_acceptable:
-            logger.info(f"Spread check failed: {spread_reason}")
+            pass  # Silent - spread check (internal filter)
             return False, spread_reason
         
         # Classify market condition (Requirement 11)
         try:
             condition, condition_reason = bid_ask_manager.classify_market_condition(symbol)
-            logger.info(f"Market Condition: {condition.upper()} - {condition_reason}")
+            pass  # Silent - market condition check (internal filter)
             
             # Skip trading in stressed markets
             if condition == "stressed":
@@ -2925,10 +2928,8 @@ def check_for_signals(symbol: str) -> None:
         take_signal, confidence, reason = get_ml_confidence(market_state, "long")
         
         if not take_signal:
-            logger.info(f"Γ¥î RL REJECTED LONG: {reason} (conf: {confidence:.0%})")
-            # Always show details (for debugging)
-            logger.info(f"   RSI: {market_state['rsi']:.1f}, VWAP dist: {market_state['vwap_distance']:.2f}, "
-                      f"Vol ratio: {market_state['volume_ratio']:.2f}x")
+            # Show rejected signal professionally for customer awareness
+            logger.info(f"⚠️  Signal Declined: {side.upper()} at ${market_state.get('price', 0):.2f} - {reason} (confidence: {confidence:.0%})")
             # Store the rejected signal state for potential future learning
             state[symbol]["last_rejected_signal"] = {
                 "time": get_current_time(),
@@ -2941,11 +2942,7 @@ def check_for_signals(symbol: str) -> None:
         
         # RL approved - adjust position size based on confidence
         regime = market_state.get('regime', 'NORMAL')
-        logger.info(f"Γ£à RL APPROVED LONG: {reason} (conf: {confidence:.0%}) | {regime}")
-        if not is_backtest_mode():
-            # Only show details in live mode
-            logger.info(f"   RSI: {market_state['rsi']:.1f}, VWAP dist: {market_state['vwap_distance']:.2f}, "
-                      f"Vol ratio: {market_state['volume_ratio']:.2f}x")
+        pass  # Silent - RL approval logged with entry signal
         
         # Store market state for outcome recording
         state[symbol]["entry_market_state"] = market_state
@@ -2965,10 +2962,8 @@ def check_for_signals(symbol: str) -> None:
         take_signal, confidence, reason = get_ml_confidence(market_state, "short")
         
         if not take_signal:
-            logger.info(f"Γ¥î RL REJECTED SHORT: {reason} (conf: {confidence:.0%})")
-            # Always show details (for debugging)
-            logger.info(f"   RSI: {market_state['rsi']:.1f}, VWAP dist: {market_state['vwap_distance']:.2f}, "
-                      f"Vol ratio: {market_state['volume_ratio']:.2f}x")
+            # Show rejected signal professionally for customer awareness
+            logger.info(f"⚠️  Signal Declined: {side.upper()} at ${market_state.get('price', 0):.2f} - {reason} (confidence: {confidence:.0%})")
             # Store the rejected signal state for potential future learning
             state[symbol]["last_rejected_signal"] = {
                 "time": get_current_time(),
@@ -2981,11 +2976,7 @@ def check_for_signals(symbol: str) -> None:
         
         # RL approved - adjust position size based on confidence
         regime = market_state.get('regime', 'NORMAL')
-        logger.info(f"Γ£à RL APPROVED SHORT: {reason} (conf: {confidence:.0%}) | {regime}")
-        if not is_backtest_mode():
-            # Only show details in live mode
-            logger.info(f"   RSI: {market_state['rsi']:.1f}, VWAP dist: {market_state['vwap_distance']:.2f}, "
-                      f"Vol ratio: {market_state['volume_ratio']:.2f}x")
+        pass  # Silent - RL approval logged with entry signal
         
         # Store market state for outcome recording
         state[symbol]["entry_market_state"] = market_state
@@ -3774,6 +3765,7 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
         logger.warning(f"ATR not calculable, using fallback value: {DEFAULT_FALLBACK_ATR}")
     
     entry_regime = regime_detector.detect_regime(bars, atr, CONFIG.get("atr_period", 14))
+    base_trail = CONFIG.get("trailing_stop_distance_ticks", 8)
     logger.info(f"")
     logger.info(f"  ≡ƒôè PROFESSIONAL RISK MANAGEMENT")
     logger.info(f"  Entry Regime: {entry_regime.name}")
@@ -3783,15 +3775,10 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
     logger.info(f"    Stop Distance: {stop_distance_ticks:.1f} ticks (${abs(actual_fill_price - stop_price):.2f})")
     logger.info(f"    Stop Price: ${stop_price:.2f}")
     logger.info(f"")
-    logger.info(f"  Breakeven Protection:")
-    logger.info(f"    BE Multiplier: {entry_regime.breakeven_mult}x")
-    logger.info(f"    Trigger: {stop_distance_ticks * entry_regime.breakeven_mult:.1f} ticks profit (1:1 risk-reward)")
-    logger.info(f"    Locks: ${actual_fill_price + (2 * CONFIG['tick_size']) if side == 'long' else actual_fill_price - (2 * CONFIG['tick_size']):.2f} (+$50 profit)")
-    logger.info(f"")
-    logger.info(f"  Trailing Stop:")
-    logger.info(f"    Trail Multiplier: {entry_regime.trailing_mult}x")
-    base_trail = CONFIG.get("trailing_stop_distance_ticks", 8)
-    logger.info(f"    Trail Distance: {base_trail * entry_regime.trailing_mult:.1f} ticks behind peak")
+    logger.info(f"  Target (Trailing Stop Activation):")
+    logger.info(f"    Activation: {stop_distance_ticks * entry_regime.breakeven_mult:.1f} ticks profit (1:1 risk-reward)")
+    logger.info(f"    After activation: Trailing stop {base_trail * entry_regime.trailing_mult:.1f} ticks behind peak")
+    logger.info(f"    Locks minimum: +$50 profit at breakeven")
     logger.info(f"")
     logger.info(f"  Timeout Protection:")
     logger.info(f"    Sideways: {entry_regime.sideways_timeout} minutes")
@@ -4866,13 +4853,11 @@ def update_current_regime(symbol: str) -> None:
     detected_regime = regime_detector.detect_regime(bars, current_atr, CONFIG.get("atr_period", 14))
     state[symbol]["current_regime"] = detected_regime.name
     
-    # Enhanced logging for backtesting - log regime changes explicitly
-    if is_backtest_mode() and prev_regime != detected_regime.name:
-        logger.info(f"[REGIME CHANGE] {prev_regime} → {detected_regime.name} (ATR: {current_atr:.2f})")
-        logger.info(f"  Stop Mult: {detected_regime.stop_mult:.2f}x | Trailing: {detected_regime.trailing_mult:.2f}x")
-        logger.info(f"  Timeouts: Sideways={detected_regime.sideways_timeout}min, Underwater={detected_regime.underwater_timeout}min")
+    # Log regime changes for customers (not just backtest)
+    if prev_regime != detected_regime.name:
+        logger.info(f"📊 Market Regime Changed: {prev_regime} → {detected_regime.name}")
     else:
-        logger.debug(f"[REGIME] Updated to {detected_regime.name} (ATR: {current_atr:.2f})")
+        pass  # Silent - no regime change
 
 
 def check_regime_change(symbol: str, current_price: float) -> None:
@@ -4994,37 +4979,24 @@ def check_regime_change(symbol: str, current_price: float) -> None:
             original_stop = position.get("original_stop_price", position["stop_price"])
             initial_stop_distance_ticks = abs(entry_price - original_stop) / tick_size
             
+            # Professional regime change notification
             logger.info("=" * 60)
-            logger.info(f"REGIME CHANGE - PARAMETERS UPDATED")
+            logger.info(f"⚠️  REGIME CHANGE: {entry_regime_name} → {current_regime.name}")
             logger.info("=" * 60)
-            logger.info(f"  Transition: {entry_regime_name} ΓåÆ {current_regime.name}")
-            logger.info(f"  Timestamp: {get_current_time().strftime('%H:%M:%S')}")
-            logger.info(f"")
-            logger.info(f"  Stop Management:")
-            logger.info(f"    Stop Multiplier: {old_regime.stop_mult:.2f}x ΓåÆ {current_regime.stop_mult:.2f}x")
-            logger.info(f"    Old Stop: ${old_stop:.2f} ΓåÆ New Stop: ${new_stop_price:.2f}")
-            logger.info(f"    Initial Risk: {initial_stop_distance_ticks:.1f} ticks (adapts to actual risk)")
-            logger.info(f"")
-            logger.info(f"  Breakeven Management:")
-            logger.info(f"    BE Multiplier: {old_regime.breakeven_mult:.2f}x ΓåÆ {current_regime.breakeven_mult:.2f}x")
-            if not position.get("breakeven_active"):
-                old_be_threshold = initial_stop_distance_ticks * old_regime.breakeven_mult
-                new_be_threshold = initial_stop_distance_ticks * current_regime.breakeven_mult
-                logger.info(f"    BE Threshold: {old_be_threshold:.1f} ΓåÆ {new_be_threshold:.1f} ticks (1:1 risk-reward)")
-            else:
-                logger.info(f"    Breakeven already active (stop at ${position['stop_price']:.2f})")
-            logger.info(f"")
-            logger.info(f"  Trailing Stop:")
-            logger.info(f"    Trailing Mult: {old_regime.trailing_mult:.2f}x ΓåÆ {current_regime.trailing_mult:.2f}x")
-            base_trailing_ticks = CONFIG.get("trailing_stop_distance_ticks", 8)
-            old_trailing_distance = base_trailing_ticks * old_regime.trailing_mult
-            new_trailing_distance = base_trailing_ticks * current_regime.trailing_mult
-            logger.info(f"    Trailing Distance: {old_trailing_distance:.1f} ΓåÆ {new_trailing_distance:.1f} ticks")
-            logger.info(f"")
-            logger.info(f"  Timeout Protection:")
-            logger.info(f"    Sideways Timeout: {old_regime.sideways_timeout}min ΓåÆ {current_regime.sideways_timeout}min")
-            logger.info(f"    Underwater Timeout: {old_regime.underwater_timeout}min ΓåÆ {current_regime.underwater_timeout}min")
-            logger.info(f"    (Timeout clocks reset from regime change time)")
+            logger.info(f"  Time: {get_current_time().strftime('%H:%M:%S')}")
+            logger.info(f"  Stop Adjusted: ${old_stop:.2f} → ${new_stop_price:.2f}")
+            
+            # Show what changed in simple terms
+            if current_regime.stop_mult < old_regime.stop_mult:
+                logger.info(f"  Action: Tighter stops ({current_regime.stop_mult:.2f}x vs {old_regime.stop_mult:.2f}x)")
+            elif current_regime.stop_mult > old_regime.stop_mult:
+                logger.info(f"  Action: Wider stops ({current_regime.stop_mult:.2f}x vs {old_regime.stop_mult:.2f}x)")
+            
+            if current_regime.trailing_mult != old_regime.trailing_mult:
+                base_trailing_ticks = CONFIG.get("trailing_stop_distance_ticks", 8)
+                new_trailing_distance = base_trailing_ticks * current_regime.trailing_mult
+                logger.info(f"  Trailing: {new_trailing_distance:.1f} ticks ({current_regime.trailing_mult:.2f}x)")
+            
             logger.info("=" * 60)
         else:
             logger.error("Failed to update stop after regime change")
@@ -5032,34 +5004,15 @@ def check_regime_change(symbol: str, current_price: float) -> None:
         # Stop would move backward - log but don't update
         old_regime = REGIME_DEFINITIONS[entry_regime_name]
         logger.info("=" * 60)
-        logger.info(f"REGIME CHANGE DETECTED - STOP NOT ADJUSTED")
+        logger.info(f"⚠️  REGIME CHANGE: {entry_regime_name} → {current_regime.name}")
         logger.info("=" * 60)
-        logger.info(f"  Transition: {entry_regime_name} ΓåÆ {current_regime.name}")
-        logger.info(f"  Stop would move backward: ${current_stop:.2f} ΓåÆ ${new_stop_price:.2f}")
-        logger.info(f"  Stop remains at: ${current_stop:.2f}")
-        logger.info(f"")
-        logger.info(f"  Other parameters still updated:")
-        logger.info(f"    Breakeven Mult: {old_regime.breakeven_mult:.2f}x ΓåÆ {current_regime.breakeven_mult:.2f}x")
-        logger.info(f"    Trailing Mult: {old_regime.trailing_mult:.2f}x ΓåÆ {current_regime.trailing_mult:.2f}x")
-        logger.info(f"    Timeouts: Sideways {old_regime.sideways_timeout}ΓåÆ{current_regime.sideways_timeout}min, "
-                   f"Underwater {old_regime.underwater_timeout}ΓåÆ{current_regime.underwater_timeout}min")
+        logger.info(f"  Time: {get_current_time().strftime('%H:%M:%S')}")
+        logger.info(f"  Stop Protected: ${current_stop:.2f} (would worsen to ${new_stop_price:.2f})")
+        logger.info(f"  Trailing Updated: {current_regime.trailing_mult:.2f}x")
         logger.info("=" * 60)
     
     # Update breakeven threshold based on new regime (if not already active)
-    if not position["breakeven_active"]:
-        old_regime = REGIME_DEFINITIONS[entry_regime_name]
-        
-        # PROFESSIONAL: Calculate dynamic threshold based on initial stop distance
-        entry_price = position["entry_price"]
-        original_stop = position["original_stop_price"]
-        tick_size = CONFIG["tick_size"]
-        initial_stop_distance_ticks = abs(entry_price - original_stop) / tick_size
-        
-        old_breakeven_threshold = initial_stop_distance_ticks * old_regime.breakeven_mult
-        new_breakeven_threshold = initial_stop_distance_ticks * current_regime.breakeven_mult
-        logger.info(f"  Breakeven threshold updated: {old_breakeven_threshold:.1f} ΓåÆ {new_breakeven_threshold:.1f} ticks")
-    else:
-        logger.info(f"  Breakeven already active - threshold change does not apply")
+    pass  # Silent - breakeven threshold adjustment is internal
 
 
 def check_exit_conditions(symbol: str) -> None:
@@ -6740,7 +6693,7 @@ def format_time_statistics(stats: Dict[str, Any]) -> None:
     
     if force_flatten_pct > 30:
         logger.warning("  >30% force-flattened - trade duration too long for time window")
-        logger.warning("   Consider: earlier entry cutoff or faster profit targets")
+        logger.warning("   Consider: earlier entry cutoff or tighter trailing stops")
     else:
         logger.info(" <30% force-flattened - acceptable duration")
     
@@ -6775,13 +6728,13 @@ def format_risk_metrics() -> None:
     
     logger.info(SEPARATOR_LINE)
     logger.info("FLATTEN MODE EXIT ANALYSIS (Phase 10)")
-    logger.info(f"Target Wait Wins: {bot_status['target_wait_wins']}")
-    logger.info(f"Target Wait Losses: {bot_status['target_wait_losses']}")
+    logger.info(f"Trailing Stop Wins: {bot_status['target_wait_wins']}")
+    logger.info(f"Trailing Stop Losses: {bot_status['target_wait_losses']}")
     logger.info(f"Early Close Saves: {bot_status['early_close_saves']}")
     if bot_status["target_wait_wins"] > 0:
-        target_success_rate = (bot_status["target_wait_wins"] / 
+        trailing_success_rate = (bot_status["target_wait_wins"] / 
                                (bot_status["target_wait_wins"] + bot_status["target_wait_losses"]) * 100)
-        logger.info(f"Target Wait Success Rate: {target_success_rate:.1f}%")
+        logger.info(f"Trailing Stop Success Rate: {trailing_success_rate:.1f}%")
 
 
 def log_session_summary(symbol: str) -> None:
@@ -7243,7 +7196,7 @@ Being in a position when you shouldn't be is the #1 futures trading killer.
 VALIDATION:
 - Phase 20 statistics tell you if your strategy fits the time windows
 - If >30% force-flattened: strategy incompatible with time constraints
-- Adjust entry cutoff earlier OR use faster profit targets
+- Adjust entry cutoff earlier OR use tighter trailing stops
 - After-noon entries especially risky - limited time to work
 """
 
@@ -7268,17 +7221,38 @@ def main(symbol_override: str = None) -> None:
     # Use symbol override if provided (for multi-symbol support)
     trading_symbol = symbol_override if symbol_override else CONFIG["instrument"]
     
-    logger.info(SEPARATOR_LINE)
-    logger.info(f"QuoTrading AI Bot Starting [{trading_symbol}]")
-    logger.info(SEPARATOR_LINE)
+    # Professional startup header with GUI settings
+    logger.info("=" * 80)
+    logger.info("QuoTrading AI Professional Trading System")
+    logger.info("=" * 80)
+    
+    # Display mode and connection
+    mode_str = "SIGNAL-ONLY MODE (Manual Trading)" if _bot_config.shadow_mode else "LIVE TRADING"
+    logger.info(f"Mode: {mode_str}")
+    logger.info(f"Symbol: {trading_symbol}")
+    
+    # Show broker connection status (will be updated after broker connects)
+    logger.info("Broker: Connecting...")
+    
+    # Display GUI Settings in professional format
+    logger.info("")
+    logger.info("📋 Trading Configuration:")
+    logger.info(f"  • Max Contracts: {CONFIG['max_contracts']}")
+    logger.info(f"  • Max Trades/Day: {CONFIG['max_trades_per_day']}")
+    logger.info(f"  • Risk Per Trade: ${CONFIG['risk_per_trade']:.0f}")
+    logger.info(f"  • Daily Loss Limit: ${CONFIG['daily_loss_limit']}")
+    logger.info(f"  • Entry Window: {CONFIG['entry_start_time']} - {CONFIG['entry_end_time']} ET")
+    logger.info(f"  • Force Close: {CONFIG['forced_flatten_time']} ET")
+    logger.info("=" * 80)
+    logger.info("")
     
     # Initialize local RL brain for both LIVE and BACKTEST modes
     # LIVE MODE: Reads from local symbol-specific folder for pattern matching, saves to cloud only
     # BACKTEST MODE: Reads and saves to local symbol-specific folder
     if is_backtest_mode() or CONFIG.get("backtest_mode", False):
-        logger.info(f"[{trading_symbol}] BACKTEST MODE: Local RL brain will be initialized by backtest code")
+        pass  # Silent - backtest mode initialization
     else:
-        logger.info(f"[{trading_symbol}] LIVE MODE: Initializing local RL brain...")
+        pass  # Silent - live mode initialization
         # Use symbol-specific folder for experiences
         signal_exp_file = str(get_data_file_path(f"experiences/{trading_symbol}/signal_experience.json"))
         rl_brain = SignalConfidenceRL(
@@ -7290,8 +7264,8 @@ def main(symbol_override: str = None) -> None:
             exploration_decay=0.995,
             save_local=False  # Live mode: read local but save to cloud only
         )
-        logger.info(f"[{trading_symbol}] ✅ Local RL brain initialized with {len(rl_brain.experiences)} experiences from experiences/{trading_symbol}/")
-        logger.info(f"[{trading_symbol}] 📝 Live mode: Reading local experiences, saving to cloud only")
+        pass  # Silent - RL brain initialized
+        pass  # Silent - live mode save configuration
         
         # Initialize Cloud API Client for reporting trade outcomes to cloud
         license_key = os.getenv("QUOTRADING_LICENSE_KEY")
@@ -7302,39 +7276,21 @@ def main(symbol_override: str = None) -> None:
                 license_key=license_key,
                 timeout=10
             )
-            logger.info(f"[{trading_symbol}] ✅ Cloud API client initialized for outcome reporting")
+            pass  # Silent - cloud API initialized
         else:
-            logger.warning(f"[{trading_symbol}] No license key - cloud outcome reporting disabled")
+            logger.warning(f"No license key - cloud outcome reporting disabled")
     
-    # Log symbol specifications if loaded
-    if SYMBOL_SPEC:
-        logger.info(f"[{trading_symbol}] Symbol: {SYMBOL_SPEC.name} ({SYMBOL_SPEC.symbol})")
-        logger.info(f"[{trading_symbol}]   Tick Value: ${SYMBOL_SPEC.tick_value:.2f} | Tick Size: ${SYMBOL_SPEC.tick_size}")
-        logger.info(f"[{trading_symbol}]   Slippage: {SYMBOL_SPEC.typical_slippage_ticks} ticks | Volatility: {SYMBOL_SPEC.volatility_factor}x")
-        logger.info(f"[{trading_symbol}]   Trading Hours: {SYMBOL_SPEC.session_start} - {SYMBOL_SPEC.session_end} ET")
+    # Symbol specifications - suppress detailed info, just essentials
+    # (Tick value, slippage, etc. are technical details customers don't need)
     
-    # Display operating mode
-    if _bot_config.shadow_mode:
-        logger.info(f"[{trading_symbol}] Mode: ≡ƒôè SIGNAL-ONLY MODE (Manual Trading)")
-        logger.info(f"[{trading_symbol}] ΓÜá∩╕Å  Signal mode: Shows trading signals without executing trades")
-    else:
-        logger.info(f"[{trading_symbol}] Mode: LIVE TRADING")
-    
-    logger.info(f"[{trading_symbol}] Instrument: {trading_symbol}")
-    logger.info(f"[{trading_symbol}] Entry Window: {CONFIG['entry_start_time']} - {CONFIG['entry_end_time']} ET")
-    logger.info(f"[{trading_symbol}] Force Close: {CONFIG['forced_flatten_time']} ET")
-    logger.info(f"[{trading_symbol}] Shutdown: {CONFIG['shutdown_time']} ET")
-    logger.info(f"[{trading_symbol}] Max Contracts: {CONFIG['max_contracts']}")
-    logger.info(f"[{trading_symbol}] Max Trades/Day: {CONFIG['max_trades_per_day']}")
-    logger.info(f"[{trading_symbol}] Risk Per Trade: {CONFIG['risk_per_trade'] * 100:.1f}%")
-    logger.info(f"[{trading_symbol}] Daily Loss Limit: ${CONFIG['daily_loss_limit']}")
-    logger.info(SEPARATOR_LINE)
+    # Operating mode and settings already shown in header - no need to repeat
+    pass  # Silent - configuration already displayed in header
     
     # Phase Fifteen: Validate timezone configuration
     validate_timezone_configuration()
     
     # Initialize bid/ask manager
-    logger.info(f"[{trading_symbol}] Initializing bid/ask manager...")
+    pass  # Silent - bid/ask manager initialization
     bid_ask_manager = BidAskManager(CONFIG)
     
     # Initialize broker (replaces initialize_sdk)
@@ -7342,25 +7298,28 @@ def main(symbol_override: str = None) -> None:
     
     # Phase 12: Record starting equity for drawdown monitoring
     bot_status["starting_equity"] = get_account_equity()
-    logger.info(f"[{trading_symbol}] Starting Equity: ${bot_status['starting_equity']:.2f}")
+    
+    # Update header with broker connection status and starting equity
+    logger.info(f"✅ Broker Connected | Starting Equity: ${bot_status['starting_equity']:.2f}")
+    logger.info("")
     
     # Initialize state for instrument (use override symbol if provided)
     initialize_state(trading_symbol)
     
     # CRITICAL: Try to restore position state from disk if bot was restarted
-    logger.info(f"[{trading_symbol}] Checking for saved position state...")
+    pass  # Silent - checking for saved position state
     position_restored = load_position_state(trading_symbol)
     if position_restored:
         logger.warning(f"[{trading_symbol}] ΓÜá∩╕Å  BOT RESTARTED WITH ACTIVE POSITION - Managing existing trade")
     else:
-        logger.info(f"[{trading_symbol}] No active position to restore - starting fresh")
+        pass  # Silent - no saved position
     
     # Skip historical bars fetching in live mode - not needed for real-time trading
     # The bot will build bars from live tick data
-    logger.info(f"[{trading_symbol}] Skipping historical bars fetch - will build bars from live data")
+    pass  # Silent - skipping historical bars fetch
     
     # Initialize event loop
-    logger.info(f"[{trading_symbol}] Initializing event loop...")
+    pass  # Silent - event loop initialization
     event_loop = EventLoop(bot_status, CONFIG)
     
     # Register event handlers
@@ -7399,7 +7358,7 @@ def main(symbol_override: str = None) -> None:
     
     # Subscribe to bid/ask quotes if broker supports it
     if broker is not None and hasattr(broker, 'subscribe_quotes'):
-        logger.info(f"[{trading_symbol}] Subscribing to bid/ask quotes...")
+        pass  # Silent - quote subscription
         try:
             broker.subscribe_quotes(trading_symbol, on_quote)
         except Exception as e:
@@ -7409,13 +7368,11 @@ def main(symbol_override: str = None) -> None:
     # RL is CLOUD-ONLY - no local RL components
     # Users get confidence from cloud, contribute to cloud hive mind
     # Only the dev (Kevin) gets the experience data saved to cloud
-    logger.info("Cloud RL Mode: All learning goes to shared hive mind")
-    logger.info("No local RL files - everything saved to cloud for collective intelligence")
+    pass  # Silent - RL cloud mode (not customer-facing)
     
-    logger.info("Bot initialization complete")
-    logger.info("Starting event loop...")
+    logger.info("🚀 Bot Ready - Monitoring for Signals")
     logger.info("Press Ctrl+C for graceful shutdown")
-    logger.info(SEPARATOR_LINE)
+    logger.info("")
     
     # Run event loop (blocks until shutdown signal)
     try:
@@ -7469,16 +7426,14 @@ def handle_tick_event(event) -> None:
     state[symbol]["total_ticks_received"] += 1
     total_ticks = state[symbol]["total_ticks_received"]
     
-    # Log tick data periodically (every 1000 ticks to avoid spam)
+    # Log market snapshot periodically (every 1000 ticks for professional monitoring)
     if total_ticks % 1000 == 0:
         # Get current bid/ask from bid_ask_manager if available
-        bid_ask_info = ""
         if bid_ask_manager is not None:
             quote = bid_ask_manager.get_current_quote(symbol)
             if quote:
                 spread = quote.ask_price - quote.bid_price
-                bid_ask_info = f" | Bid: ${quote.bid_price:.2f} x {quote.bid_size} | Ask: ${quote.ask_price:.2f} x {quote.ask_size} | Spread: ${spread:.2f}"
-        logger.info(f"[TICK] {symbol} @ ${price:.2f} | Vol: {volume} | Total ticks: {total_ticks}{bid_ask_info}")
+                logger.info(f"📊 Market: {symbol} @ ${price:.2f} | Bid: ${quote.bid_price:.2f} x {quote.bid_size} | Ask: ${quote.ask_price:.2f} x {quote.ask_size} | Spread: ${spread:.2f}")
     
     # Create tick object
     tick = {
@@ -7747,7 +7702,7 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
                     logger.warning("⏳ LICENSE GRACE PERIOD ACTIVATED")
                     logger.warning("License expired but position is active")
                     logger.warning("Bot will continue managing position until it closes")
-                    logger.warning("Position will close via normal exit rules (target/stop/time)")
+                    logger.warning("Position will close via normal exit rules (trailing stop/time)")
                     logger.warning("No new trades will be allowed")
                     logger.warning("=" * 70)
                     

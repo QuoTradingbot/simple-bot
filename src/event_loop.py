@@ -101,7 +101,7 @@ class EventLoop:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
         
-        logger.info("Event loop initialized")
+        pass  # Silent - event loop initialized
     
     def _signal_handler(self, signum: int, frame: Any) -> None:
         """Handle SIGINT and SIGTERM signals for graceful shutdown."""
@@ -118,7 +118,7 @@ class EventLoop:
             handler: Callable that processes the event
         """
         self.handlers[event_type] = handler
-        logger.debug(f"Registered handler for {event_type.name}")
+        pass  # Silent - handler registered
     
     def register_shutdown_handler(self, handler: Callable) -> None:
         """
@@ -128,7 +128,7 @@ class EventLoop:
             handler: Callable to execute during shutdown
         """
         self.shutdown_handlers.append(handler)
-        logger.debug("Registered shutdown handler")
+        pass  # Silent - shutdown handler registered
     
     def post_event(self, event_type: EventType, priority: EventPriority, 
                    data: Optional[Dict[str, Any]] = None) -> bool:
@@ -178,9 +178,7 @@ class EventLoop:
         """
         self.running = True
         self.start_time = time.time()
-        logger.info(SEPARATOR_LINE)
-        logger.info("EVENT LOOP STARTED")
-        logger.info(SEPARATOR_LINE)
+        pass  # Silent - event loop starting (message shown in main startup)
         
         last_status_time = time.time()
         
@@ -192,12 +190,12 @@ class EventLoop:
                 if iteration_start - last_status_time > 60:
                     events_processed = self.metrics["events_processed"]
                     uptime = iteration_start - self.start_time if hasattr(self, 'start_time') else 0
-                    logger.info(f"[STATUS] Event Loop Active | Events: {events_processed} | Uptime: {int(uptime)}s")
+                    pass  # Silent - periodic status removed (customers don't need event loop stats)
                     last_status_time = iteration_start
                 
                 # Check for shutdown
                 if self.shutdown_requested:
-                    logger.info("Shutdown requested - stopping event loop")
+                    pass  # Silent shutdown request
                     break
                 
                 # Process events with timeout to prevent blocking
@@ -267,9 +265,7 @@ class EventLoop:
     
     def _shutdown(self) -> None:
         """Execute graceful shutdown procedures."""
-        logger.info(SEPARATOR_LINE)
-        logger.info("GRACEFUL SHUTDOWN INITIATED")
-        logger.info(SEPARATOR_LINE)
+        logger.info("Bot Shutting Down")
         
         self.running = False
         
@@ -283,24 +279,11 @@ class EventLoop:
         # Log final metrics
         self._log_metrics()
         
-        logger.info("Event loop stopped")
+        pass  # Silent - event loop stopped
     
     def _log_metrics(self) -> None:
         """Log event loop metrics."""
-        logger.info(SEPARATOR_LINE)
-        logger.info("EVENT LOOP METRICS")
-        logger.info(SEPARATOR_LINE)
-        logger.info(f"Total iterations: {self.metrics['loop_iterations']}")
-        logger.info(f"Events processed: {self.metrics['events_processed']}")
-        logger.info(f"Max queue depth: {self.metrics['max_queue_depth']}")
-        logger.info(f"Max processing time: {self.metrics['max_processing_time_ms']:.2f}ms")
-        
-        if self.metrics['loop_iterations'] > 0:
-            avg_time = self.metrics['total_processing_time_ms'] / self.metrics['loop_iterations']
-            logger.info(f"Avg processing time: {avg_time:.2f}ms")
-        
-        logger.info(f"Stall count: {self.metrics['stall_count']}")
-        logger.info(SEPARATOR_LINE)
+        pass  # Silent - metrics logged only for debugging, not for customers
     
     def get_queue_depth(self) -> int:
         """Get current event queue depth."""

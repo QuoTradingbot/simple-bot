@@ -1,12 +1,21 @@
 """
 Test script for user profile endpoints
+
+IMPORTANT: This test script is for local development/testing only.
+Set environment variables before running:
+  - API_BASE_URL: The API endpoint (default: http://localhost:5000)
+  - TEST_LICENSE_KEY: A valid test license key from your test database
+
+DO NOT run this against production without proper safeguards.
 """
 import requests
 import json
+import os
 
 # Test configuration
-BASE_URL = "http://localhost:5000"
-TEST_LICENSE_KEY = "TEST-1234-5678-ABCD"  # This would be a real license key in production
+BASE_URL = os.getenv("API_BASE_URL", "http://localhost:5000")
+# Use environment variable or a placeholder that won't exist in production
+TEST_LICENSE_KEY = os.getenv("TEST_LICENSE_KEY", "TEST-XXXX-YYYY-ZZZZ-DOES-NOT-EXIST")
 
 def test_get_profile():
     """Test GET /api/user/profile"""

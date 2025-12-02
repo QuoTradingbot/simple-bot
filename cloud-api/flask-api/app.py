@@ -1563,6 +1563,7 @@ def get_user_profile():
         if not conn:
             return jsonify({"error": "Database connection failed"}), 500
         
+        result = None
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute("""
@@ -1586,26 +1587,32 @@ def get_user_profile():
                 user = cursor.fetchone()
                 
                 if not user:
-                    return jsonify({"error": "User not found"}), 404
-                
-                # Format response (convert datetime to ISO string)
-                profile = dict(user)
-                for key, value in profile.items():
-                    if hasattr(value, 'isoformat'):
-                        profile[key] = value.isoformat()
-                
-                # Don't expose full license key in response for security
-                profile['license_key'] = profile['license_key'][:8] + "..." + profile['license_key'][-4:]
-                
-                logging.info(f"✅ Profile retrieved for {user['email']}")
-                
-                return jsonify({
-                    "status": "success",
-                    "profile": profile
-                }), 200
+                    result = (jsonify({"error": "User not found"}), 404)
+                else:
+                    # Format response (convert datetime to ISO string)
+                    profile = dict(user)
+                    for key, value in profile.items():
+                        if hasattr(value, 'isoformat'):
+                            profile[key] = value.isoformat()
+                    
+                    # Don't expose full license key in response for security (safe masking)
+                    if len(profile['license_key']) >= 12:
+                        profile['license_key'] = profile['license_key'][:8] + "..." + profile['license_key'][-4:]
+                    else:
+                        # For short keys, just show first 4 characters
+                        profile['license_key'] = profile['license_key'][:4] + "..."
+                    
+                    logging.info(f"✅ Profile retrieved for {user['email']}")
+                    
+                    result = (jsonify({
+                        "status": "success",
+                        "profile": profile
+                    }), 200)
                 
         finally:
             return_connection(conn)
+        
+        return result if result else (jsonify({"error": "Unknown error"}), 500)
             
     except Exception as e:
         logging.error(f"Get profile error: {e}")
@@ -1654,8 +1661,13 @@ def update_user_profile():
         if email is not None and not isinstance(email, str):
             return jsonify({"error": "Invalid email format"}), 400
         
-        if email is not None and '@' not in email:
-            return jsonify({"error": "Invalid email address"}), 400
+        # Improved email validation
+        if email is not None:
+            import re
+            # Basic email regex pattern
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_pattern, email):
+                return jsonify({"error": "Invalid email address format"}), 400
         
         if metadata is not None and not isinstance(metadata, dict):
             return jsonify({"error": "Metadata must be a JSON object"}), 400
@@ -1670,6 +1682,7 @@ def update_user_profile():
         if not conn:
             return jsonify({"error": "Database connection failed"}), 500
         
+        result = None
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 # Build dynamic UPDATE query based on provided fields
@@ -1683,58 +1696,61 @@ def update_user_profile():
                         WHERE email = %s AND license_key != %s
                     """, (email, license_key))
                     if cursor.fetchone():
-                        return jsonify({"error": "Email already in use by another account"}), 409
-                    
-                    update_fields.append("email = %s")
-                    params.append(email)
+                        result = (jsonify({"error": "Email already in use by another account"}), 409)
+                    else:
+                        update_fields.append("email = %s")
+                        params.append(email)
                 
-                if metadata is not None:
+                if result is None and metadata is not None:
                     update_fields.append("metadata = %s")
                     params.append(json.dumps(metadata))
                 
-                if not update_fields:
-                    return jsonify({
-                        "error": "No valid fields to update",
-                        "message": "Provide 'email' or 'metadata' to update"
-                    }), 400
-                
-                # Always update the updated_at timestamp
-                update_fields.append("updated_at = NOW()")
-                params.append(license_key)
-                
-                # Execute update
-                query = f"""
-                    UPDATE users 
-                    SET {', '.join(update_fields)}
-                    WHERE license_key = %s
-                    RETURNING account_id, email, license_type, license_status, 
-                              license_expiration, updated_at, metadata
-                """
-                
-                cursor.execute(query, params)
-                updated_user = cursor.fetchone()
-                
-                if not updated_user:
-                    return jsonify({"error": "User not found"}), 404
-                
-                conn.commit()
-                
-                # Format response
-                profile = dict(updated_user)
-                for key, value in profile.items():
-                    if hasattr(value, 'isoformat'):
-                        profile[key] = value.isoformat()
-                
-                logging.info(f"✅ Profile updated for {profile.get('email')}")
-                
-                return jsonify({
-                    "status": "success",
-                    "message": "Profile updated successfully",
-                    "profile": profile
-                }), 200
+                if result is None:
+                    if not update_fields:
+                        result = (jsonify({
+                            "error": "No valid fields to update",
+                            "message": "Provide 'email' or 'metadata' to update"
+                        }), 400)
+                    else:
+                        # Always update the updated_at timestamp
+                        update_fields.append("updated_at = NOW()")
+                        params.append(license_key)
+                        
+                        # Execute update
+                        query = f"""
+                            UPDATE users 
+                            SET {', '.join(update_fields)}
+                            WHERE license_key = %s
+                            RETURNING account_id, email, license_type, license_status, 
+                                      license_expiration, updated_at, metadata
+                        """
+                        
+                        cursor.execute(query, params)
+                        updated_user = cursor.fetchone()
+                        
+                        if not updated_user:
+                            result = (jsonify({"error": "User not found"}), 404)
+                        else:
+                            conn.commit()
+                            
+                            # Format response
+                            profile = dict(updated_user)
+                            for key, value in profile.items():
+                                if hasattr(value, 'isoformat'):
+                                    profile[key] = value.isoformat()
+                            
+                            logging.info(f"✅ Profile updated for {profile.get('email')}")
+                            
+                            result = (jsonify({
+                                "status": "success",
+                                "message": "Profile updated successfully",
+                                "profile": profile
+                            }), 200)
                 
         finally:
             return_connection(conn)
+        
+        return result if result else (jsonify({"error": "Unknown error"}), 500)
             
     except Exception as e:
         logging.error(f"Update profile error: {e}")

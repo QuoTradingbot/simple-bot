@@ -962,16 +962,17 @@ def get_account_equity() -> float:
     """
     Fetch current account equity from broker.
     Returns account equity/balance with error handling.
-    In shadow mode, returns simulated capital (no account login).
+    In shadow mode, returns account_size from config (actual fetched balance from launcher).
     In live mode, returns actual account balance from broker.
     """
-    # Shadow mode or no broker - return simulated capital
+    # Shadow mode or no broker - return account size from config
     if _bot_config.shadow_mode or broker is None:
         # Use starting_equity from bot_status if available
         if bot_status.get("starting_equity") is not None:
             return bot_status["starting_equity"]
-        # Default starting capital for shadow mode
-        return 50000.0
+        # Use account_size from config (fetched from broker during launcher login)
+        # This is the actual account balance the user selected in the launcher
+        return float(CONFIG.get("account_size", 50000.0))
     
     # Live mode - get actual balance from broker account
     try:

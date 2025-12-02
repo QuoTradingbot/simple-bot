@@ -3117,17 +3117,22 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
     
     STOP LOSS CALCULATION:
     - Uses user's "Max Loss Per Trade" setting from GUI (in dollars)
+    - This represents the TOTAL TRADE RISK, not per-contract risk
+    - Stop distance is calculated to ensure total risk equals user's setting
     - Automatically adapts to different symbols (ES, NQ, CL, GC, etc.)
     - Correctly handles symbol-specific tick sizes and tick values
-    - Example: $700 max loss on ES (tick_value=$12.50) = 56 tick stop
-    - Example: $700 max loss on NQ (tick_value=$5.00) = 140 tick stop
-    - Example: $1000 max loss on CL (tick_value=$10.00) = 100 tick stop
+    
+    EXAMPLES (same $700 max loss, different symbols):
+    - ES (tick_value=$12.50): Stop = 56 ticks, Total Risk = $700
+    - NQ (tick_value=$5.00): Stop = 140 ticks, Total Risk = $700
+    - CL (tick_value=$10.00): Stop = 70 ticks, Total Risk = $700
     
     MULTI-CONTRACT HANDLING:
-    - Stop loss is calculated PER CONTRACT, not total position
-    - With 3 contracts and $700 max loss per trade:
-      * Each contract has 56 tick stop (ES example)
-      * Total risk = $700 (as configured by user)
+    - All contracts use the SAME stop distance (same number of ticks)
+    - Stop is NOT multiplied by contract count
+    - With 3 contracts and $700 max loss on ES:
+      * Stop distance = 56 ticks for ALL contracts
+      * Total risk = $700 (NOT $700 × 3 = $2100)
     - This ensures risk scales correctly regardless of contract count
     
     Args:
@@ -3225,26 +3230,32 @@ def calculate_position_size(symbol: str, side: str, entry_price: float, rl_confi
         logger.warning(f"Position size is zero - check GUI settings")
         return 0, stop_price
     
-    # TOTAL RISK CALCULATION:
-    # The bot calculates stop loss PER CONTRACT based on max_loss_per_trade
-    # Total position risk = risk_per_contract (which equals max_stop_dollars)
+    # TOTAL RISK CALCULATION EXPLANATION:
+    # ====================================
+    # The stop distance (in ticks) is the SAME for all contracts in the position.
+    # This is NOT a per-contract stop - all contracts share the same stop price.
     # 
-    # IMPORTANT: This is NOT multiplied by contract count!
-    # The max_loss_per_trade setting is the TOTAL TRADE RISK, not per-contract risk.
+    # The max_loss_per_trade setting defines the TOTAL POSITION RISK.
+    # 
+    # HOW IT WORKS:
+    # - Calculate stop distance: max_loss_per_trade / tick_value = ticks
+    # - ALL contracts use this SAME tick distance
+    # - Total risk = ticks × tick_value = max_loss_per_trade (original setting)
     # 
     # Example with ES (tick_value=$12.50):
     # - User sets max_loss_per_trade = $700
-    # - User sets max_contracts = 3
-    # - Stop distance = $700 / $12.50 = 56 ticks per contract
-    # - Total risk = $700 (NOT $700 * 3 = $2100)
+    # - Stop distance = $700 / $12.50 = 56 ticks
     # 
-    # Example with NQ (tick_value=$5.00):
-    # - User sets max_loss_per_trade = $1000
-    # - User sets max_contracts = 2
-    # - Stop distance = $1000 / $5.00 = 200 ticks per contract
-    # - Total risk = $1000 (NOT $1000 * 2 = $2000)
+    # Scenario 1: 1 contract
+    # - Stop: 56 ticks
+    # - Total risk: 56 ticks × $12.50 = $700 ✓
     # 
-    # This ensures the user's risk tolerance is respected exactly as configured.
+    # Scenario 2: 3 contracts  
+    # - Stop: 56 ticks (SAME as 1 contract, not 56×3!)
+    # - Total risk: 56 ticks × $12.50 = $700 ✓ (NOT $700×3 = $2100)
+    # 
+    # This ensures the user's risk tolerance is respected exactly as configured,
+    # regardless of how many contracts are traded.
     
     logger.info(f"Position sizing: {contracts} contract(s)")
     logger.info(f"  Entry: ${entry_price:.2f}, Stop: ${stop_price:.2f}")

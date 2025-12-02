@@ -6854,70 +6854,75 @@ def log_session_summary(symbol: str) -> None:
     """
     stats = state[symbol]["session_stats"]
     
-    # Collect summary lines to display
-    summary_lines = []
-    summary_lines.append(SEPARATOR_LINE)
-    summary_lines.append("SESSION SUMMARY")
-    summary_lines.append(SEPARATOR_LINE)
-    summary_lines.append(f"Trading Day: {state[symbol]['trading_day']}")
-    
-    # Collect trade statistics lines
-    total_trades = len(stats["trades"])
-    wins = stats.get("win_count", 0)
-    losses = stats.get("loss_count", 0)
-    summary_lines.append(f"Total Trades: {total_trades}")
-    summary_lines.append(f"Wins: {wins}")
-    summary_lines.append(f"Losses: {losses}")
-    
-    # Win rate
-    if total_trades > 0:
-        win_rate = (wins / total_trades) * 100
-        summary_lines.append(f"Win Rate: {win_rate:.1f}%")
-    else:
-        summary_lines.append("Win Rate: N/A (no trades)")
-    
-    # P&L
-    total_pnl = stats.get("total_pnl", 0.0)
-    largest_win = stats.get("largest_win", 0.0)
-    largest_loss = stats.get("largest_loss", 0.0)
-    summary_lines.append(f"Total P&L: ${total_pnl:+.2f}")
-    summary_lines.append(f"Largest Win: ${largest_win:+.2f}")
-    summary_lines.append(f"Largest Loss: ${largest_loss:+.2f}")
-    summary_lines.append(SEPARATOR_LINE)
-    
-    # Get rainbow bot art if available
+    # Display rainbow bot logo on the right side if available
     if get_rainbow_bot_art:
         bot_lines = get_rainbow_bot_art()
+        bot_line_idx = 0
         
-        # Display summary and bot side by side
-        max_lines = max(len(summary_lines), len(bot_lines))
-        summary_width = 60  # Width for summary column
+        def log_with_bot(message):
+            """Helper to log a line with bot art on the right"""
+            nonlocal bot_line_idx
+            if bot_line_idx < len(bot_lines):
+                # Pad message to 60 characters and add bot art
+                logger.info(f"{message:<60}    {bot_lines[bot_line_idx]}")
+                bot_line_idx += 1
+            else:
+                logger.info(message)
         
-        for i in range(max_lines):
-            # Get summary line (or empty if past end)
-            if i < len(summary_lines):
-                summary_line = summary_lines[i]
-            else:
-                summary_line = ""
+        # Log session summary with bot on the right
+        log_with_bot(SEPARATOR_LINE)
+        log_with_bot("SESSION SUMMARY")
+        log_with_bot(SEPARATOR_LINE)
+        log_with_bot(f"Trading Day: {state[symbol]['trading_day']}")
+        
+        # The helper functions will still call logger.info directly,
+        # so we temporarily patch logger.info to use our wrapper
+        original_info = logger.info
+        logger.info = log_with_bot
+        
+        try:
+            # Format trade statistics
+            format_trade_statistics(stats)
             
-            # Get bot line (or empty if past end)
-            if i < len(bot_lines):
-                bot_line = bot_lines[i]
-            else:
-                bot_line = ""
+            # Format P&L summary
+            format_pnl_summary(stats)
             
-            # Pad summary line to fixed width (accounting for ANSI codes in separator)
-            if summary_line == SEPARATOR_LINE:
-                display_line = summary_line
-            else:
-                display_line = summary_line.ljust(summary_width)
+            # Format risk metrics (flatten mode analysis)
+            format_risk_metrics()
             
-            # Combine with bot art on the right
-            logger.info(f"{display_line}    {bot_line}")
+            # Format time statistics (position duration)
+            format_time_statistics(stats)
+        finally:
+            # Restore original logger.info
+            logger.info = original_info
+        
+        # Log final separator with bot
+        log_with_bot(SEPARATOR_LINE)
+        
+        # Log any remaining bot lines
+        while bot_line_idx < len(bot_lines):
+            logger.info(f"{'':60}    {bot_lines[bot_line_idx]}")
+            bot_line_idx += 1
     else:
         # Fallback: display without bot art
-        for line in summary_lines:
-            logger.info(line)
+        logger.info(SEPARATOR_LINE)
+        logger.info("SESSION SUMMARY")
+        logger.info(SEPARATOR_LINE)
+        logger.info(f"Trading Day: {state[symbol]['trading_day']}")
+        
+        # Format trade statistics
+        format_trade_statistics(stats)
+        
+        # Format P&L summary
+        format_pnl_summary(stats)
+        
+        # Format risk metrics (flatten mode analysis)
+        format_risk_metrics()
+        
+        # Format time statistics (position duration)
+        format_time_statistics(stats)
+        
+        logger.info(SEPARATOR_LINE)
     
     # Send daily summary alert
     try:

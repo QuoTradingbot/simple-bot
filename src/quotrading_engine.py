@@ -98,6 +98,9 @@ except ImportError:
     get_rainbow_bot_art = None
     get_rainbow_bot_art_with_message = None
 
+# Startup logo configuration
+STARTUP_LOGO_DURATION = 8.0  # Seconds to display startup logo
+
 # ===== EXE-COMPATIBLE FILE PATH HELPERS =====
 # These ensure files are saved in the correct location whether running as:
 # - Python script (development)
@@ -8347,7 +8350,7 @@ if __name__ == "__main__":
         try:
             # Show logo immediately without clearing first - instant display
             # This creates a professional loading screen effect
-            display_animated_logo(duration=8.0, fps=20, with_headers=False)
+            display_animated_logo(duration=STARTUP_LOGO_DURATION, fps=20, with_headers=False)
             
             # Clear screen after logo to make room for logs
             if os.name == 'nt':

@@ -605,18 +605,21 @@ def validate_license_at_startup() -> None:
         
         # Get device fingerprint WITH symbol for multi-symbol session support
         # Each symbol gets its own session to prevent conflicts
-        device_fp = get_device_fingerprint(get_current_symbol_for_session())
+        symbol_for_session = get_current_symbol_for_session()
+        device_fp = get_device_fingerprint(symbol_for_session)
         import os as os_mod
         pid = os_mod.getpid()
         pass  # Silent - device fingerprint internal
         
         # Validate with server using /api/validate-license (session locking)
         # Include device fingerprint for session locking (symbol-specific)
+        # MULTI-SYMBOL FIX: Include symbol explicitly so server can manage per-symbol sessions
         response = requests.post(
             f"{api_url}/api/validate-license",
             json={
                 "license_key": license_key,
                 "device_fingerprint": device_fp,  # Session locking (symbol-specific)
+                "symbol": symbol_for_session,  # MULTI-SYMBOL: Explicit symbol for server-side session management
                 "check_only": False  # Create/claim session
             },
             timeout=10
@@ -7958,14 +7961,17 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
         
         # Send heartbeat to maintain session (don't use validate-license as it creates new sessions)
         # Use symbol-specific fingerprint for multi-symbol session support
+        # MULTI-SYMBOL FIX: Include symbol explicitly so server can manage per-symbol sessions
         import requests
         api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
+        symbol_for_session = get_current_symbol_for_session()
         
         response = requests.post(
             f"{api_url}/api/heartbeat",
             json={
                 "license_key": license_key,
-                "device_fingerprint": get_device_fingerprint(get_current_symbol_for_session())
+                "device_fingerprint": get_device_fingerprint(symbol_for_session),
+                "symbol": symbol_for_session  # MULTI-SYMBOL: Explicit symbol for server-side session management
             },
             timeout=10
         )
@@ -8286,9 +8292,11 @@ def send_heartbeat() -> None:
         
         # Send heartbeat with bot status and performance
         # Use symbol-specific fingerprint for multi-symbol session support
+        # MULTI-SYMBOL FIX: Include symbol at top level so server can manage per-symbol sessions
         payload = {
             "license_key": license_key,
             "device_fingerprint": get_device_fingerprint(symbol),  # For session locking (symbol-specific)
+            "symbol": symbol,  # MULTI-SYMBOL: Explicit symbol for server-side session management
             "bot_version": "2.0.0",
             "status": "online" if bot_status.get("trading_enabled", False) else "idle",
             "metadata": {
@@ -8417,11 +8425,14 @@ def release_session() -> None:
             api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
             
             # Use symbol-specific fingerprint for multi-symbol session support
+            # MULTI-SYMBOL FIX: Include symbol explicitly so server releases the correct session
+            symbol_for_session = get_current_symbol_for_session()
             response = requests.post(
                 f"{api_url}/api/session/release",
                 json={
                     "license_key": license_key,
-                    "device_fingerprint": get_device_fingerprint(get_current_symbol_for_session())
+                    "device_fingerprint": get_device_fingerprint(symbol_for_session),
+                    "symbol": symbol_for_session  # MULTI-SYMBOL: Explicit symbol for server-side session management
                 },
                 timeout=5
             )

@@ -2234,7 +2234,9 @@ Shadow Mode: {shadow_mode}
             self.bot_processes = []
             
             # Launch a SEPARATE PowerShell window for each symbol
-            for symbol in selected_symbols:
+            # MULTI-SYMBOL FIX: Add small delay between launches to avoid session race conditions
+            # Each bot creates its own symbol-specific session with the server
+            for i, symbol in enumerate(selected_symbols):
                 # PowerShell command to run the QuoTrading AI bot with symbol argument
                 # Each window gets its own symbol via command-line argument
                 ps_command = [
@@ -2252,6 +2254,12 @@ Shadow Mode: {shadow_mode}
                 )
                 
                 self.bot_processes.append((symbol, process))
+                
+                # MULTI-SYMBOL FIX: Wait 3 seconds between launching each symbol
+                # This ensures each bot completes its session registration before the next starts
+                # Prevents race conditions where multiple bots try to create sessions simultaneously
+                if i < len(selected_symbols) - 1:  # Don't wait after the last symbol
+                    time.sleep(3)
             
             # CREATE ACCOUNT LOCK with ALL bot PIDs
             # Lock tracks all processes so stale lock detection works properly

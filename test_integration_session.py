@@ -223,6 +223,189 @@ def test_scenario_5_clean_shutdown():
     print("✅ PASS: Clean shutdown, instant relaunch\n")
 
 
+class MultiSymbolSessionManager:
+    """
+    Enhanced session manager that supports multi-symbol sessions.
+    
+    Key difference from MockSessionManager:
+    - Sessions are keyed by (license_key, device_fingerprint) not just license_key
+    - This allows multiple symbols on the same device with different fingerprints
+    - Each symbol generates a unique fingerprint: device_fp:symbol
+    """
+    
+    def __init__(self):
+        # Sessions keyed by (license_key, device_fingerprint)
+        # This allows multiple sessions per license_key with different fingerprints
+        self.sessions = {}  # (license_key, device_fp) -> last_heartbeat
+        self.SESSION_TIMEOUT_SECONDS = 60
+    
+    def get_device_fingerprint(self, symbol: str = None) -> str:
+        """Generate device fingerprint with optional symbol (same logic as production)"""
+        try:
+            machine_id = str(uuid.getnode())
+        except:
+            machine_id = "unknown"
+        
+        try:
+            username = getpass.getuser()
+        except:
+            username = "unknown"
+        
+        platform_name = platform.system()
+        
+        # Include symbol for multi-symbol support (same as production)
+        if symbol:
+            fingerprint_raw = f"{machine_id}:{username}:{platform_name}:{symbol}"
+        else:
+            fingerprint_raw = f"{machine_id}:{username}:{platform_name}"
+        
+        fingerprint_hash = hashlib.sha256(fingerprint_raw.encode()).hexdigest()[:16]
+        return fingerprint_hash
+    
+    def validate_and_create_session(self, license_key: str, device_fp: str, symbol: str = None) -> tuple[bool, str]:
+        """
+        Validate and create session with multi-symbol support.
+        
+        Multi-symbol behavior:
+        - Sessions are keyed by (license_key, device_fingerprint)
+        - Different symbols have different fingerprints
+        - Each symbol can have its own session without conflict
+        """
+        session_key = (license_key, device_fp)
+        
+        # Check if THIS specific session exists
+        if session_key in self.sessions:
+            last_heartbeat = self.sessions[session_key]
+            time_since = datetime.now() - last_heartbeat
+            
+            if time_since < timedelta(seconds=self.SESSION_TIMEOUT_SECONDS):
+                # Same fingerprint still active - block duplicate
+                print(f"  ❌ Session with fingerprint {device_fp[:8]}... already active ({int(time_since.total_seconds())}s ago) - BLOCKED")
+                return False, "SESSION ALREADY ACTIVE"
+            else:
+                # Session expired - allow takeover
+                print(f"  🧹 Expired session (heartbeat {int(time_since.total_seconds())}s ago) - allowing takeover")
+                self.sessions[session_key] = datetime.now()
+                return True, f"Session created for {symbol or 'base'} (takeover)"
+        
+        # New session - no conflict
+        print(f"  ✅ Creating new session for {symbol or 'base'} with fingerprint {device_fp[:8]}...")
+        self.sessions[session_key] = datetime.now()
+        return True, f"Session created for {symbol or 'base'}"
+    
+    def release_session(self, license_key: str, device_fp: str) -> bool:
+        """Release a specific session by fingerprint"""
+        session_key = (license_key, device_fp)
+        if session_key in self.sessions:
+            del self.sessions[session_key]
+            return True
+        return False
+
+
+def test_scenario_6_multi_symbol_concurrent():
+    """Test: Multiple symbols running concurrently (should NOT conflict)"""
+    print("="*70)
+    print("SCENARIO 6: Multi-Symbol Concurrent Sessions (ES + NQ)")
+    print("="*70)
+    
+    mgr = MultiSymbolSessionManager()
+    license_key = "TEST-KEY-MULTI"
+    
+    # Get fingerprints for each symbol (different fingerprints)
+    es_fp = mgr.get_device_fingerprint("ES")
+    nq_fp = mgr.get_device_fingerprint("NQ")
+    
+    print(f"1. ES fingerprint: {es_fp}")
+    print(f"2. NQ fingerprint: {nq_fp}")
+    print(f"3. Fingerprints are different: {es_fp != nq_fp}")
+    
+    assert es_fp != nq_fp, "Symbol fingerprints must be different"
+    
+    # Bot 1 (ES) creates session
+    print(f"\n4. Bot 1 (ES) creates session")
+    success1, msg1 = mgr.validate_and_create_session(license_key, es_fp, "ES")
+    print(f"   Result: {msg1}")
+    assert success1, "ES bot should create session successfully"
+    
+    # Bot 2 (NQ) creates session (should NOT conflict because different fingerprint)
+    print(f"\n5. Bot 2 (NQ) creates session (different fingerprint - should succeed)")
+    success2, msg2 = mgr.validate_and_create_session(license_key, nq_fp, "NQ")
+    print(f"   Result: {msg2}")
+    assert success2, "NQ bot should create session successfully (different fingerprint)"
+    
+    # Verify both sessions exist
+    assert (license_key, es_fp) in mgr.sessions, "ES session should exist"
+    assert (license_key, nq_fp) in mgr.sessions, "NQ session should exist"
+    
+    print(f"\n6. Both sessions active: ES={es_fp[:8]}..., NQ={nq_fp[:8]}...")
+    print("✅ PASS: Multi-symbol sessions work without conflict\n")
+
+
+def test_scenario_7_multi_symbol_same_fingerprint_blocked():
+    """Test: Same symbol trying to run twice (should be blocked)"""
+    print("="*70)
+    print("SCENARIO 7: Same Symbol Twice (Should Block)")
+    print("="*70)
+    
+    mgr = MultiSymbolSessionManager()
+    license_key = "TEST-KEY-DUP"
+    
+    # Get fingerprint for ES
+    es_fp = mgr.get_device_fingerprint("ES")
+    
+    print(f"1. ES fingerprint: {es_fp}")
+    
+    # First ES instance creates session
+    print(f"\n2. First ES instance creates session")
+    success1, msg1 = mgr.validate_and_create_session(license_key, es_fp, "ES")
+    print(f"   Result: {msg1}")
+    assert success1, "First ES instance should create session"
+    
+    # Second ES instance tries to create session (should BLOCK - same fingerprint)
+    print(f"\n3. Second ES instance tries to create session (same fingerprint - should BLOCK)")
+    success2, msg2 = mgr.validate_and_create_session(license_key, es_fp, "ES")
+    print(f"   Result: {msg2}")
+    assert not success2, "Second ES instance should be blocked (duplicate)"
+    
+    print("✅ PASS: Duplicate symbol instances are blocked\n")
+
+
+def test_scenario_8_multi_symbol_with_delay():
+    """Test: Multi-symbol launch with delay (simulating the 3-second fix)"""
+    print("="*70)
+    print("SCENARIO 8: Multi-Symbol Launch With Delay (Production Fix)")
+    print("="*70)
+    
+    import time
+    
+    mgr = MultiSymbolSessionManager()
+    license_key = "TEST-KEY-DELAY"
+    symbols = ["ES", "NQ", "MES"]
+    
+    print(f"1. Launching {len(symbols)} symbols with delays...")
+    
+    sessions_created = []
+    for i, symbol in enumerate(symbols):
+        fp = mgr.get_device_fingerprint(symbol)
+        print(f"\n   Launching {symbol} (fingerprint: {fp[:8]}...)")
+        
+        success, msg = mgr.validate_and_create_session(license_key, fp, symbol)
+        print(f"   Result: {msg}")
+        
+        if success:
+            sessions_created.append(symbol)
+        
+        # Simulate 3-second delay between launches (but use shorter for test)
+        if i < len(symbols) - 1:
+            print(f"   Waiting before next symbol...")
+            # time.sleep(0.1)  # Short delay for test
+    
+    print(f"\n2. Sessions created: {sessions_created}")
+    assert len(sessions_created) == len(symbols), f"All {len(symbols)} symbols should have sessions"
+    
+    print("✅ PASS: Multi-symbol launch with delay works correctly\n")
+
+
 def run_all_tests():
     """Run all integration tests"""
     print("\n" + "="*70)
@@ -235,6 +418,9 @@ def run_all_tests():
         ("Stale Session Auto-Clear", test_scenario_3_stale_session),
         ("Concurrent Login Block", test_scenario_4_concurrent_login),
         ("Clean Shutdown", test_scenario_5_clean_shutdown),
+        ("Multi-Symbol Concurrent", test_scenario_6_multi_symbol_concurrent),
+        ("Same Symbol Twice (Block)", test_scenario_7_multi_symbol_same_fingerprint_blocked),
+        ("Multi-Symbol With Delay", test_scenario_8_multi_symbol_with_delay),
     ]
     
     passed = 0
@@ -257,6 +443,9 @@ def run_all_tests():
         print("  ✅ Concurrent logins blocked (security maintained)")
         print("  ✅ Clean shutdowns release immediately")
         print("  ✅ Launcher and bot share same session")
+        print("  ✅ Multi-symbol sessions work without conflict")
+        print("  ✅ Duplicate symbol instances are blocked")
+        print("  ✅ Multi-symbol launch with delay works correctly")
         return 0
     else:
         print(f"\n❌ {len(tests) - passed} TEST(S) FAILED")

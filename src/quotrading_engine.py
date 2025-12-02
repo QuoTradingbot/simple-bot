@@ -566,6 +566,7 @@ def validate_license_at_startup() -> None:
     
     Uses current_trading_symbol global (set in main before calling this)
     to create symbol-specific sessions for multi-symbol support.
+    Falls back to CONFIG symbol if current_trading_symbol is not set.
     """
     global current_trading_symbol
     
@@ -589,9 +590,12 @@ def validate_license_at_startup() -> None:
         import requests
         api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
         
+        # Resolve symbol with fallback for consistent fingerprint
+        symbol_for_fingerprint = current_trading_symbol if current_trading_symbol else CONFIG.get("instrument", "ES")
+        
         # Get device fingerprint WITH symbol for multi-symbol session support
         # Each symbol gets its own session to prevent conflicts
-        device_fp = get_device_fingerprint(current_trading_symbol)
+        device_fp = get_device_fingerprint(symbol_for_fingerprint)
         import os as os_mod
         pid = os_mod.getpid()
         pass  # Silent - device fingerprint internal
@@ -7942,6 +7946,9 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
             logger.warning("No license key configured - cannot validate")
             return
         
+        # Resolve symbol with fallback for consistent fingerprint
+        symbol_for_fingerprint = current_trading_symbol if current_trading_symbol else CONFIG.get("instrument", "ES")
+        
         # Send heartbeat to maintain session (don't use validate-license as it creates new sessions)
         # Use symbol-specific fingerprint for multi-symbol session support
         import requests
@@ -7951,7 +7958,7 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
             f"{api_url}/api/heartbeat",
             json={
                 "license_key": license_key,
-                "device_fingerprint": get_device_fingerprint(current_trading_symbol)
+                "device_fingerprint": get_device_fingerprint(symbol_for_fingerprint)
             },
             timeout=10
         )
@@ -8392,6 +8399,7 @@ def release_session() -> None:
     """Release session lock - called on ANY exit.
     
     Uses current_trading_symbol for symbol-specific session (multi-symbol support).
+    Falls back to CONFIG symbol if current_trading_symbol is not set.
     """
     global current_trading_symbol
     
@@ -8400,12 +8408,16 @@ def release_session() -> None:
         license_key = os.getenv("QUOTRADING_LICENSE_KEY")
         if license_key:
             api_url = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")
+            
+            # Resolve symbol with fallback for consistent fingerprint
+            symbol_for_fingerprint = current_trading_symbol if current_trading_symbol else CONFIG.get("instrument", "ES")
+            
             # Use symbol-specific fingerprint for multi-symbol session support
             response = requests.post(
                 f"{api_url}/api/session/release",
                 json={
                     "license_key": license_key,
-                    "device_fingerprint": get_device_fingerprint(current_trading_symbol)
+                    "device_fingerprint": get_device_fingerprint(symbol_for_fingerprint)
                 },
                 timeout=5
             )

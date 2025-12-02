@@ -273,6 +273,49 @@ def display_static_logo():
     print()
 
 
+def get_rainbow_bot_art_with_message():
+    """
+    Get bot ASCII art with rainbow colors plus thank you message.
+    Returns a list of colored strings, one per line.
+    """
+    rainbow = get_rainbow_colors()
+    colored_lines = []
+    
+    # Add the bot art
+    for line_idx, line in enumerate(BOT_ASCII_ART):
+        colored_line = ''
+        for char_idx, char in enumerate(line):
+            if char.strip():  # Only color non-whitespace characters
+                color = rainbow[(line_idx + char_idx) % len(rainbow)]
+                colored_line += f"{color}{char}{Colors.RESET}"
+            else:
+                colored_line += char
+        colored_lines.append(colored_line)
+    
+    # Add blank line
+    colored_lines.append("")
+    
+    # Add rainbow-colored "Thanks for using QuoTrading AI"
+    message = "Thanks for using"
+    colored_message = ''.join(f"{rainbow[i % len(rainbow)]}{char}{Colors.RESET}" for i, char in enumerate(message))
+    colored_lines.append(colored_message)
+    
+    message2 = "QuoTrading AI"
+    colored_message2 = ''.join(f"{rainbow[i % len(rainbow)]}{char}{Colors.RESET}" for i, char in enumerate(message2))
+    colored_lines.append(colored_message2)
+    
+    # Add blank line
+    colored_lines.append("")
+    
+    # Add support info
+    colored_lines.append("Any issues?")
+    colored_lines.append("Reach out to:")
+    colored_lines.append("support@")
+    colored_lines.append("quotrading.com")
+    
+    return colored_lines
+
+
 def get_rainbow_bot_art():
     """
     Get bot ASCII art with rainbow colors applied.

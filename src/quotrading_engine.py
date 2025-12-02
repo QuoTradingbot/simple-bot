@@ -89,13 +89,14 @@ load_dotenv(dotenv_path=env_path)
 
 # Import rainbow logo display - with fallback if not available
 try:
-    from rainbow_logo import display_animated_logo, Colors, get_rainbow_bot_art
+    from rainbow_logo import display_animated_logo, Colors, get_rainbow_bot_art, get_rainbow_bot_art_with_message
     RAINBOW_LOGO_AVAILABLE = True
 except ImportError:
     RAINBOW_LOGO_AVAILABLE = False
     display_animated_logo = None
     Colors = None
     get_rainbow_bot_art = None
+    get_rainbow_bot_art_with_message = None
 
 # ===== EXE-COMPATIBLE FILE PATH HELPERS =====
 # These ensure files are saved in the correct location whether running as:
@@ -6847,16 +6848,16 @@ def log_session_summary(symbol: str) -> None:
     """
     Log comprehensive session summary at end of trading day.
     Coordinates summary formatting through helper functions.
-    Displays with rainbow bot logo on the right side.
+    Displays with rainbow bot logo and thank you message on the right side.
     
     Args:
         symbol: Instrument symbol
     """
     stats = state[symbol]["session_stats"]
     
-    # Display rainbow bot logo on the right side if available
-    if get_rainbow_bot_art:
-        bot_lines = get_rainbow_bot_art()
+    # Display rainbow bot logo with thank you message on the right side if available
+    if get_rainbow_bot_art_with_message:
+        bot_lines = get_rainbow_bot_art_with_message()
         bot_line_idx = 0
         
         def log_with_bot(message):
@@ -8306,7 +8307,6 @@ def cleanup_on_shutdown() -> None:
     # Stop timer manager
     if timer_manager:
         try:
-            timer_manager.stop()
             pass  # Silent - timer stopped
         except Exception as e:
             pass  # Silent - stop failed
@@ -8316,24 +8316,10 @@ def cleanup_on_shutdown() -> None:
     if symbol in state:
         log_session_summary(symbol)
     
-    # Rainbow-colored thank you message (only if Colors available)
-    if Colors:
-        rainbow = [Colors.RED, Colors.ORANGE, Colors.YELLOW, Colors.GREEN, Colors.CYAN, Colors.BLUE, Colors.PURPLE, Colors.MAGENTA]
-        
-        # Create rainbow text for "Thanks for using QuoTrading AI"
-        message = "Thanks for using QuoTrading AI"
-        colored_message = ''.join(f"{rainbow[i % len(rainbow)]}{char}{Colors.RESET}" for i, char in enumerate(message))
-        
-        logger.info("")
-        logger.info(colored_message)
-        logger.info("Any issues? Reach out to support: support@quotrading.com")
-        logger.info("")
-    else:
-        # Fallback if Colors not available
-        logger.info("")
-        logger.info("Thanks for using QuoTrading AI")
-        logger.info("Any issues? Reach out to support: support@quotrading.com")
-        logger.info("")
+    # Simple green checkmark logout message
+    logger.info("")
+    logger.info("\033[92m✓ Logged out successfully\033[0m")  # Green color
+    logger.info("")
 
 
 if __name__ == "__main__":

@@ -509,6 +509,8 @@ async def save_trade_experience_async(
     
     LIVE MODE: Saves to cloud ONLY (reads local for pattern matching, but doesn't save local)
     BACKTEST MODE: Saves to local RL brain only
+    SHADOW MODE: Does NOT send to cloud (signal-only mode)
+    AI MODE: Does NOT send to cloud (position management mode)
     """
     global cloud_api_client, rl_brain
     
@@ -516,6 +518,11 @@ async def save_trade_experience_async(
     if is_backtest_mode() or CONFIG.get("backtest_mode", False):
         if rl_brain is not None:
             rl_brain.record_outcome(rl_state, True, pnl, duration_minutes, execution_data)
+        return
+    
+    # SHADOW MODE & AI MODE: Do NOT send data to cloud RL database
+    # These modes are for user experimentation and should not pollute the training data
+    if CONFIG.get("shadow_mode", False) or CONFIG.get("ai_mode", False):
         return
     
     # LIVE MODE: Report to cloud ONLY (don't save locally)
@@ -3094,13 +3101,17 @@ def check_for_signals(symbol: str) -> None:
     Check for trading signals on each completed 1-minute bar.
     Coordinates signal detection through helper functions.
     
-    In AI Mode: Signals are DISABLED. User trades manually, AI manages positions.
+    In AI Mode: Signal generation is DISABLED. User trades manually.
+    AI Mode still provides FULL trade management (stop loss, trailing stops,
+    regime-aware exits, underwater timeout, etc.) - just no entry signals.
+    AI Mode can also manage multiple positions simultaneously.
     
     Args:
         symbol: Instrument symbol
     """
-    # AI Mode: Skip all signal generation - user trades manually
-    # AI Mode only manages positions, does not generate entry signals
+    # AI Mode: Skip signal generation only - user trades manually
+    # All position management (stops, trailing, regime changes) still works normally
+    # AI Mode can manage multiple positions opened by user
     if CONFIG.get("ai_mode", False):
         return
     
@@ -7960,7 +7971,8 @@ def handle_position_reconciliation_event(data: Dict[str, Any]) -> None:
                     logger.info(f"  Entry Price (estimated): ${current_price:.2f}")
                     logger.info(f"  Stop Loss: ${stop_price:.2f}")
                     logger.info(f"  Regime: {current_regime}")
-                    logger.info("  AI will now manage stop loss, trailing stops, and exits")
+                    logger.info("  AI will manage: stops, trailing, regime changes, exits")
+                    logger.info("  Note: AI Mode can manage multiple positions simultaneously")
                     logger.info("=" * 60)
                 else:
                     # Normal mode: Close unexpected position

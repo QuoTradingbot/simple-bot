@@ -8257,8 +8257,26 @@ def cleanup_on_shutdown() -> None:
         except Exception as e:
             pass  # Silent - stop failed
     
-    # Simple logout message instead of detailed session summary
-    logger.info("✓ Logged out successfully")
+    # Log session summary
+    symbol = CONFIG["instrument"]
+    if symbol in state:
+        log_session_summary(symbol)
+    
+    # Rainbow-colored thank you message
+    from rainbow_logo import Colors
+    rainbow = [Colors.RED, Colors.ORANGE, Colors.YELLOW, Colors.GREEN, Colors.CYAN, Colors.BLUE, Colors.PURPLE, Colors.MAGENTA]
+    
+    # Create rainbow text for "Thanks for using QuoTrading AI"
+    message = "Thanks for using QuoTrading AI"
+    colored_message = ""
+    for i, char in enumerate(message):
+        color = rainbow[i % len(rainbow)]
+        colored_message += f"{color}{char}{Colors.RESET}"
+    
+    logger.info("")
+    logger.info(colored_message)
+    logger.info("Any issues? Reach out to support: support@quotrading.com")
+    logger.info("")
 
 
 if __name__ == "__main__":

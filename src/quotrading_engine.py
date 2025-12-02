@@ -801,6 +801,11 @@ def check_broker_connection() -> None:
                 idle_msg = "Daily maintenance window (4:45 PM - 6:00 PM ET)"
                 reopen_msg = "Will auto-reconnect at 6:00 PM ET"
             
+            # Display session summary before going idle (like Ctrl+C)
+            symbol = CONFIG.get("instrument")
+            if symbol and symbol in state:
+                log_session_summary(symbol, logout_success=True, show_logout_status=False)
+            
             logger.critical(SEPARATOR_LINE)
             logger.critical(f"[IDLE MODE] {idle_type} - GOING IDLE")
             logger.critical(f"Time: {eastern_time.strftime('%H:%M:%S %Z')}")
@@ -819,9 +824,16 @@ def check_broker_connection() -> None:
             
             bot_status["maintenance_idle"] = True
             bot_status["idle_type"] = idle_type  # Store for status message
-            bot_status["trading_enabled"] = False
+            # CRITICAL: Keep trading_enabled = True so event loop keeps running
+            # bot_status["trading_enabled"] = False  # REMOVED - bot stays running
             bot_status["last_idle_message_time"] = eastern_time
-            logger.critical(f"  Bot stays ON but IDLE - checking periodically for market reopen...")
+            bot_status["idle_heartbeat_count"] = 0  # Initialize heartbeat counter
+            
+            # Display idle status with heartbeat
+            logger.info("")
+            logger.info("\033[93m⏸  Market Maintenance - Waiting for market data...\033[0m")  # Yellow
+            logger.info("")
+            logger.critical(f"  Bot stays ON and IDLE - checking periodically for market reopen...")
             logger.critical(f"  Press Ctrl+C to stop bot")
             return  # Skip broker health check since we just disconnected
     
@@ -835,9 +847,20 @@ def check_broker_connection() -> None:
         last_msg_time = bot_status.get("last_idle_message_time")
         idle_type = bot_status.get("idle_type", "MAINTENANCE")
         
-        # Show status message every 5 minutes
-        if last_msg_time is None or (eastern_time - last_msg_time).total_seconds() >= IDLE_STATUS_MESSAGE_INTERVAL:
-            logger.info(f"[IDLE] {idle_type} IN PROGRESS - Bot idle, will resume when market reopens")
+        # Increment heartbeat counter for animated dots
+        heartbeat_count = bot_status.get("idle_heartbeat_count", 0)
+        heartbeat_count += 1
+        bot_status["idle_heartbeat_count"] = heartbeat_count
+        
+        # Animated dots (cycles through . .. ... every 3 heartbeats)
+        dots = "." * ((heartbeat_count % 3) + 1)
+        
+        # Heartbeat symbol (alternates between ♥ and ♡)
+        heartbeat = "♥" if heartbeat_count % 2 == 0 else "♡"
+        
+        # Show status message every 30 seconds with animated dots
+        if last_msg_time is None or (eastern_time - last_msg_time).total_seconds() >= 30:
+            logger.info(f"\033[93m{heartbeat} Market {idle_type} - Waiting for market data{dots}\033[0m")
             bot_status["last_idle_message_time"] = eastern_time
         return  # Skip broker health check during idle period
     
@@ -6916,7 +6939,7 @@ def format_risk_metrics() -> None:
         logger.info(f"Trailing Stop Success Rate: {trailing_success_rate:.1f}%")
 
 
-def log_session_summary(symbol: str, logout_success: bool = True) -> None:
+def log_session_summary(symbol: str, logout_success: bool = True, show_logout_status: bool = True) -> None:
     """
     Log comprehensive session summary at end of trading day.
     Coordinates summary formatting through helper functions.
@@ -6925,6 +6948,7 @@ def log_session_summary(symbol: str, logout_success: bool = True) -> None:
     Args:
         symbol: Instrument symbol
         logout_success: Whether cleanup/logout was successful
+        show_logout_status: Whether to show the logout status message (False for maintenance mode)
     """
     stats = state[symbol]["session_stats"]
     
@@ -6998,13 +7022,14 @@ def log_session_summary(symbol: str, logout_success: bool = True) -> None:
         
         logger.info(SEPARATOR_LINE)
     
-    # Log logout status right after session summary
-    logger.info("")
-    if logout_success:
-        logger.info("\033[92m✓ Logged out successfully\033[0m")  # Green
-    else:
-        logger.info("\033[91m✗ Logout completed with errors\033[0m")  # Red
-    logger.info("")
+    # Log logout status right after session summary (only if show_logout_status is True)
+    if show_logout_status:
+        logger.info("")
+        if logout_success:
+            logger.info("\033[92m✓ Logged out successfully\033[0m")  # Green
+        else:
+            logger.info("\033[91m✗ Logout completed with errors\033[0m")  # Red
+        logger.info("")
     
     # Send daily summary alert
     try:

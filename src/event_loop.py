@@ -183,7 +183,7 @@ class EventLoop:
         last_status_time = time.time()
         
         try:
-            while self.running and self.bot_status.get("trading_enabled", True):
+            while self.running and (self.bot_status.get("trading_enabled", True) or self.bot_status.get("maintenance_idle", False)):
                 iteration_start = time.time()
                 
                 # Periodic status update (every 60 seconds)

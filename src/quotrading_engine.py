@@ -3094,12 +3094,12 @@ def check_for_signals(symbol: str) -> None:
     Check for trading signals on each completed 1-minute bar.
     Coordinates signal detection through helper functions.
     
-    In AI MODE: Signals are DISABLED. User trades manually, AI manages positions.
+    In AI Mode: Signals are DISABLED. User trades manually, AI manages positions.
     
     Args:
         symbol: Instrument symbol
     """
-    # AI MODE: Skip all signal generation - user trades manually
+    # AI Mode: Skip all signal generation - user trades manually
     # AI Mode only manages positions, does not generate entry signals
     if CONFIG.get("ai_mode", False):
         return
@@ -7904,7 +7904,20 @@ def handle_position_reconciliation_event(data: Dict[str, Any]) -> None:
                     logger.info("  Action: ADOPTING position for AI management")
                     
                     # Get current price for entry price (best estimate since we don't know actual entry)
-                    current_price = state[symbol]["bars_1min"][-1]["close"] if state[symbol]["bars_1min"] else 0
+                    # Use current bar close, or fallback to bid/ask manager, or log warning if no price available
+                    current_price = None
+                    if state[symbol]["bars_1min"]:
+                        current_price = state[symbol]["bars_1min"][-1]["close"]
+                    elif bid_ask_manager is not None:
+                        quote = bid_ask_manager.get_current_quote(symbol)
+                        if quote:
+                            current_price = (quote.bid_price + quote.ask_price) / 2
+                    
+                    if current_price is None or current_price <= 0:
+                        logger.warning("  ⚠️ Cannot determine current price - unable to adopt position safely")
+                        logger.warning("  Waiting for market data before adopting position")
+                        logger.info("=" * 60)
+                        return
                     
                     # Adopt the position
                     position_side = "long" if broker_position > 0 else "short"
@@ -7940,6 +7953,8 @@ def handle_position_reconciliation_event(data: Dict[str, Any]) -> None:
                     
                     state[symbol]["position"]["stop_price"] = stop_price
                     state[symbol]["position"]["trailing_stop"] = stop_price
+                    # Mark position as adopted by AI Mode for tracking purposes
+                    # This allows the engine to distinguish AI-adopted positions from regular entries
                     state[symbol]["position"]["ai_mode_adopted"] = True
                     
                     logger.info(f"  Entry Price (estimated): ${current_price:.2f}")

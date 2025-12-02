@@ -1348,7 +1348,7 @@ class QuoTradingLauncher:
         
         tk.Label(
             ai_mode_frame,
-            text="You trade, AI manages stops & exits",
+            text="You trade, AI manages stops and exits",
             font=("Segoe UI", 7, "bold"),
             bg=self.colors['card'],
             fg=self.colors['text_light']

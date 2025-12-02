@@ -1110,6 +1110,8 @@ def hello():
         "message": "✅ QuoTrading Cloud API - Data Collection Only",
         "endpoints": [
             "POST /api/rl/submit-outcome - Submit trade outcome",
+            "GET /api/user/profile - Get user profile (requires authentication)",
+            "PUT /api/user/profile - Update user profile (requires authentication)",
             "GET /api/hello - Health check"
         ],
         "database_configured": bool(DB_PASSWORD),
@@ -1523,6 +1525,223 @@ def force_clear_session():
     except Exception as e:
         logging.error(f"Force clear session error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ============================================================================
+# USER PROFILE ENDPOINTS
+# ============================================================================
+
+@app.route('/api/user/profile', methods=['GET'])
+def get_user_profile():
+    """Get user's own profile information (authenticated by license key)"""
+    try:
+        # Get license key from Authorization header or query parameter
+        auth_header = request.headers.get('Authorization')
+        license_key = None
+        
+        if auth_header and auth_header.startswith('Bearer '):
+            license_key = auth_header[7:]  # Remove 'Bearer ' prefix
+        else:
+            license_key = request.args.get('license_key')
+        
+        if not license_key:
+            return jsonify({
+                "error": "Authentication required",
+                "message": "License key must be provided in Authorization header or query parameter"
+            }), 401
+        
+        # Validate license
+        is_valid, message, _ = validate_license(license_key)
+        if not is_valid:
+            return jsonify({
+                "error": "Invalid license",
+                "message": message
+            }), 401
+        
+        # Get user profile from database
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"error": "Database connection failed"}), 500
+        
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("""
+                    SELECT 
+                        account_id,
+                        email,
+                        license_key,
+                        license_type,
+                        license_status,
+                        license_expiration,
+                        created_at,
+                        updated_at,
+                        last_heartbeat,
+                        metadata,
+                        whop_user_id,
+                        whop_membership_id
+                    FROM users
+                    WHERE license_key = %s
+                """, (license_key,))
+                
+                user = cursor.fetchone()
+                
+                if not user:
+                    return jsonify({"error": "User not found"}), 404
+                
+                # Format response (convert datetime to ISO string)
+                profile = dict(user)
+                for key, value in profile.items():
+                    if hasattr(value, 'isoformat'):
+                        profile[key] = value.isoformat()
+                
+                # Don't expose full license key in response for security
+                profile['license_key'] = profile['license_key'][:8] + "..." + profile['license_key'][-4:]
+                
+                logging.info(f"✅ Profile retrieved for {user['email']}")
+                
+                return jsonify({
+                    "status": "success",
+                    "profile": profile
+                }), 200
+                
+        finally:
+            return_connection(conn)
+            
+    except Exception as e:
+        logging.error(f"Get profile error: {e}")
+        return jsonify({
+            "error": "Internal server error",
+            "message": str(e)
+        }), 500
+
+
+@app.route('/api/user/profile', methods=['PUT'])
+def update_user_profile():
+    """Update user's own profile information (authenticated by license key)"""
+    try:
+        # Get license key from Authorization header or request body
+        auth_header = request.headers.get('Authorization')
+        license_key = None
+        
+        if auth_header and auth_header.startswith('Bearer '):
+            license_key = auth_header[7:]  # Remove 'Bearer ' prefix
+        else:
+            data = request.get_json() or {}
+            license_key = data.get('license_key')
+        
+        if not license_key:
+            return jsonify({
+                "error": "Authentication required",
+                "message": "License key must be provided in Authorization header or request body"
+            }), 401
+        
+        # Validate license
+        is_valid, message, _ = validate_license(license_key)
+        if not is_valid:
+            return jsonify({
+                "error": "Invalid license",
+                "message": message
+            }), 401
+        
+        # Get request data
+        data = request.get_json() or {}
+        
+        # Allowed fields that users can update
+        email = data.get('email')
+        metadata = data.get('metadata')
+        
+        # Validation
+        if email is not None and not isinstance(email, str):
+            return jsonify({"error": "Invalid email format"}), 400
+        
+        if email is not None and '@' not in email:
+            return jsonify({"error": "Invalid email address"}), 400
+        
+        if metadata is not None and not isinstance(metadata, dict):
+            return jsonify({"error": "Metadata must be a JSON object"}), 400
+        
+        # Rate limiting
+        allowed, rate_msg = check_rate_limit(license_key, '/api/user/profile')
+        if not allowed:
+            return jsonify({"error": rate_msg}), 429
+        
+        # Update user profile in database
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({"error": "Database connection failed"}), 500
+        
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                # Build dynamic UPDATE query based on provided fields
+                update_fields = []
+                params = []
+                
+                if email is not None:
+                    # Check if email is already taken by another user
+                    cursor.execute("""
+                        SELECT license_key FROM users 
+                        WHERE email = %s AND license_key != %s
+                    """, (email, license_key))
+                    if cursor.fetchone():
+                        return jsonify({"error": "Email already in use by another account"}), 409
+                    
+                    update_fields.append("email = %s")
+                    params.append(email)
+                
+                if metadata is not None:
+                    update_fields.append("metadata = %s")
+                    params.append(json.dumps(metadata))
+                
+                if not update_fields:
+                    return jsonify({
+                        "error": "No valid fields to update",
+                        "message": "Provide 'email' or 'metadata' to update"
+                    }), 400
+                
+                # Always update the updated_at timestamp
+                update_fields.append("updated_at = NOW()")
+                params.append(license_key)
+                
+                # Execute update
+                query = f"""
+                    UPDATE users 
+                    SET {', '.join(update_fields)}
+                    WHERE license_key = %s
+                    RETURNING account_id, email, license_type, license_status, 
+                              license_expiration, updated_at, metadata
+                """
+                
+                cursor.execute(query, params)
+                updated_user = cursor.fetchone()
+                
+                if not updated_user:
+                    return jsonify({"error": "User not found"}), 404
+                
+                conn.commit()
+                
+                # Format response
+                profile = dict(updated_user)
+                for key, value in profile.items():
+                    if hasattr(value, 'isoformat'):
+                        profile[key] = value.isoformat()
+                
+                logging.info(f"✅ Profile updated for {profile.get('email')}")
+                
+                return jsonify({
+                    "status": "success",
+                    "message": "Profile updated successfully",
+                    "profile": profile
+                }), 200
+                
+        finally:
+            return_connection(conn)
+            
+    except Exception as e:
+        logging.error(f"Update profile error: {e}")
+        return jsonify({
+            "error": "Internal server error",
+            "message": str(e)
+        }), 500
 
 
 @app.route('/api/main', methods=['POST'])

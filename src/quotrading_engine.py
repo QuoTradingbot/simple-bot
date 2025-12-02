@@ -6992,112 +6992,50 @@ def log_session_summary(symbol: str, logout_success: bool = True, show_logout_st
     """
     stats = state[symbol]["session_stats"]
     
-    # Display rainbow thank you message on the right side if available
-    # Only show bot art when explicitly requested (not during maintenance)
-    if get_rainbow_bot_art_with_message and show_bot_art:
-        bot_lines = get_rainbow_bot_art_with_message()
-        bot_line_idx = 0
-        
-        # Save original logger.info BEFORE defining log_with_bot
-        original_info = logger.info
-        
-        def log_with_bot(message):
-            """Helper to log a line with bot art on the right"""
-            nonlocal bot_line_idx
-            if bot_line_idx < len(bot_lines):
-                # Pad message to 60 characters and add bot art
-                # CRITICAL: Use original_info to avoid recursion
-                original_info(f"{message:<60}    {bot_lines[bot_line_idx]}")
-                bot_line_idx += 1
-            else:
-                original_info(message)
-        
-        # Log session summary with bot on the right
-        log_with_bot(SEPARATOR_LINE)
-        log_with_bot("SESSION SUMMARY")
-        log_with_bot(SEPARATOR_LINE)
-        log_with_bot(f"Trading Day: {state[symbol]['trading_day']}")
-        
-        # Calculate and display session runtime
-        if bot_status.get("session_start_time"):
-            tz = pytz.timezone(CONFIG.get("timezone", "US/Eastern"))
-            session_end = datetime.now(tz)
-            runtime = session_end - bot_status["session_start_time"]
-            hours, remainder = divmod(int(runtime.total_seconds()), 3600)
-            minutes, seconds = divmod(remainder, 60)
-            log_with_bot(f"Session Runtime: {hours}h {minutes}m {seconds}s")
-        
-        # The helper functions will still call logger.info directly,
-        # so we temporarily patch logger.info to use our wrapper
-        logger.info = log_with_bot
-        
-        try:
-            # Format trade statistics
-            format_trade_statistics(stats)
-            
-            # Format P&L summary
-            format_pnl_summary(stats)
-            
-            # Format risk metrics (flatten mode analysis)
-            format_risk_metrics()
-            
-            # Format time statistics (position duration)
-            format_time_statistics(stats)
-        finally:
-            # Restore original logger.info
-            logger.info = original_info
-        
-        # Log final separator with bot
-        log_with_bot(SEPARATOR_LINE)
-        
-        # Log any remaining bot lines
-        while bot_line_idx < len(bot_lines):
-            logger.info(f"{'':60}    {bot_lines[bot_line_idx]}")
-            bot_line_idx += 1
-    else:
-        # Fallback: display without bot art
-        logger.info(SEPARATOR_LINE)
-        logger.info("SESSION SUMMARY")
-        logger.info(SEPARATOR_LINE)
-        logger.info(f"Trading Day: {state[symbol]['trading_day']}")
-        
-        # Calculate and display session runtime
-        if bot_status.get("session_start_time"):
-            tz = pytz.timezone(CONFIG.get("timezone", "US/Eastern"))
-            session_end = datetime.now(tz)
-            runtime = session_end - bot_status["session_start_time"]
-            hours, remainder = divmod(int(runtime.total_seconds()), 3600)
-            minutes, seconds = divmod(remainder, 60)
-            logger.info(f"Session Runtime: {hours}h {minutes}m {seconds}s")
-        
-        # Format trade statistics
-        format_trade_statistics(stats)
-        
-        # Format P&L summary
-        format_pnl_summary(stats)
-        
-        # Format risk metrics (flatten mode analysis)
-        format_risk_metrics()
-        
-        # Format time statistics (position duration)
-        format_time_statistics(stats)
-        
-        logger.info(SEPARATOR_LINE)
+    # Display session summary (without bot art on the right - it's shown animated at the bottom)
+    logger.info(SEPARATOR_LINE)
+    logger.info("SESSION SUMMARY")
+    logger.info(SEPARATOR_LINE)
+    logger.info(f"Trading Day: {state[symbol]['trading_day']}")
+    
+    # Calculate and display session runtime
+    if bot_status.get("session_start_time"):
+        tz = pytz.timezone(CONFIG.get("timezone", "US/Eastern"))
+        session_end = datetime.now(tz)
+        runtime = session_end - bot_status["session_start_time"]
+        hours, remainder = divmod(int(runtime.total_seconds()), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        logger.info(f"Session Runtime: {hours}h {minutes}m {seconds}s")
+    
+    # Format trade statistics
+    format_trade_statistics(stats)
+    
+    # Format P&L summary
+    format_pnl_summary(stats)
+    
+    # Format risk metrics (flatten mode analysis)
+    format_risk_metrics()
+    
+    # Format time statistics (position duration)
+    format_time_statistics(stats)
+    
+    logger.info(SEPARATOR_LINE)
     
     # Log logout status right after session summary (only if show_logout_status is True)
+    # Then immediately show the animated thank you on the same visual area
     if show_logout_status:
         logger.info("")
         if logout_success:
             logger.info("\033[92m✓ Logged out successfully\033[0m")  # Green
         else:
             logger.info("\033[91m✗ Logout completed with errors\033[0m")  # Red
-        logger.info("")
     
     # Display animated rainbow "Thanks for using QuoTrading AI" message
     # Only show when bot art is enabled (not during maintenance mode)
+    # Starts right after logout message (no extra blank lines)
     if show_bot_art and display_animated_thank_you:
         try:
-            display_animated_thank_you(duration=3.0, fps=15)
+            display_animated_thank_you(duration=60.0, fps=15)
         except Exception as e:
             # Fallback to static display if animation fails
             logger.debug(f"Animation failed, using static display: {e}")

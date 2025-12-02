@@ -308,7 +308,7 @@ THANK_YOU_MESSAGE = "Thanks for using QuoTrading AI"
 SUPPORT_MESSAGE = "Any issues? Reach out to: support@quotrading.com"
 
 
-def display_animated_thank_you(duration=3.0, fps=15):
+def display_animated_thank_you(duration=60.0, fps=15):
     """
     Display animated rainbow "Thanks for using QuoTrading AI" message.
     Colors flow/cycle through the text for a smooth animation effect.
@@ -317,7 +317,7 @@ def display_animated_thank_you(duration=3.0, fps=15):
     It overwrites previous output lines during the animation loop.
     
     Args:
-        duration: How long to animate in seconds (default: 3.0)
+        duration: How long to animate in seconds (default: 60.0)
         fps: Frames per second for animation (default: 15)
     """
     frames = int(duration * fps)
@@ -335,8 +335,8 @@ def display_animated_thank_you(duration=3.0, fps=15):
     msg_padding = max(0, (terminal_width - len(THANK_YOU_MESSAGE)) // 2)
     support_padding = max(0, (terminal_width - len(SUPPORT_MESSAGE)) // 2)
     
-    # Initial blank lines for vertical spacing
-    print("\n\n")
+    # Single blank line before starting (appears right after logout message)
+    print()
     
     for frame in range(frames):
         # Calculate color offset for flowing rainbow effect

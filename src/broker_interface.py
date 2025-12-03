@@ -1189,8 +1189,18 @@ class BrokerSDKImplementation(BrokerInterface):
                     order_response = pool.submit(
                         lambda: asyncio.run(place_order_async())
                     ).result()
-            except RuntimeError:
-                order_response = asyncio.run(place_order_async())
+            except RuntimeError as e:
+                # Handle "Event loop is closed" error gracefully
+                if "Event loop is closed" in str(e):
+                    logger.warning("Event loop closed during stop order - creating new loop")
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        order_response = loop.run_until_complete(place_order_async())
+                    finally:
+                        loop.close()
+                else:
+                    order_response = asyncio.run(place_order_async())
             
             # Check for success - SDK may return different response formats
             # Try order_response.order first, then order_response.success + orderId
@@ -1227,8 +1237,20 @@ class BrokerSDKImplementation(BrokerInterface):
             logger.error(f"Stop order placement failed: {error_msg or 'Unknown error'}")
             self._record_failure()
             return None
-                
+        
+        except AttributeError as e:
+            # Handle 'NoneType' object has no attribute 'send' - asyncio shutdown issue
+            if "'NoneType' object has no attribute 'send'" in str(e):
+                logger.warning("Stop order skipped - asyncio shutdown in progress")
+                return None  # Don't record failure for shutdown issues
+            logger.error(f"Error placing stop order: {e}")
+            self._record_failure()
+            return None
         except Exception as e:
+            # Handle event loop closed errors gracefully
+            if "Event loop is closed" in str(e):
+                logger.warning("Event loop closed during stop order - order may still be pending")
+                return None  # Don't record failure for shutdown issues
             logger.error(f"Error placing stop order: {e}")
             self._record_failure()
             return None

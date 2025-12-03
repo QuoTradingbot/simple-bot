@@ -576,6 +576,11 @@ FLATTEN_IN_PROGRESS_TIMEOUT = 30
 # to be detected as "new" multiple times after close
 AI_MODE_POSITION_COOLDOWN_SECONDS = 60
 
+# AI MODE: Grace period before considering a position closed (seconds)
+# Prevents "closed by user" spam when broker API returns inconsistent data
+# If position disappears from broker API for less than this time, we wait
+AI_MODE_CLOSE_GRACE_PERIOD_SECONDS = 10
+
 # AI MODE: Price tolerance for matching recently closed positions (0.5% = 0.005)
 # Positions within this tolerance are considered the same position
 AI_MODE_PRICE_MATCH_TOLERANCE = 0.005
@@ -585,6 +590,10 @@ AI_MODE_PRICE_MATCH_TOLERANCE = 0.005
 # This prevents re-adopting a position that was just closed due to API latency
 # Note: This is accessed from a single event loop, so thread safety is not required
 _recently_closed_positions: Dict[str, Dict[str, Any]] = {}
+
+# AI MODE: Track when position was last seen in broker API
+# Used to implement grace period before considering position as "closed"
+_last_position_seen: Dict[str, datetime] = {}
 
 
 def _mark_position_closed(symbol: str, entry_price: float, side: str) -> None:
@@ -3554,8 +3563,18 @@ def check_for_signals(symbol: str) -> None:
     # Validate signal requirements
     is_valid, reason = validate_signal_requirements(symbol, bar_time)
     if not is_valid:
-        pass  # Silent - signal validation is internal check
+        # PERIODIC STATUS: Log validation failures periodically so users know why signals aren't generating
+        # This helps users understand the bot is running but conditions aren't met
+        validation_fail_counter = state[symbol].get("validation_fail_counter", 0) + 1
+        state[symbol]["validation_fail_counter"] = validation_fail_counter
+        
+        # Log every 15 minutes (15 bars) - just show the reason, not strategy details
+        if validation_fail_counter % 15 == 0:
+            logger.info(f"📋 Signal check: {reason} - bot is monitoring and will trade when conditions allow")
         return
+    
+    # Reset validation fail counter when validation passes
+    state[symbol]["validation_fail_counter"] = 0
     
     # Get bars for signal check
     prev_bar = state[symbol]["bars_1min"][-2]
@@ -3565,6 +3584,15 @@ def check_for_signals(symbol: str) -> None:
     
     logger.debug(f"Signal check: trend={trend}, prev_low={prev_bar['low']:.2f}, "
                 f"current_close={current_bar['close']:.2f}, lower_band_2={vwap_bands['lower_2']:.2f}")
+    
+    # PERIODIC HEARTBEAT: Show bot is actively scanning for signals (every 15 minutes)
+    # Does NOT reveal strategy details - just confirms bot is running
+    signal_check_counter = state[symbol].get("signal_check_counter", 0) + 1
+    state[symbol]["signal_check_counter"] = signal_check_counter
+    
+    if signal_check_counter % 15 == 0:  # Every 15 minutes
+        price = current_bar["close"]
+        logger.info(f"📊 Bot active | Price: ${price:.2f} | Scanning for entry signals...")
     
     # Declare global RL brain for both signal checks
     global rl_brain
@@ -3580,9 +3608,9 @@ def check_for_signals(symbol: str) -> None:
         take_signal, confidence, reason = get_ml_confidence(market_state, "long")
         
         if not take_signal:
-            # SHADOW MODE: Only show approved signals, not rejected ones
-            if not _bot_config.shadow_mode:
-                logger.info(f"⚠️  Signal Declined: LONG at ${market_state.get('price', 0):.2f} - {reason} (confidence: {confidence:.0%})")
+            # Show rejected signals in both live mode and shadow mode
+            # Users need to see all AI decisions to understand the system's behavior
+            logger.info(f"⚠️  Signal Declined: LONG at ${market_state.get('price', 0):.2f} - {reason} (confidence: {confidence:.0%})")
             # Store the rejected signal state for potential future learning
             state[symbol]["last_rejected_signal"] = {
                 "time": get_current_time(),
@@ -3617,9 +3645,9 @@ def check_for_signals(symbol: str) -> None:
         take_signal, confidence, reason = get_ml_confidence(market_state, "short")
         
         if not take_signal:
-            # SHADOW MODE: Only show approved signals, not rejected ones
-            if not _bot_config.shadow_mode:
-                logger.info(f"⚠️  Signal Declined: SHORT at ${market_state.get('price', 0):.2f} - {reason} (confidence: {confidence:.0%})")
+            # Show rejected signals in both live mode and shadow mode
+            # Users need to see all AI decisions to understand the system's behavior
+            logger.info(f"⚠️  Signal Declined: SHORT at ${market_state.get('price', 0):.2f} - {reason} (confidence: {confidence:.0%})")
             # Store the rejected signal state for potential future learning
             state[symbol]["last_rejected_signal"] = {
                 "time": get_current_time(),
@@ -5728,17 +5756,31 @@ def check_regime_change(symbol: str, current_price: float) -> None:
         # PROFESSIONAL APPROACH: Place new stop FIRST, then cancel old
         stop_side = "SELL" if side == "long" else "BUY"
         contracts = position["quantity"]
+        
+        # ANTI-SPAM: Track consecutive stop order failures to prevent log spam
+        stop_fail_count = position.get("stop_order_fail_count", 0)
+        if stop_fail_count >= 3:
+            # Already failed 3+ times - silently skip to prevent spam
+            # Log only once every 10 failures
+            if stop_fail_count % 10 == 0:
+                logger.warning(f"Stop order placement still failing ({stop_fail_count} attempts) - connection may be dead")
+            position["stop_order_fail_count"] = stop_fail_count + 1
+            return
+        
         new_stop_order = place_stop_order(symbol, stop_side, contracts, new_stop_price)
         
         if new_stop_order:
+            # Reset failure counter on success
+            position["stop_order_fail_count"] = 0
+            
             # New regime-adjusted stop confirmed - now safe to cancel old stop
             old_stop_order_id = position.get("stop_order_id")
             if old_stop_order_id:
                 cancel_success = cancel_order(symbol, old_stop_order_id)
                 if cancel_success:
-                    logger.info(f"  Γ£ô Replaced stop order: {old_stop_order_id} ΓåÆ {new_stop_order.get('order_id')}")
+                    logger.info(f"  ✔ Replaced stop order: {old_stop_order_id} → {new_stop_order.get('order_id')}")
                 else:
-                    logger.warning(f"  ΓÜá∩╕Å New stop active but failed to cancel old stop {old_stop_order_id}")
+                    logger.warning(f"  ⚠️ New stop active but failed to cancel old stop {old_stop_order_id}")
         
         if new_stop_order:
             old_stop = position["stop_price"]
@@ -5774,7 +5816,10 @@ def check_regime_change(symbol: str, current_price: float) -> None:
             
             logger.info("=" * 60)
         else:
-            logger.error("Failed to update stop after regime change")
+            # Increment failure counter
+            position["stop_order_fail_count"] = stop_fail_count + 1
+            if stop_fail_count == 0:  # Only log first failure
+                logger.error("Failed to update stop after regime change")
     else:
         # Stop would move backward - log but don't update
         old_regime = REGIME_DEFINITIONS[entry_regime_name]
@@ -8525,13 +8570,26 @@ def _handle_ai_mode_position_scan() -> None:
         all_positions = get_all_open_positions()
         
         if not all_positions:
-            # No positions - check if we had any we were tracking for configured symbol
+            # No positions from broker - check if we had any we were tracking for configured symbol
             # Add null checks to prevent KeyError on partially initialized state
             if (configured_symbol in state and 
                 state[configured_symbol].get("position") and 
                 (state[configured_symbol]["position"].get("active") or 
                  state[configured_symbol]["position"].get("flatten_pending"))):
-                # Position was closed externally or by flatten
+                
+                # FIX: Implement grace period before considering position as "closed"
+                # This prevents rapid open/close spam when broker API returns inconsistent data
+                if configured_symbol in _last_position_seen:
+                    last_seen = _last_position_seen[configured_symbol]
+                    elapsed = (datetime.now() - last_seen).total_seconds()
+                    
+                    if elapsed < AI_MODE_CLOSE_GRACE_PERIOD_SECONDS:
+                        # Position was seen recently - wait before declaring it closed
+                        # This handles broker API hiccups where position briefly disappears
+                        logger.debug(f"AI MODE: Position missing but within grace period ({elapsed:.1f}s < {AI_MODE_CLOSE_GRACE_PERIOD_SECONDS}s)")
+                        return
+                
+                # Grace period expired or no record of last seen - position is actually closed
                 was_flatten_pending = state[configured_symbol]["position"].get("flatten_pending", False)
                 
                 if was_flatten_pending:
@@ -8568,6 +8626,10 @@ def _handle_ai_mode_position_scan() -> None:
                 state[configured_symbol]["position"]["side"] = None
                 state[configured_symbol]["position"]["flatten_pending"] = False
                 
+                # FIX: Clear the last seen timestamp now that position is confirmed closed
+                if configured_symbol in _last_position_seen:
+                    del _last_position_seen[configured_symbol]
+                
                 # FIX: Clear flatten in progress flag now that position is confirmed closed
                 clear_flatten_flags()
             return
@@ -8598,6 +8660,10 @@ def _handle_ai_mode_position_scan() -> None:
             # Ensure state exists for this symbol (should already be initialized at startup)
             if symbol not in state:
                 initialize_state(symbol)
+            
+            # FIX: Track when position was last seen in broker API
+            # This is used for grace period before declaring position as "closed"
+            _last_position_seen[symbol] = datetime.now()
             
             # Check if we're already tracking this position
             bot_active = state[symbol]["position"]["active"]

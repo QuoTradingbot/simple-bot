@@ -7891,7 +7891,6 @@ def main(symbol_override: str = None) -> None:
     if _bot_config.ai_mode:
         # AI Mode: Subscribe to market data for configured symbol to enable position management
         # State is already initialized earlier in startup, just subscribe to data
-        # Silently stream market data - no logs until user makes a trade
         subscribe_market_data(trading_symbol, on_tick)
         
         # Also subscribe to quotes for better price data
@@ -7900,6 +7899,8 @@ def main(symbol_override: str = None) -> None:
                 broker.subscribe_quotes(trading_symbol, on_quote)
             except Exception as e:
                 logger.debug(f"Failed to subscribe to quotes for {trading_symbol}: {e}")
+        
+        logger.info(f"🤖 AI MODE: Managing positions for {trading_symbol}")
     else:
         # LIVE MODE: Subscribe to market data (trades) - use trading_symbol
         subscribe_market_data(trading_symbol, on_tick)
@@ -7915,16 +7916,17 @@ def main(symbol_override: str = None) -> None:
     
     # AI MODE: Scan for existing positions at startup (only for configured symbol)
     # If user already has positions on the configured symbol, adopt them immediately
-    # This happens silently - no logs until a position is actually found
     if _bot_config.ai_mode:
         try:
             existing_positions = get_all_open_positions()
             if existing_positions:
+                logger.info("🤖 Checking for existing positions...")
                 for pos in existing_positions:
                     pos_symbol = pos.get("symbol", "")
                     # Only adopt positions for the configured symbol
                     if pos_symbol and pos_symbol == trading_symbol:
-                        # Run position scan to adopt - this will log the position details
+                        logger.info(f"🤖 Found existing position on {pos_symbol} - adopting...")
+                        # Run position scan to adopt
                         _handle_ai_mode_position_scan()
                         break
         except Exception as e:

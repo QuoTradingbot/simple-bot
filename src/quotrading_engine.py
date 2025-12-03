@@ -7835,6 +7835,32 @@ def main(symbol_override: str = None) -> None:
             logger.warning(f"Failed to subscribe to quotes: {e}")
             logger.warning("Continuing without bid/ask quote data")
     
+    # AI MODE: Scan for existing positions at startup and subscribe to their symbols
+    # This ensures we have market data flowing for regime detection from the start
+    if _bot_config.ai_mode:
+        try:
+            existing_positions = get_all_open_positions()
+            if existing_positions:
+                logger.info("🤖 AI MODE: Scanning for existing positions...")
+                for pos in existing_positions:
+                    pos_symbol = pos.get("symbol", "")
+                    if pos_symbol and pos_symbol != trading_symbol:
+                        # Initialize state and subscribe to this symbol
+                        if pos_symbol not in state:
+                            initialize_state(pos_symbol)
+                            try:
+                                subscribe_market_data(pos_symbol, on_tick)
+                                logger.info(f"  Subscribed to {pos_symbol}")
+                            except Exception as e:
+                                logger.debug(f"Could not subscribe to {pos_symbol}: {e}")
+                
+                # Run position scan to adopt any existing positions
+                _handle_ai_mode_position_scan()
+            else:
+                logger.info("🤖 AI MODE: No existing positions found - waiting for trades...")
+        except Exception as e:
+            logger.debug(f"AI Mode startup scan error: {e}")
+    
     # RL is CLOUD-ONLY - no local RL components
     # Users get confidence from cloud, contribute to cloud hive mind
     # Only the dev (Kevin) gets the experience data saved to cloud
@@ -7844,7 +7870,14 @@ def main(symbol_override: str = None) -> None:
     current_time = datetime.now(tz)
     logger.info(f"📅 {current_time.strftime('%A, %B %d, %Y at %I:%M %p %Z')}")
     logger.info("")
-    logger.info("🚀 Bot Ready - Monitoring for Signals")
+    if _bot_config.ai_mode:
+        logger.info("🤖 AI MODE Ready - Managing Your Trades")
+        logger.info("  • Position detection: every 3 seconds")
+        logger.info("  • Stop loss: based on max_loss_per_trade setting")
+        logger.info("  • Trailing stops: enabled (regime-aware)")
+        logger.info("  • Works with: ANY symbol you trade")
+    else:
+        logger.info("🚀 Bot Ready - Monitoring for Signals")
     logger.info("")
     
     # Run event loop (blocks until shutdown signal)
@@ -8157,6 +8190,48 @@ def _handle_ai_mode_position_scan() -> None:
                 
                 # Save position state for recovery
                 save_position_state(symbol)
+            
+            elif bot_active and qty > 0:
+                # Already tracking this position - show periodic status update
+                # Only show status every 30 seconds (10 position checks at 3 sec each)
+                status_counter = state[symbol].get("ai_status_counter", 0) + 1
+                state[symbol]["ai_status_counter"] = status_counter
+                
+                if status_counter % 10 == 0:  # Every ~30 seconds
+                    position = state[symbol]["position"]
+                    entry_price = position.get("entry_price", 0)
+                    stop_price = position.get("stop_price", 0)
+                    current_regime = state[symbol].get("current_regime", "NORMAL")
+                    
+                    # Get current price
+                    current_price = None
+                    if state[symbol]["bars_1min"]:
+                        current_price = state[symbol]["bars_1min"][-1]["close"]
+                    elif bid_ask_manager is not None:
+                        quote = bid_ask_manager.get_current_quote(symbol)
+                        if quote:
+                            current_price = (quote.bid_price + quote.ask_price) / 2
+                    
+                    if current_price and entry_price:
+                        tick_size, tick_value = get_symbol_tick_specs(symbol)
+                        
+                        # Calculate P&L
+                        if side == "long":
+                            pnl_ticks = (current_price - entry_price) / tick_size
+                        else:
+                            pnl_ticks = (entry_price - current_price) / tick_size
+                        
+                        pnl_dollars = pnl_ticks * tick_value * qty
+                        pnl_emoji = "📈" if pnl_dollars >= 0 else "📉"
+                        
+                        # Distance to stop
+                        if side == "long":
+                            stop_distance_ticks = (current_price - stop_price) / tick_size
+                        else:
+                            stop_distance_ticks = (stop_price - current_price) / tick_size
+                        
+                        logger.info(f"🤖 AI MODE Status: {qty} {'LONG' if side == 'long' else 'SHORT'} @ {symbol}")
+                        logger.info(f"  {pnl_emoji} P&L: ${pnl_dollars:+.2f} ({pnl_ticks:+.1f} ticks) | Stop: {stop_distance_ticks:.1f} ticks away | Regime: {current_regime}")
     
     except Exception as e:
         logger.debug(f"AI Mode position scan error: {e}")

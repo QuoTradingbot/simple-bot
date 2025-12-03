@@ -845,11 +845,10 @@ class BrokerSDKImplementation(BrokerInterface):
                 # No running loop - safe to use asyncio.run
                 order_response = asyncio.run(place_order_async())
             
-            logger.info(f"Order response: {order_response}")
+            logger.debug(f"Order response: {order_response}")
             
             if order_response and order_response.success:
-                pass  # Silent - order success logged at higher level
-                return {
+                result = {
                     "order_id": order_response.orderId,
                     "symbol": symbol,
                     "side": side,
@@ -859,6 +858,8 @@ class BrokerSDKImplementation(BrokerInterface):
                     "status": "SUBMITTED",
                     "filled_quantity": 0
                 }
+                self._record_success()  # Successful order
+                return result
             else:
                 error_msg = order_response.errorMessage if order_response else "Unknown error"
                 logger.error(f"Limit order placement failed: {error_msg}")
@@ -869,8 +870,6 @@ class BrokerSDKImplementation(BrokerInterface):
             logger.error(f"Error placing limit order: {e}")
             import traceback
             traceback.print_exc()
-            self._record_failure()
-            return None
             self._record_failure()
             return None
     
@@ -979,23 +978,41 @@ class BrokerSDKImplementation(BrokerInterface):
             except RuntimeError:
                 order_response = asyncio.run(place_order_async())
             
-            if order_response and order_response.order:
-                order = order_response.order
-                result = {
-                    "order_id": order.order_id,
-                    "symbol": symbol,
-                    "side": side,
-                    "quantity": quantity,
-                    "type": "STOP",
-                    "stop_price": stop_price,
-                    "status": order.status.value
-                }
-                self._record_success()  # Successful order
-                return result
-            else:
-                logger.error("Stop order placement failed")
-                self._record_failure()
-                return None
+            # Check for success - SDK may return different response formats
+            # Try order_response.order first, then order_response.success + orderId
+            if order_response:
+                if hasattr(order_response, 'order') and order_response.order:
+                    order = order_response.order
+                    result = {
+                        "order_id": order.order_id,
+                        "symbol": symbol,
+                        "side": side,
+                        "quantity": quantity,
+                        "type": "STOP",
+                        "stop_price": stop_price,
+                        "status": getattr(order.status, 'value', 'SUBMITTED')
+                    }
+                    self._record_success()  # Successful order
+                    return result
+                elif hasattr(order_response, 'success') and order_response.success:
+                    # Alternative response format (like market/limit orders)
+                    result = {
+                        "order_id": getattr(order_response, 'orderId', 'unknown'),
+                        "symbol": symbol,
+                        "side": side,
+                        "quantity": quantity,
+                        "type": "STOP",
+                        "stop_price": stop_price,
+                        "status": "SUBMITTED"
+                    }
+                    self._record_success()  # Successful order
+                    return result
+            
+            # Order failed
+            error_msg = getattr(order_response, 'errorMessage', None) if order_response else None
+            logger.error(f"Stop order placement failed: {error_msg or 'Unknown error'}")
+            self._record_failure()
+            return None
                 
         except Exception as e:
             logger.error(f"Error placing stop order: {e}")

@@ -3566,6 +3566,25 @@ def check_for_signals(symbol: str) -> None:
     logger.debug(f"Signal check: trend={trend}, prev_low={prev_bar['low']:.2f}, "
                 f"current_close={current_bar['close']:.2f}, lower_band_2={vwap_bands['lower_2']:.2f}")
     
+    # PERIODIC STATUS LOG: Show users the bot is actively checking for signals
+    # Log every 15 minutes (15 bars) to confirm the bot is running and show why no signals yet
+    signal_check_counter = state[symbol].get("signal_check_counter", 0) + 1
+    state[symbol]["signal_check_counter"] = signal_check_counter
+    
+    if signal_check_counter % 15 == 0:  # Every 15 minutes
+        rsi = state[symbol].get("rsi") or 0
+        price = current_bar["close"]
+        lower_band = vwap_bands.get("lower_2") or 0
+        upper_band = vwap_bands.get("upper_2") or 0
+        
+        # Calculate distance to signal zones (validate all values before division)
+        dist_to_lower = ((price - lower_band) / price * 100) if price > 0 and lower_band > 0 else 0
+        dist_to_upper = ((upper_band - price) / price * 100) if price > 0 and upper_band > 0 else 0
+        
+        logger.info(f"📊 SIGNAL CHECK STATUS | Price: ${price:.2f} | RSI: {rsi:.1f}")
+        logger.info(f"   VWAP Bands: Lower=${lower_band:.2f} ({dist_to_lower:+.2f}%) | Upper=${upper_band:.2f} ({dist_to_upper:+.2f}%)")
+        logger.info(f"   Waiting for: Price to touch VWAP bands + RSI extreme + Volume spike")
+    
     # Declare global RL brain for both signal checks
     global rl_brain
     

@@ -7914,6 +7914,13 @@ def handle_tick_event(event) -> None:
     
     # Update 15-minute bars
     update_15min_bar(symbol, price, volume, dt)
+    
+    # AI MODE: Check for positions on every 10th tick for instant detection
+    # This ensures we detect user's manual trades within 1-2 seconds
+    if CONFIG.get("ai_mode", False):
+        tick_count = state[symbol].get("total_ticks_received", 0)
+        if tick_count % 10 == 0:  # Check every 10 ticks (roughly every 1-2 seconds)
+            _handle_ai_mode_position_scan()
 
 
 def handle_time_check_event(data: Dict[str, Any]) -> None:
@@ -8046,6 +8053,12 @@ def _handle_ai_mode_position_scan() -> None:
             # Ensure state exists for this symbol
             if symbol not in state:
                 initialize_state(symbol)
+                # Subscribe to market data for this newly detected symbol
+                try:
+                    if broker is not None:
+                        subscribe_market_data(symbol, on_tick_data)
+                except Exception as e:
+                    logger.debug(f"Could not subscribe to market data for {symbol}: {e}")
             
             # Check if we're already tracking this position
             bot_active = state[symbol]["position"]["active"]
@@ -8058,6 +8071,7 @@ def _handle_ai_mode_position_scan() -> None:
                 logger.info(f"  {qty} {'LONG' if side == 'long' else 'SHORT'} @ {symbol}")
                 
                 # Get current price for entry estimate
+                # Try multiple sources: bars, bid/ask manager, or broker quote
                 current_price = None
                 if state[symbol]["bars_1min"]:
                     current_price = state[symbol]["bars_1min"][-1]["close"]
@@ -8065,6 +8079,17 @@ def _handle_ai_mode_position_scan() -> None:
                     quote = bid_ask_manager.get_current_quote(symbol)
                     if quote:
                         current_price = (quote.bid_price + quote.ask_price) / 2
+                
+                # If still no price, try to get from broker directly
+                if (current_price is None or current_price <= 0) and broker is not None:
+                    try:
+                        # Try to get a quote from broker
+                        if hasattr(broker, 'get_quote'):
+                            quote = broker.get_quote(symbol)
+                            if quote:
+                                current_price = quote.get('last_price') or quote.get('mid_price')
+                    except Exception:
+                        pass
                 
                 if current_price is None or current_price <= 0:
                     logger.info("  Waiting for price data...")

@@ -354,8 +354,12 @@ class TimerManager:
                             {"time": current_time}
                         )
                 
-                # Position reconciliation check (every 5 minutes)
-                if self._should_check("position_reconciliation", current_time, 300):
+                # Position reconciliation check
+                # AI Mode: Check every 3 seconds for instant position detection
+                # Normal Mode: Check every 5 minutes
+                ai_mode = self.config.get("ai_mode", False)
+                reconciliation_interval = 3 if ai_mode else 300
+                if self._should_check("position_reconciliation", current_time, reconciliation_interval):
                     self.event_loop.post_event(
                         EventType.POSITION_RECONCILIATION,
                         EventPriority.HIGH,

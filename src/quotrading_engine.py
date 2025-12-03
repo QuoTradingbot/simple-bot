@@ -406,7 +406,10 @@ def setup_logging() -> logging.Logger:
     project_x_logger.addHandler(logging.NullHandler())  # Add null handler to absorb any logs
     project_x_logger.disabled = True  # Completely disable the logger
     
-    logging.getLogger('signalrcore').setLevel(logging.ERROR)
+    # Suppress SignalR WebSocket errors (especially during maintenance window disconnects)
+    logging.getLogger('signalrcore').setLevel(logging.CRITICAL)
+    logging.getLogger('SignalRCoreClient').setLevel(logging.CRITICAL)  # The actual SignalR client logger
+    logging.getLogger('websocket').setLevel(logging.CRITICAL)  # WebSocket library
     
     # Suppress all nested project_x_py loggers (they use deeply nested child loggers)
     # These loggers output JSON which clutters customer UI
@@ -888,29 +891,9 @@ def check_broker_connection() -> None:
     
     # Display idle status message every 5 minutes during maintenance/weekend
     elif trading_state == "closed" and bot_status.get("maintenance_idle", False):
-        eastern_tz = pytz.timezone('US/Eastern')
-        if current_time.tzinfo is None:
-            current_time = eastern_tz.localize(current_time)
-        eastern_time = current_time.astimezone(eastern_tz)
-        
-        last_msg_time = bot_status.get("last_idle_message_time")
-        idle_type = bot_status.get("idle_type", "MAINTENANCE")
-        
-        # Increment heartbeat counter for animated dots
-        heartbeat_count = bot_status.get("idle_heartbeat_count", 0)
-        heartbeat_count += 1
-        bot_status["idle_heartbeat_count"] = heartbeat_count
-        
-        # Animated dots (cycles through . .. ... every 3 heartbeats)
-        dots = "." * ((heartbeat_count % 3) + 1)
-        
-        # Heartbeat symbol (alternates between ♥ and ♡)
-        heartbeat = "♥" if heartbeat_count % 2 == 0 else "♡"
-        
-        # Show status message every 30 seconds with animated dots
-        if last_msg_time is None or (eastern_time - last_msg_time).total_seconds() >= 30:
-            logger.info(f"\033[93m{heartbeat} Market {idle_type} - Waiting for market data{dots}\033[0m")
-            bot_status["last_idle_message_time"] = eastern_time
+        # SILENT DURING MAINTENANCE - no spam in logs
+        # The initial maintenance message was already shown when entering maintenance
+        # Next log will be when market reopens
         return  # Skip broker health check during idle period
     
     # AUTO-RECONNECT: Reconnect broker when market reopens at 6:00 PM ET
@@ -1811,7 +1794,10 @@ def update_1min_bar(symbol: str, price: float, volume: int, dt: datetime) -> Non
             # Display market snapshot on every 1-minute bar close
             # Only display if bot has been running for at least 1 minute to avoid confusion
             # with rapid bar creation during startup
-            if bot_status.get("session_start_time"):
+            # SILENCE DURING MAINTENANCE - no spam in logs
+            if bot_status.get("maintenance_idle", False):
+                pass  # Silent during maintenance - no market updates
+            elif bot_status.get("session_start_time"):
                 time_since_start = (get_current_time() - bot_status["session_start_time"]).total_seconds()
                 if time_since_start < 60:
                     # Skip display for first minute of runtime
@@ -3156,7 +3142,9 @@ def check_for_signals(symbol: str) -> None:
     # Check safety conditions first
     is_safe, reason = check_safety_conditions(symbol)
     if not is_safe:
-        logger.info(f"[SIGNAL CHECK] Safety check failed: {reason}")
+        # SILENCE DURING MAINTENANCE - no spam in logs
+        if not bot_status.get("maintenance_idle", False):
+            logger.info(f"[SIGNAL CHECK] Safety check failed: {reason}")
         return
     
     # Get the latest bar
@@ -5189,10 +5177,11 @@ def update_current_regime(symbol: str) -> None:
     state[symbol]["current_regime"] = detected_regime.name
     
     # Log regime changes for customers (not just backtest)
-    if prev_regime != detected_regime.name:
+    # SILENCE DURING MAINTENANCE - no spam in logs
+    if prev_regime != detected_regime.name and not bot_status.get("maintenance_idle", False):
         logger.info(f"📊 Market Regime Changed: {prev_regime} → {detected_regime.name}")
     else:
-        pass  # Silent - no regime change
+        pass  # Silent - no regime change or in maintenance
 
 
 def check_regime_change(symbol: str, current_price: float) -> None:

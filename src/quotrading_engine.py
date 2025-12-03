@@ -3644,6 +3644,15 @@ def place_entry_order_with_retry(symbol: str, side: str, contracts: int,
         max_retries: Maximum retry attempts
     
     Returns:
+        Tuple of (order, fill_price, order_type_used) where order_type_used is one of:
+        - "passive": Passive limit order filled
+        - "passive_partial": Passive limit order partially filled
+        - "passive_uncertain": Cancel failed, original order may have filled
+        - "aggressive": Aggressive limit order filled
+        - "mixed": Mixed strategy (part passive, part aggressive)
+        - "failed": All retries exhausted
+    
+    Returns:
         Tuple of (order, fill_price, order_type_used)
     """
     order_side = "BUY" if side == "long" else "SELL"
@@ -3696,7 +3705,9 @@ def place_entry_order_with_retry(symbol: str, side: str, contracts: int,
                                     logger.error(f"  [CRITICAL] Not placing new order to avoid duplicates")
                                     
                                     # Wait a bit to see if the original order fills
-                                    time_module.sleep(2)
+                                    # Note: This timeout could be made configurable via CONFIG if needed
+                                    cancel_failed_wait = 2  # seconds
+                                    time_module.sleep(cancel_failed_wait)
                                     
                                     # Check if it filled
                                     actual_filled = abs(get_position_quantity(symbol))
@@ -8324,7 +8335,9 @@ def handle_position_reconciliation_event(data: Dict[str, Any]) -> None:
         if pending_since:
             elapsed = (datetime.now() - pending_since).total_seconds()
             # Give orders up to 60 seconds to complete before forcing reconciliation
-            if elapsed < 60:
+            # Note: This timeout could be made configurable via CONFIG if needed
+            max_pending_seconds = 60
+            if elapsed < max_pending_seconds:
                 logger.debug(f"Skipping reconciliation - entry order pending for {elapsed:.1f}s")
                 return
             else:
@@ -8383,7 +8396,9 @@ def handle_position_reconciliation_event(data: Dict[str, Any]) -> None:
                         time_since_entry = 999  # Unknown, don't skip
                     
                     # If we entered less than 10 seconds ago, don't clear - wait for broker to catch up
-                    if time_since_entry < 10:
+                    # Note: This grace period could be made configurable via CONFIG if needed
+                    reconciliation_grace_period = 10  # seconds
+                    if time_since_entry < reconciliation_grace_period:
                         logger.warning(f"  [WAIT] Position entered {time_since_entry:.1f}s ago - waiting for broker confirmation")
                         logger.warning(f"  [WAIT] Not clearing state yet - broker may not have reported fill")
                         return

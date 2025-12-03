@@ -421,7 +421,9 @@ class QueuePositionMonitor:
                         cancel_succeeded = False
                         try:
                             cancel_result = cancel_order_func(order_id)
-                            # cancel_order_func returns True if cancelled successfully
+                            # cancel_order_func should return True on success, False on failure.
+                            # We treat None as success for backward compatibility with callers
+                            # that don't return a value (implicitly return None on success).
                             cancel_succeeded = cancel_result is True or cancel_result is None
                         except Exception as e:
                             logger.error(f"  Failed to cancel order: {e}")

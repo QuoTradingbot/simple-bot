@@ -4890,7 +4890,7 @@ def check_breakeven_protection(symbol: str, current_price: float) -> None:
     # This adapts to each trade's actual risk and adjusts per regime
     entry_price = position["entry_price"]
     original_stop = position["original_stop_price"]
-    # tick_size already obtained from get_symbol_tick_specs() above
+    # Note: tick_size and tick_value already obtained from get_symbol_tick_specs() on line ~4885
     
     # Calculate initial stop distance in ticks
     initial_stop_distance_ticks = abs(entry_price - original_stop) / tick_size
@@ -4950,7 +4950,7 @@ def check_breakeven_protection(symbol: str, current_price: float) -> None:
         if new_stop_order.get("order_id"):
             position["stop_order_id"] = new_stop_order.get("order_id")
         
-        # Calculate profit locked in (using tick_value from get_symbol_tick_specs)
+        # Calculate profit locked in (tick_value obtained from get_symbol_tick_specs() at function start)
         profit_locked_ticks = (new_stop_price - entry_price) / tick_size if side == "long" else (entry_price - new_stop_price) / tick_size
         profit_locked_dollars = profit_locked_ticks * tick_value * contracts
         
@@ -5100,7 +5100,7 @@ def check_trailing_stop(symbol: str, current_price: float) -> None:
         if new_stop_order.get("order_id"):
             position["stop_order_id"] = new_stop_order.get("order_id")
         
-        # Calculate profit now locked in (using tick_value from get_symbol_tick_specs)
+        # Calculate profit now locked in (tick_value obtained from get_symbol_tick_specs() at function start)
         profit_locked_ticks = (new_trailing_stop - entry_price) / tick_size if side == "long" else (entry_price - new_trailing_stop) / tick_size
         profit_locked_dollars = profit_locked_ticks * tick_value * contracts
         
@@ -6739,7 +6739,7 @@ def execute_exit(symbol: str, exit_price: float, reason: str) -> None:
             # Get execution quality metrics for RL learning
             order_type_used = position.get("order_type_used", "unknown")
             
-            # Calculate entry slippage if we have the data (tick_size already from get_symbol_tick_specs)
+            # Calculate entry slippage if we have the data (tick_size from get_symbol_tick_specs() on line ~6718)
             entry_slippage_ticks = 0
             if position.get("actual_entry_price") and position.get("original_entry_price"):
                 entry_slippage = abs(position.get("actual_entry_price", 0) - position.get("original_entry_price", 0))

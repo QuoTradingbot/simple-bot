@@ -286,10 +286,10 @@ except Exception as e:
 
 def get_symbol_tick_specs(symbol: str) -> Tuple[float, float]:
     """
-    Get tick_size and tick_value for any symbol.
+    Get tick_size and tick_value for a symbol.
     
-    Dynamically looks up symbol specs to support AI Mode's ability to
-    manage any position on any symbol the user opens.
+    Dynamically looks up symbol specs from the symbol_specs database.
+    Used by both Live Mode and AI Mode for accurate P&L calculations.
     
     Handles various symbol formats:
     - Standard: "ES", "NQ", "CL"
@@ -1430,11 +1430,11 @@ def get_position_quantity(symbol: str) -> int:
 
 def get_all_open_positions() -> List[Dict[str, Any]]:
     """
-    Get all open positions from broker (for AI Mode).
+    Get all open positions from broker.
     
-    AI Mode needs to detect any position the user has opened, regardless
-    of symbol, to manage stops and exits. This function returns all positions
-    so the bot can dynamically adopt any symbol the user is trading.
+    Used by AI Mode to detect positions on the configured symbol.
+    Returns all positions from broker, which are then filtered
+    by the caller to only manage the configured symbol.
     
     Returns:
         List of position dicts with keys: symbol, quantity, side
@@ -8365,7 +8365,7 @@ def handle_position_reconciliation_event(data: Dict[str, Any]) -> None:
     Verifies bot's position state matches broker's actual position.
     Runs every 5 seconds (Live Mode) or 3 seconds (AI Mode) to detect and correct any desyncs.
     
-    AI MODE: Scans ALL positions from broker to detect any position on any symbol.
+    AI MODE: Delegates to _handle_ai_mode_position_scan() which manages only the configured symbol.
     LIVE MODE: Checks configured symbol for position mismatch and auto-corrects.
     
     CRITICAL FIX: Skip reconciliation when an entry order is pending to prevent
@@ -8461,74 +8461,17 @@ def handle_position_reconciliation_event(data: Dict[str, Any]) -> None:
                 
             elif broker_position != 0 and bot_position == 0:
                 # Broker has position but bot thinks it's flat
-                # AI MODE: Adopt the external position and manage it
-                if CONFIG.get("ai_mode", False):
-                    # AI Mode: Minimal logging - only show trade results
-                    logger.info("=" * 60)
-                    logger.info("🤖 AI MODE: Position Detected")
-                    logger.info(f"  {abs(broker_position)} {'LONG' if broker_position > 0 else 'SHORT'} @ {symbol}")
-                    
-                    # Get current price for entry price (best estimate since we don't know actual entry)
-                    # Use current bar close, or fallback to bid/ask manager, or log warning if no price available
-                    current_price = None
-                    if state[symbol]["bars_1min"]:
-                        current_price = state[symbol]["bars_1min"][-1]["close"]
-                    elif bid_ask_manager is not None:
-                        quote = bid_ask_manager.get_current_quote(symbol)
-                        if quote:
-                            current_price = (quote.bid_price + quote.ask_price) / 2
-                    
-                    if current_price is None or current_price <= 0:
-                        logger.info("  Waiting for price data...")
-                        logger.info("=" * 60)
-                        return
-                    
-                    # Adopt the position
-                    position_side = "long" if broker_position > 0 else "short"
-                    state[symbol]["position"]["active"] = True
-                    state[symbol]["position"]["quantity"] = abs(broker_position)
-                    state[symbol]["position"]["side"] = position_side
-                    state[symbol]["position"]["entry_price"] = current_price
-                    state[symbol]["position"]["entry_time"] = get_current_time()
-                    
-                    # Get symbol-specific tick specs for accurate stop loss calculation
-                    # This allows AI Mode to work with ANY symbol on TopStep
-                    tick_size, tick_value = get_symbol_tick_specs(symbol)
-                    
-                    # Calculate stop loss using ONLY max_loss_per_trade setting
-                    # In AI Mode, this is the primary control - no regime ATR needed
-                    max_stop_dollars = CONFIG.get("max_stop_loss_dollars", DEFAULT_MAX_STOP_LOSS_DOLLARS)
-                    max_stop_ticks = max_stop_dollars / tick_value
-                    stop_distance = max_stop_ticks * tick_size
-                    
-                    if position_side == "long":
-                        stop_price = current_price - stop_distance
-                    else:
-                        stop_price = current_price + stop_distance
-                    
-                    # Round to tick
-                    stop_price = round(stop_price / tick_size) * tick_size
-                    
-                    state[symbol]["position"]["stop_price"] = stop_price
-                    state[symbol]["position"]["trailing_stop"] = stop_price
-                    state[symbol]["position"]["ai_mode_adopted"] = True
-                    
-                    # Minimal trade result output for AI Mode
-                    logger.info(f"  Entry: ${current_price:.2f} | Stop: ${stop_price:.2f}")
-                    logger.info(f"  Max Loss: ${max_stop_dollars:.0f} ({max_stop_ticks:.0f} ticks)")
-                    logger.info("=" * 60)
-                else:
-                    # Normal mode: Close unexpected position
-                    logger.error("  Cause: Position opened externally or bot missed entry fill")
-                    logger.error("  Action: CLOSING UNEXPECTED POSITION at market")
-                    
-                    # Emergency flatten the unexpected position
-                    side = "sell" if broker_position > 0 else "buy"
-                    quantity = abs(broker_position)
-                    
-                    logger.warning(f"Placing emergency market order: {side} {quantity} {symbol}")
-                    broker.place_market_order(symbol, side, quantity)
+                # LIVE MODE: Close unexpected position (AI Mode doesn't reach here - returns early)
+                logger.error("  Cause: Position opened externally or bot missed entry fill")
+                logger.error("  Action: CLOSING UNEXPECTED POSITION at market")
                 
+                # Emergency flatten the unexpected position
+                side = "sell" if broker_position > 0 else "buy"
+                quantity = abs(broker_position)
+                
+                logger.warning(f"Placing emergency market order: {side} {quantity} {symbol}")
+                broker.place_market_order(symbol, side, quantity)
+            
             else:
                 # Both have positions but quantities don't match
                 logger.error("  Cause: Partial fill or quantity mismatch")
@@ -8543,10 +8486,6 @@ def handle_position_reconciliation_event(data: Dict[str, Any]) -> None:
             if recovery_manager:
                 recovery_manager.save_state(state)
                 logger.info("Corrected position state saved to disk")
-            
-            # AI Mode: Also save position state for recovery
-            if CONFIG.get("ai_mode", False):
-                save_position_state(symbol)
             
             logger.error("=" * 60)
             

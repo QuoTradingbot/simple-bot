@@ -263,6 +263,46 @@ class BrokerSDKImplementation(BrokerInterface):
         # Return empty string as last resort
         return ''
     
+    def _get_position_symbol(self, position: Any) -> str:
+        """
+        Get the symbol from an SDK Position object.
+        
+        Position objects may use different attribute names depending on SDK version:
+        - contract_id: The contract identifier
+        - instrument: An instrument object with symbol info
+        - symbol/symbolId: Direct symbol attribute
+        
+        Args:
+            position: SDK Position object
+            
+        Returns:
+            Symbol string, or empty string if not found
+        """
+        # Try contract_id first (most common for Position objects)
+        contract_id = getattr(position, 'contract_id', None)
+        if contract_id:
+            # contract_id might be like "CON.F.US.EP.Z25" - extract symbol
+            # Try to get symbol from cache reverse lookup
+            for symbol, cached_id in self._contract_id_cache.items():
+                if cached_id == contract_id:
+                    return symbol
+            # If not in cache, return the contract_id as-is
+            return str(contract_id)
+        
+        # Try instrument attribute (if Position has embedded instrument)
+        instrument = getattr(position, 'instrument', None)
+        if instrument:
+            return self._get_instrument_symbol(instrument)
+        
+        # Try direct symbol attributes
+        for attr in ['symbol', 'symbolId', 'symbol_id']:
+            symbol = getattr(position, attr, None)
+            if symbol:
+                return str(symbol)
+        
+        # Last resort - return empty string
+        return ''
+    
     def connect(self, max_retries: int = None) -> bool:
         """
         Connect to TopStep SDK with retry logic.
@@ -653,9 +693,10 @@ class BrokerSDKImplementation(BrokerInterface):
                 try:
                     positions = loop.run_until_complete(self.sdk_client.search_open_positions())
                     for pos in positions:
-                        # Use helper method to get instrument symbol
-                        pos_symbol = self._get_instrument_symbol(pos.instrument)
-                        if pos_symbol == symbol:
+                        # Get symbol from position - try multiple attribute names
+                        # Position may use contract_id, instrument, symbol, or symbolId
+                        pos_symbol = self._get_position_symbol(pos)
+                        if pos_symbol == symbol or pos_symbol == symbol.lstrip('/'):
                             # Return signed quantity (positive for long, negative for short)
                             qty = int(pos.quantity)
                             return qty if pos.position_type.value == "LONG" else -qty
@@ -872,15 +913,24 @@ class BrokerSDKImplementation(BrokerInterface):
             # Import order enums here to avoid module-level import issues
             from project_x_py import OrderSide, OrderType
             
+            # Get contract ID for the symbol dynamically (same as market orders)
+            contract_id = self._get_contract_id_sync(symbol)
+            if not contract_id:
+                logger.error(f"Failed to resolve contract ID for {symbol}")
+                return None
+            
             # Convert side to SDK enum
             order_side = OrderSide.BUY if side.upper() == "BUY" else OrderSide.SELL
             
-            # Define async wrapper
+            # Define async wrapper - use contract_id and size (not symbol and quantity)
             async def place_order_async():
+                # Refresh token if needed (for long-running bots)
+                await self._ensure_token_fresh()
+                
                 return await self.trading_suite.orders.place_stop_order(
-                    symbol=symbol,
+                    contract_id=contract_id,
                     side=order_side,
-                    quantity=quantity,
+                    size=quantity,
                     stop_price=stop_price
                 )
             

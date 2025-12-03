@@ -570,6 +570,99 @@ bot_status: Dict[str, Any] = {
 # Timeout for flatten in progress check (seconds)
 FLATTEN_IN_PROGRESS_TIMEOUT = 30
 
+# AI MODE: Cooldown period for recently closed positions (seconds)
+# Prevents re-adopting a position immediately after it was closed
+# This fixes the spam issue where broker API latency causes the same position
+# to be detected as "new" multiple times after close
+AI_MODE_POSITION_COOLDOWN_SECONDS = 60
+
+# AI MODE: Price tolerance for matching recently closed positions (0.5% = 0.005)
+# Positions within this tolerance are considered the same position
+AI_MODE_PRICE_MATCH_TOLERANCE = 0.005
+
+# AI MODE: Track recently closed positions to prevent re-adoption spam
+# Key: symbol, Value: dict with close_time, entry_price, side
+# This prevents re-adopting a position that was just closed due to API latency
+# Note: This is accessed from a single event loop, so thread safety is not required
+_recently_closed_positions: Dict[str, Dict[str, Any]] = {}
+
+
+def _mark_position_closed(symbol: str, entry_price: float, side: str) -> None:
+    """
+    Mark a position as recently closed to prevent re-adoption spam.
+    
+    AI Mode can see the same position multiple times from the broker API
+    due to latency between our close action and broker state update.
+    This prevents treating the same position as "new" after close.
+    
+    Args:
+        symbol: Symbol that was closed
+        entry_price: Entry price of closed position
+        side: Side of closed position ('long' or 'short')
+    """
+    _recently_closed_positions[symbol] = {
+        "close_time": datetime.now(),
+        "entry_price": entry_price,
+        "side": side
+    }
+    logger.debug(f"Marked position {symbol} as recently closed (entry={entry_price}, side={side})")
+
+
+def _is_position_recently_closed(symbol: str, entry_price: float, side: str) -> bool:
+    """
+    Check if a position matches one that was recently closed.
+    
+    Used to prevent re-adopting a position that we just closed.
+    The broker API may still return the position briefly after close.
+    
+    Args:
+        symbol: Symbol to check
+        entry_price: Entry price of position from broker
+        side: Side of position from broker
+        
+    Returns:
+        True if this position was recently closed (should not re-adopt)
+    """
+    if symbol not in _recently_closed_positions:
+        return False
+    
+    closed_info = _recently_closed_positions[symbol]
+    close_time = closed_info.get("close_time")
+    
+    if not close_time:
+        return False
+    
+    # Check if within cooldown period
+    elapsed = (datetime.now() - close_time).total_seconds()
+    if elapsed > AI_MODE_POSITION_COOLDOWN_SECONDS:
+        # Cooldown expired - remove from tracking and allow re-adoption
+        del _recently_closed_positions[symbol]
+        return False
+    
+    # Check if this matches the recently closed position (same entry price and side)
+    closed_entry = closed_info.get("entry_price", 0)
+    closed_side = closed_info.get("side", "")
+    
+    # Allow a small tolerance for price comparison
+    if closed_entry > 0 and entry_price > 0:
+        price_diff_pct = abs(entry_price - closed_entry) / closed_entry
+        if price_diff_pct < AI_MODE_PRICE_MATCH_TOLERANCE and side == closed_side:  # Same position
+            logger.debug(f"Position {symbol} matches recently closed (entry={entry_price}, closed_entry={closed_entry})")
+            return True
+    
+    # Different entry price or side - this is a new position
+    return False
+
+
+def _clear_recently_closed(symbol: str) -> None:
+    """
+    Clear the recently closed tracking for a symbol.
+    
+    Call when enough time has passed or position is confirmed different.
+    """
+    if symbol in _recently_closed_positions:
+        del _recently_closed_positions[symbol]
+
 
 def clear_flatten_flags() -> None:
     """
@@ -8448,9 +8541,15 @@ def _handle_ai_mode_position_scan() -> None:
                 
                 # Calculate P&L if possible
                 entry_price = state[configured_symbol]["position"].get("entry_price", 0)
+                side = state[configured_symbol]["position"].get("side")
+                
+                # FIX: Mark this position as recently closed to prevent re-adoption spam
+                # This addresses broker API latency where position may still appear briefly after close
+                if entry_price and entry_price > 0 and side:
+                    _mark_position_closed(configured_symbol, entry_price, side)
+                
                 if state[configured_symbol].get("bars_1min"):
                     exit_price = state[configured_symbol]["bars_1min"][-1]["close"]
-                    side = state[configured_symbol]["position"].get("side")
                     qty = state[configured_symbol]["position"].get("quantity", 0)
                     tick_size, tick_value = get_symbol_tick_specs(configured_symbol)
                     
@@ -8505,6 +8604,28 @@ def _handle_ai_mode_position_scan() -> None:
             bot_qty = state[symbol]["position"]["quantity"] if bot_active else 0
             
             if not bot_active and qty > 0:
+                # Potential new position detected
+                
+                # FIX: Check if this position was recently closed (prevents re-adoption spam)
+                # This addresses the issue where broker API latency causes the same position
+                # to appear as "new" multiple times after we closed it
+                if broker_entry_price and broker_entry_price > 0:
+                    if _is_position_recently_closed(symbol, broker_entry_price, side):
+                        logger.debug(f"AI MODE: Skipping position - recently closed (entry={broker_entry_price}, side={side})")
+                        continue
+                
+                # FIX: Check if market is closed - don't adopt positions during market close
+                # This prevents the spam cycle where:
+                # 1. Bot adopts position during closed market
+                # 2. Bot immediately tries to flatten (market closed)
+                # 3. Flatten fails or discrepancy occurs
+                # 4. Bot clears state and re-detects the same position
+                current_time = get_current_time()
+                trading_state = get_trading_state(current_time)
+                if trading_state == "closed":
+                    logger.debug(f"AI MODE: Skipping position adoption - market is closed")
+                    continue
+                
                 # New position detected - adopt it!
                 logger.info("=" * 60)
                 logger.info("🤖 AI MODE: New Position Detected")
@@ -8631,6 +8752,10 @@ def _handle_ai_mode_position_scan() -> None:
                 
                 # Save position state for recovery
                 save_position_state(symbol)
+                
+                # FIX: Clear recently closed tracking since we successfully adopted this position
+                # This allows future positions at the same price to be adopted
+                _clear_recently_closed(symbol)
             
             elif bot_active and qty > 0:
                 # Already tracking this position - show periodic status update

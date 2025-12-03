@@ -3580,9 +3580,9 @@ def check_for_signals(symbol: str) -> None:
         take_signal, confidence, reason = get_ml_confidence(market_state, "long")
         
         if not take_signal:
-            # SHADOW MODE: Only show approved signals, not rejected ones
-            if not _bot_config.shadow_mode:
-                logger.info(f"⚠️  Signal Declined: LONG at ${market_state.get('price', 0):.2f} - {reason} (confidence: {confidence:.0%})")
+            # Show rejected signals in both live mode and shadow mode
+            # Users need to see all AI decisions to understand the system's behavior
+            logger.info(f"⚠️  Signal Declined: LONG at ${market_state.get('price', 0):.2f} - {reason} (confidence: {confidence:.0%})")
             # Store the rejected signal state for potential future learning
             state[symbol]["last_rejected_signal"] = {
                 "time": get_current_time(),
@@ -3617,9 +3617,9 @@ def check_for_signals(symbol: str) -> None:
         take_signal, confidence, reason = get_ml_confidence(market_state, "short")
         
         if not take_signal:
-            # SHADOW MODE: Only show approved signals, not rejected ones
-            if not _bot_config.shadow_mode:
-                logger.info(f"⚠️  Signal Declined: SHORT at ${market_state.get('price', 0):.2f} - {reason} (confidence: {confidence:.0%})")
+            # Show rejected signals in both live mode and shadow mode
+            # Users need to see all AI decisions to understand the system's behavior
+            logger.info(f"⚠️  Signal Declined: SHORT at ${market_state.get('price', 0):.2f} - {reason} (confidence: {confidence:.0%})")
             # Store the rejected signal state for potential future learning
             state[symbol]["last_rejected_signal"] = {
                 "time": get_current_time(),

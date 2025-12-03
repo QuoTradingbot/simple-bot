@@ -8034,7 +8034,7 @@ def main(symbol_override: str = None) -> None:
             except Exception as e:
                 logger.debug(f"Failed to subscribe to quotes for {trading_symbol}: {e}")
         
-        logger.info(f"🤖 AI MODE: Managing positions for {trading_symbol}")
+        pass  # AI MODE managing message will be shown after date
     else:
         # LIVE MODE: Subscribe to market data (trades) - use trading_symbol
         subscribe_market_data(trading_symbol, on_tick)
@@ -8077,6 +8077,7 @@ def main(symbol_override: str = None) -> None:
     logger.info(f"📅 {current_time.strftime('%A, %B %d, %Y at %I:%M %p %Z')}")
     logger.info("")
     if _bot_config.ai_mode:
+        logger.info(f"🤖 AI MODE: Managing positions for {trading_symbol}")
         logger.info("🤖 AI MODE Ready - Waiting for your trades...")
         logger.info("")
     else:

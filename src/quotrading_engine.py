@@ -1497,6 +1497,7 @@ def initialize_state(symbol: str) -> None:
         "trading_day": None,
         "daily_trade_count": 0,
         "daily_pnl": 0.0,
+        "warmup_complete": False,  # Track when 114 bars collected for regime detection
         
         # Session tracking (Phase 13)
         "session_stats": {
@@ -2591,6 +2592,43 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
     if len(state[symbol]["bars_1min"]) < 2:
         pass  # Silent - signal check skipped (not enough bars)
         return False, "Insufficient bars"
+    
+    # ========================================================================
+    # WARMUP PERIOD: Block signals until enough bars for regime detection
+    # ========================================================================
+    # Regime detection requires 114 bars for accurate classification
+    # During warmup, we use NORMAL regime as fallback but should not trade
+    WARMUP_BARS_REQUIRED = 114
+    current_bar_count = len(state[symbol]["bars_1min"])
+    
+    if current_bar_count < WARMUP_BARS_REQUIRED:
+        # Log warmup progress every 10 bars (clean professional logs)
+        if current_bar_count % 10 == 0 or current_bar_count == 1:
+            bars_remaining = WARMUP_BARS_REQUIRED - current_bar_count
+            minutes_remaining = bars_remaining  # 1-min bars = 1 minute each
+            progress_pct = (current_bar_count / WARMUP_BARS_REQUIRED) * 100
+            
+            # Create progress bar
+            filled = int(progress_pct / 5)  # 20 chars total
+            bar = "█" * filled + "░" * (20 - filled)
+            
+            logger.info(f"⏳ WARMUP [{bar}] {progress_pct:.0f}% | Bars: {current_bar_count}/{WARMUP_BARS_REQUIRED} | ~{minutes_remaining} min remaining")
+            logger.info(f"   Collecting data for accurate regime detection. Signals blocked until warmup complete.")
+        
+        return False, f"Warmup ({current_bar_count}/{WARMUP_BARS_REQUIRED} bars)"
+    
+    # Log warmup completion once
+    if not state[symbol].get("warmup_complete", False):
+        state[symbol]["warmup_complete"] = True
+        current_regime = state[symbol].get("current_regime", "NORMAL")
+        logger.info("=" * 60)
+        logger.info("✅ WARMUP COMPLETE - TRADING ENABLED")
+        logger.info("=" * 60)
+        logger.info(f"   📊 Bars collected: {current_bar_count}")
+        logger.info(f"   🎯 Regime detection: ACTIVE")
+        logger.info(f"   📈 Current regime: {current_regime}")
+        logger.info(f"   🚀 Signal generation: ENABLED")
+        logger.info("=" * 60)
     
     # Check VWAP bands
     vwap_bands = state[symbol]["vwap_bands"]

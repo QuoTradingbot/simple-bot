@@ -1307,10 +1307,17 @@ class QuoTradingLauncher:
         shadow_mode_frame.pack(fill=tk.X, pady=(0, 5))
         
         self.shadow_mode_var = tk.BooleanVar(value=self.config.get("shadow_mode", False))
+        
+        def on_shadow_mode_toggle():
+            """When Shadow mode is enabled, disable AI mode (mutually exclusive)"""
+            if self.shadow_mode_var.get():
+                self.ai_mode_var.set(False)
+        
         tk.Checkbutton(
             shadow_mode_frame,
             text="👁 Shadow Mode",
             variable=self.shadow_mode_var,
+            command=on_shadow_mode_toggle,
             font=("Segoe UI", 8, "bold"),
             bg=self.colors['card'],
             fg=self.colors['text'],
@@ -1333,10 +1340,17 @@ class QuoTradingLauncher:
         ai_mode_frame.pack(fill=tk.X, pady=(0, 5))
         
         self.ai_mode_var = tk.BooleanVar(value=self.config.get("ai_mode", False))
+        
+        def on_ai_mode_toggle():
+            """When AI mode is enabled, disable Shadow mode (mutually exclusive)"""
+            if self.ai_mode_var.get():
+                self.shadow_mode_var.set(False)
+        
         tk.Checkbutton(
             ai_mode_frame,
             text="🤖 AI Mode",
             variable=self.ai_mode_var,
+            command=on_ai_mode_toggle,
             font=("Segoe UI", 8, "bold"),
             bg=self.colors['card'],
             fg=self.colors['text'],

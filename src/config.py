@@ -58,37 +58,37 @@ class BotConfiguration:
         # Total cost per round-trip: ~3 ticks slippage + $2.50 commission = ~$42.50/contract
     
     # ==========================================================================
-    # CAPITULATION REVERSAL STRATEGY PARAMETERS
+    # CAPITULATION REVERSAL STRATEGY - HARDCODED PARAMETERS
     # ==========================================================================
-    # These are the EXACT parameters for the capitulation reversal strategy.
-    # NO regime-based adjustments - same rules for all trades.
+    # These parameters are HARDCODED in capitulation_detector.py
+    # They are NOT configurable - the strategy uses fixed rules for all trades.
+    # 
+    # HARDCODED VALUES (see capitulation_detector.py for implementation):
+    # - flush_min_ticks: 20 (minimum 5 dollars on ES)
+    # - flush_lookback_bars: 10 (last 10 one-minute bars)
+    # - flush_min_velocity: 4.0 (at least 4 ticks per bar)
+    # - flush_near_extreme_ticks: 5 (within 5 ticks of flush extreme)
+    # - rsi_extreme_long: 25 (RSI < 25 for long entry)
+    # - rsi_extreme_short: 75 (RSI > 75 for short entry)
+    # - volume_climax_mult: 2.0 (2x 20-bar average volume)
+    # - stop_buffer_ticks: 2 (2 ticks below/above flush extreme)
+    # - breakeven_trigger_ticks: 12 (move stop to entry after 12 ticks profit)
+    # - breakeven_offset_ticks: 1 (entry + 1 tick)
+    # - trailing_trigger_ticks: 15 (start trailing after 15 ticks profit)
+    # - trailing_distance_ticks: 8 (trail 8 ticks behind peak)
+    # - max_hold_bars: 20 (time stop after 20 bars)
+    #
+    # USER CONFIGURABLE via GUI:
+    # - max_stop_loss_dollars: Emergency max stop (caps stop loss in dollars)
+    # - max_contracts: Position size limit
+    # - max_trades_per_day: Trade count limit
+    # - daily_loss_limit: Daily loss cap
+    # - confidence_threshold: AI signal confidence filter
+    # ==========================================================================
     
-    # FLUSH DETECTION (Signal Conditions 1-3)
-    flush_min_ticks: int = 20  # Minimum 20 ticks (5 dollars on ES)
-    flush_lookback_bars: int = 10  # Look back last 10 one-minute bars
-    flush_min_velocity: float = 4.0  # At least 4 ticks per bar
-    flush_near_extreme_ticks: int = 5  # Must be within 5 ticks of flush extreme
-    
-    # RSI Settings (Signal Condition 4)
+    # RSI calculation period (standard)
     rsi_period: int = 14  # Standard RSI period
-    rsi_extreme_long: int = 25  # RSI < 25 for long entry (per spec)
-    rsi_extreme_short: int = 75  # RSI > 75 for short entry (per spec)
-    
-    # Volume Settings (Signal Condition 5)
-    volume_climax_mult: float = 2.0  # 2x 20-bar average volume for flush detection
-    volume_lookback: int = 20
-    
-    # STOP LOSS
-    stop_buffer_ticks: int = 2  # 2 ticks below flush low (long) / above flush high (short)
-    # Emergency max stop uses max_stop_loss_dollars (GUI configurable)
-    
-    # TRADE MANAGEMENT - FIXED RULES (no regime adjustments)
-    breakeven_trigger_ticks: int = 12  # Move stop to breakeven after 12 ticks profit
-    breakeven_offset_ticks: int = 1  # Stop at entry + 1 tick (locks in 1 tick profit)
-    trailing_trigger_ticks: int = 15  # Start trailing after 15 ticks profit
-    trailing_distance_ticks: int = 8  # Trail 8 ticks behind peak
-    time_stop_bars: int = 20  # Optional: exit after 20 bars if no resolution
-    time_stop_enabled: bool = False  # Disabled by default - user preference
+    volume_lookback: int = 20  # 20-bar volume average
     
     # ==========================================================================
     # LEGACY PARAMETERS (kept for backwards compatibility, not used in new strategy)
@@ -334,21 +334,21 @@ class BotConfiguration:
     max_transaction_cost_pct: float = 0.15  # Max transaction cost as % of expected profit (15%)
     commission_per_contract: float = 2.50  # Commission per contract round-turn
     
-    # Advanced Exit Management Parameters
-    # Static exit management using config values
-    
-    # Breakeven Protection - CAPITULATION REVERSAL STRATEGY
-    breakeven_enabled: bool = True  # ENABLED - Move stop to entry after profit
-    breakeven_profit_threshold_ticks: int = 12  # Move stop to entry after 12 ticks profit
-    breakeven_stop_offset_ticks: int = 1  # Static offset from entry
-    
-    # Trailing Stop - CAPITULATION REVERSAL STRATEGY
-    trailing_stop_enabled: bool = True  # ENABLED - Trail after 15+ ticks profit
-    trailing_stop_trigger_ticks: int = 15  # Start trailing after 15 ticks
-    trailing_stop_distance_ticks: int = 9  # Trail 8-10 ticks behind peak
-    
-    # Time Stop - CAPITULATION REVERSAL STRATEGY
-    max_hold_bars: int = 20  # Exit if trade hasn't worked after 20 bars (20 minutes)
+    # ==========================================================================
+    # EXIT MANAGEMENT - HARDCODED IN CAPITULATION_DETECTOR.PY
+    # ==========================================================================
+    # All exit management rules are HARDCODED in the bot code.
+    # These values are NOT configurable - the strategy uses fixed rules.
+    #
+    # HARDCODED EXIT RULES (see capitulation_detector.py):
+    # - Breakeven: Move stop to entry + 1 tick after 12 ticks profit
+    # - Trailing: Trail 8 ticks behind peak after 15 ticks profit
+    # - Time Stop: Exit after 20 bars if no target/stop hit
+    # - Target: VWAP (mean reversion destination)
+    #
+    # The following flags remain for compatibility but use hardcoded values:
+    breakeven_enabled: bool = True  # ENABLED - uses hardcoded 12-tick trigger
+    trailing_stop_enabled: bool = True  # ENABLED - uses hardcoded 15-tick trigger, 8-tick trail
     
     # Partial Exits (static R-multiples) - Capitulation Strategy exits
     # For capitulation trades, VWAP is the primary target. Partial exits work as follows:
@@ -624,9 +624,6 @@ def load_from_env() -> BotConfiguration:
     
     if os.getenv("BOT_AI_MODE"):
         config.ai_mode = os.getenv("BOT_AI_MODE").lower() in ("true", "1", "yes")
-    
-    if os.getenv("BOT_TIME_EXIT_ENABLED"):
-        config.time_stop_enabled = os.getenv("BOT_TIME_EXIT_ENABLED").lower() in ("true", "1", "yes")
     
     if os.getenv("BOT_ENVIRONMENT"):
         config.environment = os.getenv("BOT_ENVIRONMENT")

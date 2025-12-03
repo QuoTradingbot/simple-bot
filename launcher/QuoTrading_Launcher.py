@@ -1368,33 +1368,6 @@ class QuoTradingLauncher:
             fg=self.colors['text_light']
         ).pack(anchor=tk.W, padx=(20, 0))
         
-        # Time-Based Exit (20-bar timeout)
-        time_exit_frame = tk.Frame(modes_section, bg=self.colors['card'])
-        time_exit_frame.pack(fill=tk.X, pady=(0, 5))
-        
-        self.time_exit_var = tk.BooleanVar(value=self.config.get("time_exit_enabled", False))
-        
-        tk.Checkbutton(
-            time_exit_frame,
-            text="⏱️ Time-Based Exit",
-            variable=self.time_exit_var,
-            font=("Segoe UI", 8, "bold"),
-            bg=self.colors['card'],
-            fg=self.colors['text'],
-            selectcolor=self.colors['secondary'],
-            activebackground=self.colors['card'],
-            activeforeground=self.colors['success'],
-            cursor="hand2"
-        ).pack(anchor=tk.W)
-        
-        tk.Label(
-            time_exit_frame,
-            text="Exit trades after 20 bars if no resolution",
-            font=("Segoe UI", 7, "bold"),
-            bg=self.colors['card'],
-            fg=self.colors['text_light']
-        ).pack(anchor=tk.W, padx=(20, 0))
-        
         
         # Account Settings Row - COMPACT
         settings_row = tk.Frame(content, bg=self.colors['card'])
@@ -2096,7 +2069,6 @@ class QuoTradingLauncher:
         self.config["confidence_threshold"] = self.confidence_var.get()
         self.config["shadow_mode"] = self.shadow_mode_var.get()
         self.config["ai_mode"] = self.ai_mode_var.get()
-        self.config["time_exit_enabled"] = self.time_exit_var.get()
         self.config["selected_account"] = self.account_dropdown_var.get()
         
         # Get selected account ID - parse from dropdown display format
@@ -2222,7 +2194,6 @@ class QuoTradingLauncher:
         confidence = self.confidence_var.get()
         shadow_mode = "ON" if self.shadow_mode_var.get() else "OFF"
         ai_mode = "ON" if self.ai_mode_var.get() else "OFF"
-        time_exit = "ON" if self.time_exit_var.get() else "OFF"
         max_loss_per_trade = self.config.get("max_loss_per_trade", 200)
         
         settings_text = f"""
@@ -2236,7 +2207,6 @@ Max Trades/Day: {max_trades}
 Confidence Threshold: {confidence}%
 Shadow Mode: {shadow_mode}
 AI Mode: {ai_mode}
-Time-Based Exit: {time_exit}
         """
         
         settings_label = tk.Label(
@@ -3355,10 +3325,6 @@ BOT_SHADOW_MODE={'true' if self.shadow_mode_var.get() else 'false'}
 # AI Mode (Position Management Mode)
 BOT_AI_MODE={'true' if self.ai_mode_var.get() else 'false'}
 # When true: User trades manually, AI manages positions (stop loss, trailing stops, exits)
-
-# Time-Based Exit (20-bar timeout)
-BOT_TIME_EXIT_ENABLED={'true' if self.time_exit_var.get() else 'false'}
-# When true: Exit trades after 20 bars (20 minutes) if no target or stop hit
 
 # Account Selection
 SELECTED_ACCOUNT={self.config.get("selected_account", "Default Account")}

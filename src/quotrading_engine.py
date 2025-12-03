@@ -8614,6 +8614,18 @@ def _handle_ai_mode_position_scan() -> None:
                         logger.debug(f"AI MODE: Skipping position - recently closed (entry={broker_entry_price}, side={side})")
                         continue
                 
+                # FIX: Check if market is closed - don't adopt positions during market close
+                # This prevents the spam cycle where:
+                # 1. Bot adopts position during closed market
+                # 2. Bot immediately tries to flatten (market closed)
+                # 3. Flatten fails or discrepancy occurs
+                # 4. Bot clears state and re-detects the same position
+                current_time = get_current_time()
+                trading_state = get_trading_state(current_time)
+                if trading_state == "closed":
+                    logger.debug(f"AI MODE: Skipping position adoption - market is closed")
+                    continue
+                
                 # New position detected - adopt it!
                 logger.info("=" * 60)
                 logger.info("🤖 AI MODE: New Position Detected")

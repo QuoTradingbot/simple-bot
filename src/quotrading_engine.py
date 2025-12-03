@@ -406,10 +406,18 @@ def setup_logging() -> logging.Logger:
     project_x_logger.addHandler(logging.NullHandler())  # Add null handler to absorb any logs
     project_x_logger.disabled = True  # Completely disable the logger
     
-    # Suppress SignalR WebSocket errors (especially during maintenance window disconnects)
-    logging.getLogger('signalrcore').setLevel(logging.CRITICAL)
-    logging.getLogger('SignalRCoreClient').setLevel(logging.CRITICAL)  # The actual SignalR client logger
-    logging.getLogger('websocket').setLevel(logging.CRITICAL)  # WebSocket library
+    # SignalR WebSocket logging - only show warnings and above (not connection close tracebacks)
+    # Connection close errors during maintenance are expected and handled in broker_websocket.py
+    signalr_logger = logging.getLogger('signalrcore')
+    signalr_logger.setLevel(logging.WARNING)  # Only warnings and above
+    
+    # SignalRCoreClient is the internal logger that logs tracebacks - set to WARNING
+    signalr_client_logger = logging.getLogger('SignalRCoreClient')
+    signalr_client_logger.setLevel(logging.WARNING)  # Suppress DEBUG/INFO but keep warnings
+    
+    # Websocket library - connection errors during maintenance are expected
+    websocket_logger = logging.getLogger('websocket')
+    websocket_logger.setLevel(logging.WARNING)  # Only warnings and above
     
     # Suppress all nested project_x_py loggers (they use deeply nested child loggers)
     # These loggers output JSON which clutters customer UI

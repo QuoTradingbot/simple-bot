@@ -104,30 +104,37 @@ class BrokerWebSocketStreamer:
                     logger.error(f"Failed to resubscribe to {sub_type} for {symbol}: {e}")
     
     def _on_close(self):
-        """Called when WebSocket connection closes - attempt manual reconnect if auto-reconnect fails"""
-        pass  # Silent - connection closed
+        """Called when WebSocket connection closes"""
+        was_connected = self.is_connected
         self.is_connected = False
         
-        # SignalR has built-in auto-reconnect, but if that fails, try manual reconnect
-        if self.reconnect_attempt < self.max_reconnect_attempts:
+        # If we're intentionally disconnecting (e.g., maintenance), don't try to reconnect
+        if self.reconnect_attempt >= self.max_reconnect_attempts:
+            # Intentional disconnect or max attempts reached
+            return
+        
+        # Unexpected disconnect - attempt reconnect
+        if was_connected and self.reconnect_attempt < self.max_reconnect_attempts:
             self.reconnect_attempt += 1
             wait_time = min(2 ** self.reconnect_attempt, 30)  # Exponential backoff (2s, 4s, 8s...)
-            pass  # Silent - Attempting reconnection
+            logger.info(f"[WebSocket] Connection closed unexpectedly - reconnecting in {wait_time}s...")
             time.sleep(wait_time)
             
             try:
                 self.connect()
-                pass  # Silent - Reconnection successful
+                logger.info("[WebSocket] Reconnected successfully")
             except Exception as e:
                 logger.error(f"Manual reconnection attempt {self.reconnect_attempt} failed: {e}")
                 if self.reconnect_attempt >= self.max_reconnect_attempts:
-                    logger.error(f"[WARN] CRITICAL: All {self.max_reconnect_attempts} reconnection attempts failed!")
+                    logger.error(f"[WARN] All {self.max_reconnect_attempts} reconnection attempts failed")
                     logger.error("WebSocket will remain disconnected. Bot will continue with REST API polling.")
-        else:
-            logger.error("[WARN] Max reconnection attempts reached - WebSocket remains disconnected")
     
     def _on_error(self, error):
         """Called when WebSocket error occurs"""
+        # If we're intentionally disconnected, don't log errors
+        if not self.is_connected and self.reconnect_attempt >= self.max_reconnect_attempts:
+            return  # Ignore errors during intentional disconnect
+        
         # Extract actual error message from CompletionMessage if present
         error_msg = error
         if hasattr(error, 'error'):
@@ -137,7 +144,13 @@ class BrokerWebSocketStreamer:
         elif hasattr(error, '__dict__'):
             error_msg = str(error.__dict__)
         
-        logger.error(f"[ERROR] WebSocket error: {error_msg}")
+        # Check if this is a connection closed error (expected during maintenance)
+        error_str = str(error_msg)
+        if any(x in error_str for x in ['Connection closed', 'recv_strict', 'recv_header', 'recv_frame', 'WebSocket connection is closed']):
+            # This is expected during broker maintenance - log at info level, not error
+            logger.info("[WebSocket] Connection closed by server (expected during maintenance)")
+        else:
+            logger.error(f"[ERROR] WebSocket error: {error_msg}")
     
     def _on_quote(self, data):
         """Handle incoming quote data"""
@@ -221,14 +234,22 @@ class BrokerWebSocketStreamer:
             logger.error(f"Failed to subscribe to depth: {e}", exc_info=True)
     
     def disconnect(self):
-        """Disconnect from WebSocket"""
+        """Disconnect from WebSocket gracefully"""
         try:
+            self.is_connected = False  # Mark as disconnected first to prevent error logs
+            self.reconnect_attempt = self.max_reconnect_attempts  # Prevent auto-reconnect
+            
             if self.connection:
-                self.connection.stop()
-                pass  # Silent - WebSocket disconnected
-            self.is_connected = False
+                try:
+                    self.connection.stop()
+                except Exception:
+                    pass  # Ignore errors during disconnect - connection may already be closed
+                self.connection = None
+            
+            logger.info("[WebSocket] Disconnected gracefully")
         except Exception as e:
-            logger.error(f"Error disconnecting: {e}")
+            # Ignore all errors during disconnect - we're intentionally closing
+            pass
     
     def get_stats(self) -> Dict:
         """Get streaming statistics"""

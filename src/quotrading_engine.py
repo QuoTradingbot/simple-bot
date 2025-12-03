@@ -8152,16 +8152,14 @@ def handle_tick_event(event) -> None:
     update_15min_bar(symbol, price, volume, dt)
     
     # AI MODE: Check for positions periodically for instant detection
-    # Use global tick counter to avoid redundant scans from multiple symbols
+    # Use function attribute as tick counter to avoid redundant scans from multiple symbols
     if CONFIG.get("ai_mode", False):
-        global _ai_mode_tick_counter
-        if '_ai_mode_tick_counter' not in dir():
-            _ai_mode_tick_counter = 0
-        _ai_mode_tick_counter = getattr(handle_tick_event, '_tick_counter', 0) + 1
-        handle_tick_event._tick_counter = _ai_mode_tick_counter
+        # Increment tick counter using function attribute for persistent storage
+        tick_counter = getattr(handle_tick_event, '_tick_counter', 0) + 1
+        handle_tick_event._tick_counter = tick_counter
         
         # Check every 50 global ticks (roughly every 2-3 seconds regardless of symbols)
-        if _ai_mode_tick_counter % 50 == 0:
+        if tick_counter % 50 == 0:
             _handle_ai_mode_position_scan()
 
 

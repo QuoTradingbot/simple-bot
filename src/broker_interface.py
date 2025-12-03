@@ -770,26 +770,42 @@ class BrokerSDKImplementation(BrokerInterface):
                 # No running loop - safe to use asyncio.run
                 order_response = asyncio.run(place_order_async())
             
-            logger.info(f"Order response: {order_response}")
+            logger.debug(f"Order response: {order_response}")
             
-            if order_response and order_response.success:
-                pass  # Silent - order success logged at higher level
-                return {
-                    "order_id": order_response.orderId,
-                    "symbol": symbol,
-                    "side": side,
-                    "quantity": quantity,
-                    "type": "MARKET",
-                    "status": "SUBMITTED",
-                    "filled_quantity": 0
-                }
-                self._record_success()  # Successful order
-                return result
-            else:
-                error_msg = order_response.errorMessage if order_response else "Unknown error"
-                logger.error(f"Market order placement failed: {error_msg}")
-                self._record_failure()
-                return None
+            # Check for success - SDK may return different response formats
+            if order_response:
+                if hasattr(order_response, 'success') and order_response.success:
+                    result = {
+                        "order_id": getattr(order_response, 'orderId', 'unknown'),
+                        "symbol": symbol,
+                        "side": side,
+                        "quantity": quantity,
+                        "type": "MARKET",
+                        "status": "SUBMITTED",
+                        "filled_quantity": 0
+                    }
+                    self._record_success()  # Successful order
+                    return result
+                elif hasattr(order_response, 'order') and order_response.order:
+                    # Alternative response format
+                    order = order_response.order
+                    result = {
+                        "order_id": getattr(order, 'order_id', 'unknown'),
+                        "symbol": symbol,
+                        "side": side,
+                        "quantity": quantity,
+                        "type": "MARKET",
+                        "status": getattr(order.status, 'value', 'SUBMITTED') if hasattr(order, 'status') else 'SUBMITTED',
+                        "filled_quantity": 0
+                    }
+                    self._record_success()  # Successful order
+                    return result
+            
+            # Order failed
+            error_msg = getattr(order_response, 'errorMessage', None) if order_response else None
+            logger.error(f"Market order placement failed: {error_msg or 'Unknown error'}")
+            self._record_failure()
+            return None
                 
         except Exception as e:
             logger.error(f"Error placing market order: {e}")
@@ -847,24 +863,42 @@ class BrokerSDKImplementation(BrokerInterface):
             
             logger.debug(f"Order response: {order_response}")
             
-            if order_response and order_response.success:
-                result = {
-                    "order_id": order_response.orderId,
-                    "symbol": symbol,
-                    "side": side,
-                    "quantity": quantity,
-                    "type": "LIMIT",
-                    "limit_price": limit_price,
-                    "status": "SUBMITTED",
-                    "filled_quantity": 0
-                }
-                self._record_success()  # Successful order
-                return result
-            else:
-                error_msg = order_response.errorMessage if order_response else "Unknown error"
-                logger.error(f"Limit order placement failed: {error_msg}")
-                self._record_failure()
-                return None
+            # Check for success - SDK may return different response formats
+            if order_response:
+                if hasattr(order_response, 'success') and order_response.success:
+                    result = {
+                        "order_id": getattr(order_response, 'orderId', 'unknown'),
+                        "symbol": symbol,
+                        "side": side,
+                        "quantity": quantity,
+                        "type": "LIMIT",
+                        "limit_price": limit_price,
+                        "status": "SUBMITTED",
+                        "filled_quantity": 0
+                    }
+                    self._record_success()  # Successful order
+                    return result
+                elif hasattr(order_response, 'order') and order_response.order:
+                    # Alternative response format
+                    order = order_response.order
+                    result = {
+                        "order_id": getattr(order, 'order_id', 'unknown'),
+                        "symbol": symbol,
+                        "side": side,
+                        "quantity": quantity,
+                        "type": "LIMIT",
+                        "limit_price": limit_price,
+                        "status": getattr(order.status, 'value', 'SUBMITTED') if hasattr(order, 'status') else 'SUBMITTED',
+                        "filled_quantity": 0
+                    }
+                    self._record_success()  # Successful order
+                    return result
+            
+            # Order failed
+            error_msg = getattr(order_response, 'errorMessage', None) if order_response else None
+            logger.error(f"Limit order placement failed: {error_msg or 'Unknown error'}")
+            self._record_failure()
+            return None
                 
         except Exception as e:
             logger.error(f"Error placing limit order: {e}")

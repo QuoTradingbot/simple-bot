@@ -7742,18 +7742,18 @@ def main(symbol_override: str = None) -> None:
         mode_str = "LIVE TRADING"
     logger.info(f"Mode: {mode_str}")
     
-    # AI Mode: Don't show symbol - it manages ANY symbol the user trades
-    if not _bot_config.ai_mode:
-        logger.info(f"Symbol: {trading_symbol}")
+    # Show the configured symbol (both modes now use configured symbol)
+    logger.info(f"Symbol: {trading_symbol}")
     
     # Show broker connection status (will be updated after broker connects)
     logger.info("Broker: Connecting...")
     
     # Display GUI Settings in professional format
-    # AI Mode: Only show what matters - max loss per trade
+    # AI Mode: Show the symbol it's managing and max loss per trade
     if _bot_config.ai_mode:
         logger.info("")
         logger.info("📋 AI Mode Configuration:")
+        logger.info(f"  • Managing Symbol: {trading_symbol}")
         logger.info(f"  • Max Loss Per Trade: ${CONFIG.get('max_stop_loss_dollars', DEFAULT_MAX_STOP_LOSS_DOLLARS):.0f}")
         logger.info("=" * 80)
         logger.info("")
@@ -7837,18 +7837,16 @@ def main(symbol_override: str = None) -> None:
         logger.info("")
     
     # Initialize state for instrument (use override symbol if provided)
-    # AI MODE: Only initialize state for default symbol, will add more as positions detected
-    if not _bot_config.ai_mode:
-        initialize_state(trading_symbol)
+    # Both AI MODE and LIVE MODE initialize state for the configured symbol
+    initialize_state(trading_symbol)
     
     # CRITICAL: Try to restore position state from disk if bot was restarted
     pass  # Silent - checking for saved position state
-    if not _bot_config.ai_mode:
-        position_restored = load_position_state(trading_symbol)
-        if position_restored:
-            logger.warning(f"[{trading_symbol}] ⚠️  BOT RESTARTED WITH ACTIVE POSITION - Managing existing trade")
-        else:
-            pass  # Silent - no saved position
+    position_restored = load_position_state(trading_symbol)
+    if position_restored:
+        logger.warning(f"[{trading_symbol}] ⚠️  BOT RESTARTED WITH ACTIVE POSITION - Managing existing trade")
+    else:
+        pass  # Silent - no saved position
     
     # Skip historical bars fetching in live mode - not needed for real-time trading
     # The bot will build bars from live tick data
@@ -7888,11 +7886,21 @@ def main(symbol_override: str = None) -> None:
     timer_manager = TimerManager(event_loop, CONFIG, tz)
     timer_manager.start()
     
-    # AI MODE: Don't stream market data at startup - wait for user to trade
-    # When user opens a position, AI mode will auto-detect and subscribe to that symbol
+    # AI MODE: Subscribe to configured symbol(s) at startup
+    # User chooses symbols in GUI, AI Mode manages positions only for those symbols
     if _bot_config.ai_mode:
-        # AI Mode: No upfront streaming - just wait for positions
-        pass
+        # AI Mode: Subscribe to market data for configured symbol to enable position management
+        initialize_state(trading_symbol)
+        subscribe_market_data(trading_symbol, on_tick)
+        
+        # Also subscribe to quotes for better price data
+        if broker is not None and hasattr(broker, 'subscribe_quotes'):
+            try:
+                broker.subscribe_quotes(trading_symbol, on_quote)
+            except Exception as e:
+                logger.debug(f"Failed to subscribe to quotes for {trading_symbol}: {e}")
+        
+        logger.info(f"🤖 AI MODE: Managing positions for {trading_symbol}")
     else:
         # LIVE MODE: Subscribe to market data (trades) - use trading_symbol
         subscribe_market_data(trading_symbol, on_tick)
@@ -7906,26 +7914,21 @@ def main(symbol_override: str = None) -> None:
                 logger.warning(f"Failed to subscribe to quotes: {e}")
                 logger.warning("Continuing without bid/ask quote data")
     
-    # AI MODE: Scan for existing positions at startup
-    # If user already has positions, adopt them immediately
+    # AI MODE: Scan for existing positions at startup (only for configured symbol)
+    # If user already has positions on the configured symbol, adopt them immediately
     if _bot_config.ai_mode:
         try:
             existing_positions = get_all_open_positions()
             if existing_positions:
-                logger.info("🤖 Existing positions found - adopting...")
+                logger.info("🤖 Checking for existing positions...")
                 for pos in existing_positions:
                     pos_symbol = pos.get("symbol", "")
-                    if pos_symbol:
-                        # Initialize state and subscribe to this symbol
-                        if pos_symbol not in state:
-                            initialize_state(pos_symbol)
-                            try:
-                                subscribe_market_data(pos_symbol, on_tick)
-                            except Exception as e:
-                                logger.debug(f"Could not subscribe to {pos_symbol}: {e}")
-                
-                # Run position scan to adopt any existing positions
-                _handle_ai_mode_position_scan()
+                    # Only adopt positions for the configured symbol
+                    if pos_symbol and pos_symbol == trading_symbol:
+                        logger.info(f"🤖 Found existing position on {pos_symbol} - adopting...")
+                        # Run position scan to adopt
+                        _handle_ai_mode_position_scan()
+                        break
         except Exception as e:
             logger.debug(f"AI Mode startup scan error: {e}")
     
@@ -8105,49 +8108,57 @@ def handle_time_check_event(data: Dict[str, Any]) -> None:
 
 def _handle_ai_mode_position_scan() -> None:
     """
-    AI MODE: Scan all broker positions and adopt any for management.
+    AI MODE: Scan broker positions for the configured symbol and adopt for management.
     
-    This allows AI Mode to detect and manage any position the user opens
-    on ANY symbol, not just the configured symbol.
+    AI Mode only manages positions for the symbol(s) chosen by the user at startup.
+    This keeps the logic simple and predictable.
     """
+    # Get the configured symbol that AI Mode is managing
+    configured_symbol = CONFIG.get("instrument", "")
+    if not configured_symbol:
+        return
+    
     try:
         # Get ALL positions from broker
         all_positions = get_all_open_positions()
         
         if not all_positions:
-            # No positions - check if we had any we were tracking
-            for symbol in list(state.keys()):
-                if state[symbol]["position"]["active"]:
-                    # Position was closed externally
-                    logger.info(f"🤖 AI MODE: Position {symbol} closed by user")
+            # No positions - check if we had any we were tracking for configured symbol
+            if configured_symbol in state and state[configured_symbol]["position"]["active"]:
+                # Position was closed externally
+                logger.info(f"🤖 AI MODE: Position {configured_symbol} closed by user")
+                
+                # Calculate P&L if possible
+                entry_price = state[configured_symbol]["position"].get("entry_price", 0)
+                if state[configured_symbol]["bars_1min"]:
+                    exit_price = state[configured_symbol]["bars_1min"][-1]["close"]
+                    side = state[configured_symbol]["position"]["side"]
+                    qty = state[configured_symbol]["position"]["quantity"]
+                    tick_size, tick_value = get_symbol_tick_specs(configured_symbol)
                     
-                    # Calculate P&L if possible
-                    entry_price = state[symbol]["position"].get("entry_price", 0)
-                    if state[symbol]["bars_1min"]:
-                        exit_price = state[symbol]["bars_1min"][-1]["close"]
-                        side = state[symbol]["position"]["side"]
-                        qty = state[symbol]["position"]["quantity"]
-                        tick_size, tick_value = get_symbol_tick_specs(symbol)
-                        
-                        if side == "long":
-                            pnl_ticks = (exit_price - entry_price) / tick_size
-                        else:
-                            pnl_ticks = (entry_price - exit_price) / tick_size
-                        
-                        pnl_dollars = pnl_ticks * tick_value * qty
-                        result = "WIN" if pnl_dollars >= 0 else "LOSS"
-                        logger.info(f"  Result: {result} | P&L: ${pnl_dollars:.2f}")
+                    if side == "long":
+                        pnl_ticks = (exit_price - entry_price) / tick_size
+                    else:
+                        pnl_ticks = (entry_price - exit_price) / tick_size
                     
-                    # Clear position state
-                    state[symbol]["position"]["active"] = False
-                    state[symbol]["position"]["quantity"] = 0
-                    state[symbol]["position"]["side"] = None
+                    pnl_dollars = pnl_ticks * tick_value * qty
+                    result = "WIN" if pnl_dollars >= 0 else "LOSS"
+                    logger.info(f"  Result: {result} | P&L: ${pnl_dollars:.2f}")
+                
+                # Clear position state
+                state[configured_symbol]["position"]["active"] = False
+                state[configured_symbol]["position"]["quantity"] = 0
+                state[configured_symbol]["position"]["side"] = None
             return
         
-        # Check each broker position
+        # Check each broker position - only manage the configured symbol
         for pos in all_positions:
             symbol = pos.get("symbol", "")
             if not symbol:
+                continue
+            
+            # ONLY manage positions for the configured symbol
+            if symbol != configured_symbol:
                 continue
             
             qty = pos.get("quantity", 0)
@@ -8155,20 +8166,9 @@ def _handle_ai_mode_position_scan() -> None:
             side = pos.get("side", "long")
             broker_entry_price = pos.get("entry_price")  # Actual entry price from broker
             
-            # Ensure state exists for this symbol
+            # Ensure state exists for this symbol (should already be initialized at startup)
             if symbol not in state:
                 initialize_state(symbol)
-                # Subscribe to market data for this newly detected symbol
-                # AI Mode: This enables position management (exits, trailing stops)
-                try:
-                    if broker is not None:
-                        subscribe_market_data(symbol, on_tick)
-                        # Also subscribe to quotes for better price data
-                        if hasattr(broker, 'subscribe_quotes'):
-                            broker.subscribe_quotes(symbol, on_quote)
-                        logger.info(f"🤖 AI MODE: Subscribed to market data for {symbol}")
-                except Exception as e:
-                    logger.debug(f"Could not subscribe to market data for {symbol}: {e}")
             
             # Check if we're already tracking this position
             bot_active = state[symbol]["position"]["active"]

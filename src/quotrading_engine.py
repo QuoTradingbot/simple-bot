@@ -8251,6 +8251,21 @@ def _handle_ai_mode_position_scan() -> None:
                 logger.info(f"  Entry: ${entry_price:.2f} | Stop: ${stop_price:.2f}")
                 logger.info(f"  Max Loss: ${max_stop_dollars:.0f} ({max_stop_ticks:.0f} ticks)")
                 logger.info(f"  Market Regime: {current_regime} (BE mult: {regime_params.breakeven_mult}x, Trail mult: {regime_params.trailing_mult}x)")
+                
+                # CRITICAL FIX: Actually place the stop order with the broker!
+                # AI Mode was calculating stop price but NOT placing the order
+                stop_side = "SELL" if side == "long" else "BUY"
+                stop_order = place_stop_order(symbol, stop_side, qty, stop_price)
+                
+                if stop_order:
+                    state[symbol]["position"]["stop_order_id"] = stop_order.get("order_id")
+                    logger.info(f"  ✅ Stop order placed: ${stop_price:.2f} | Order ID: {stop_order.get('order_id')}")
+                else:
+                    # Stop order failed - log warning but continue managing position
+                    # The trailing stop logic will still work to protect the trade
+                    logger.warning(f"  ⚠️ Could not place stop order at ${stop_price:.2f}")
+                    logger.warning(f"  Trade will be managed with trailing stop logic")
+                
                 logger.info("=" * 60)
                 
                 # Save position state for recovery

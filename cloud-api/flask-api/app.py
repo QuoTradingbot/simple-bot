@@ -9,7 +9,7 @@ import json
 import psycopg2
 from psycopg2 import pool, sql as psycopg2_sql
 from psycopg2.extras import RealDictCursor
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 import secrets
 import string
@@ -3434,7 +3434,7 @@ def get_user_profile():
             return jsonify({"error": rate_msg}), 429
         
         # Validate license key
-        is_valid, msg, expiration = validate_license(license_key)
+        is_valid, msg, license_expiration = validate_license(license_key)
         if not is_valid:
             logging.warning(f"⚠️ Invalid license key in /api/profile: {mask_sensitive(license_key)}")
             return jsonify({"error": "Invalid license key"}), 401
@@ -3571,7 +3571,7 @@ def get_user_profile():
                         "api_calls_today": int(api_today['api_calls_today']) if api_today['api_calls_today'] else 0,
                         "api_calls_total": int(api_stats['api_calls_total']) if api_stats['api_calls_total'] else 0,
                         "last_heartbeat": user['last_heartbeat'].isoformat() if user['last_heartbeat'] else None,
-                        "current_device": user['device_fingerprint'][:8] + "..." if user.get('device_fingerprint') else None,
+                        "current_device": user['device_fingerprint'][:8] + "..." if user.get('device_fingerprint') and len(user.get('device_fingerprint', '')) >= 8 else (user.get('device_fingerprint') if user.get('device_fingerprint') else None),
                         "symbols_traded": symbols_list
                     }
                 }

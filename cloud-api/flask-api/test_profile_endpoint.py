@@ -5,7 +5,6 @@ Run this script to test the user profile endpoint functionality
 import requests
 import json
 import os
-from datetime import datetime
 
 # API base URL
 BASE_URL = os.getenv("QUOTRADING_API_URL", "https://quotrading-flask-api.azurewebsites.net")

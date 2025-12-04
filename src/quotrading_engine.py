@@ -6032,21 +6032,21 @@ def check_exit_conditions(symbol: str) -> None:
     # This must happen BEFORE breakeven/trailing checks so they use updated regime parameters
     check_regime_change(symbol, current_bar["close"])
     
-    # REGIME-BASED TIMEOUT CHECKS - Check sideways and underwater timeouts
-    # These use regime-specific timeout values and reset on regime changes
+    # TIMEOUT CHECKS DISABLED - User requested only stop_loss, trailing_stop, and 20-bar time stop
+    # The sideways_timeout and underwater_timeout exits are no longer used
     current_time = get_current_time()
     
-    # Check sideways timeout (stagnant price action)
-    should_exit_sideways, exit_price = check_sideways_timeout(symbol, current_bar["close"], current_time)
-    if should_exit_sideways:
-        execute_exit(symbol, exit_price, "sideways_timeout")
-        return
+    # DISABLED: sideways_timeout - stagnant price action timeout
+    # should_exit_sideways, exit_price = check_sideways_timeout(symbol, current_bar["close"], current_time)
+    # if should_exit_sideways:
+    #     execute_exit(symbol, exit_price, "sideways_timeout")
+    #     return
     
-    # Check underwater timeout (continuous loss)
-    should_exit_underwater, exit_price = check_underwater_timeout(symbol, current_bar["close"], current_time)
-    if should_exit_underwater:
-        execute_exit(symbol, exit_price, "underwater_timeout")
-        return
+    # DISABLED: underwater_timeout - continuous loss timeout
+    # should_exit_underwater, exit_price = check_underwater_timeout(symbol, current_bar["close"], current_time)
+    # if should_exit_underwater:
+    #     execute_exit(symbol, exit_price, "underwater_timeout")
+    #     return
     
     # FOURTH - Partial exits (happens before breakeven/trailing because it reduces position size)
     check_partial_exits(symbol, current_bar["close"])

@@ -3433,8 +3433,8 @@ def get_user_profile():
             logging.warning(f"⚠️ Rate limit exceeded for /api/profile: {mask_sensitive(license_key)}")
             return jsonify({"error": rate_msg}), 429
         
-        # Validate license key
-        is_valid, msg, license_expiration = validate_license(license_key)
+        # Validate license key (returns is_valid, message, expiration_datetime)
+        is_valid, msg, _ = validate_license(license_key)
         if not is_valid:
             logging.warning(f"⚠️ Invalid license key in /api/profile: {mask_sensitive(license_key)}")
             return jsonify({"error": "Invalid license key"}), 401
@@ -3545,7 +3545,7 @@ def get_user_profile():
                 # Extract values for reuse
                 total_pnl = float(trade_stats['total_pnl']) if trade_stats['total_pnl'] else 0.0
                 device_fp = user.get('device_fingerprint', '')
-                device_display = device_fp[:8] + "..." if len(device_fp) >= 8 else (device_fp if device_fp else None)
+                device_display = device_fp[:8] + '...' if len(device_fp) > 8 else device_fp or None
                 
                 # Build response
                 profile_data = {

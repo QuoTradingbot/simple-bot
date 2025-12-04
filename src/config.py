@@ -65,8 +65,8 @@ class BotConfiguration:
     # 
     # HARDCODED VALUES (see capitulation_detector.py for implementation):
     # - flush_min_ticks: 20 (minimum 5 dollars on ES)
-    # - flush_lookback_bars: 10 (last 10 one-minute bars)
-    # - flush_min_velocity: 4.0 (at least 4 ticks per bar)
+    # - flush_lookback_bars: 7 (last 7 one-minute bars)
+    # - flush_min_velocity: 3.0 (at least 3 ticks per bar)
     # - flush_near_extreme_ticks: 5 (within 5 ticks of flush extreme)
     # - rsi_extreme_long: 25 (RSI < 25 for long entry)
     # - rsi_extreme_short: 75 (RSI > 75 for short entry)
@@ -84,6 +84,7 @@ class BotConfiguration:
     # - max_trades_per_day: Trade count limit
     # - daily_loss_limit: Daily loss cap
     # - confidence_threshold: AI signal confidence filter
+    # - time_exit_enabled: Time-based exit after 20 bars (optional)
     # ==========================================================================
     
     # RSI calculation period (standard)

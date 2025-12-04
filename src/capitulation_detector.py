@@ -10,8 +10,8 @@ snapback to fair value. You never try to catch the falling knife during the fall
 You wait for proof that the fall is OVER, then enter.
 
 LONG SIGNAL CONDITIONS (AFTER FLUSH DOWN) - ALL 9 MUST BE TRUE:
-1. Flush Happened - Range of last 10 bars >= 20 ticks
-2. Flush Was Fast - Velocity >= 4 ticks per bar
+1. Flush Happened - Range of last 7 bars >= 20 ticks
+2. Flush Was Fast - Velocity >= 3 ticks per bar
 3. We Are Near The Bottom - Within 5 ticks of flush low
 4. RSI Is Extreme Oversold - RSI < 25
 5. Volume Spiked - Current volume >= 2x 20-bar average
@@ -21,8 +21,8 @@ LONG SIGNAL CONDITIONS (AFTER FLUSH DOWN) - ALL 9 MUST BE TRUE:
 9. Regime Allows Trading - HIGH_VOL_TRENDING or HIGH_VOL_CHOPPY
 
 SHORT SIGNAL CONDITIONS (AFTER FLUSH UP) - ALL 9 MUST BE TRUE:
-1. Pump Happened - Range of last 10 bars >= 20 ticks
-2. Pump Was Fast - Velocity >= 4 ticks per bar
+1. Pump Happened - Range of last 7 bars >= 20 ticks
+2. Pump Was Fast - Velocity >= 3 ticks per bar
 3. We Are Near The Top - Within 5 ticks of flush high
 4. RSI Is Extreme Overbought - RSI > 75
 5. Volume Spiked - Current volume >= 2x 20-bar average
@@ -73,8 +73,8 @@ class CapitulationDetector:
     
     # Configuration constants - EXACT SPEC
     MIN_FLUSH_TICKS = 20  # Minimum 20 ticks (5 dollars on ES)
-    MIN_VELOCITY_TICKS_PER_BAR = 4  # Flush must be at least 4 ticks per bar
-    FLUSH_LOOKBACK_BARS = 10  # Look at last 10 one-minute bars
+    MIN_VELOCITY_TICKS_PER_BAR = 3  # Flush must be at least 3 ticks per bar
+    FLUSH_LOOKBACK_BARS = 7  # Look at last 7 one-minute bars
     NEAR_EXTREME_TICKS = 5  # Must be within 5 ticks of flush extreme
     VOLUME_SPIKE_THRESHOLD = 2.0  # 2x 20-bar average volume
     RSI_OVERSOLD_EXTREME = 25  # RSI < 25 for long entry

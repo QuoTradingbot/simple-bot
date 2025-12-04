@@ -166,9 +166,9 @@ def initialize_rl_brains_for_backtest(bot_config) -> Tuple[Any, ModuleType]:
         exploration_decay=1.0  # No decay - always explore during initial learning
     )
     
-    # Set it on the bot module if it has rl_brain attribute
-    if hasattr(bot_module, 'rl_brain'):
-        bot_module.rl_brain = rl_brain
+    # Set the global rl_brain in the bot module's namespace
+    # This is critical - the module uses 'global rl_brain' which looks up in module.__dict__
+    bot_module.__dict__['rl_brain'] = rl_brain
     
     return rl_brain, bot_module
 
@@ -200,12 +200,23 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
     # Backtest mode environment variables already set at module import
     # (see top of file - BOT_BACKTEST_MODE and USE_CLOUD_SIGNALS)
     
-    # Load configuration
+    # Load configuration - use defaults, don't load from GUI/live config files
+    # IMPORTANT: Backtesting is completely isolated from live trading configuration
     bot_config = load_config(backtest_mode=True)
     
-    # Override symbol if specified
+    # BACKTEST-SPECIFIC OVERRIDES - These are hardcoded defaults for backtesting
+    # They do NOT affect live trading in any way
+    bot_config.account_size = 50000.0  # Standard backtest account size
+    bot_config.max_contracts = 1  # Single contract for backtesting (no position sizing)
+    bot_config.daily_loss_limit = 1000.0  # Standard daily loss limit for testing
+    bot_config.shadow_mode = False  # Backtesting always executes simulated trades
+    
+    # Override symbol if specified via command line
     if args.symbol:
         bot_config.instrument = args.symbol
+    
+    # Extract symbol once - used throughout this function
+    symbol = bot_config.instrument
     
     # Convert config to dict early for header
     bot_config_dict = bot_config.to_dict()
@@ -219,7 +230,6 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
     elif args.days:
         # Load the CSV to get the actual end date of available data
         data_path = args.data_path if args.data_path else os.path.join(PROJECT_ROOT, "data/historical_data")
-        symbol = args.symbol if args.symbol else bot_config.instrument
         csv_path = os.path.join(data_path, f"{symbol}_1min.csv")
         
         if os.path.exists(csv_path):
@@ -249,7 +259,7 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
     reporter.print_header(
         start_date=start_date.strftime('%Y-%m-%d'),
         end_date=end_date.strftime('%Y-%m-%d'),
-        symbol=args.symbol if args.symbol else bot_config.instrument,
+        symbol=symbol,
         config=bot_config_dict
     )
         
@@ -260,7 +270,7 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
         start_date=start_date,
         end_date=end_date,
         initial_equity=bot_config.account_size,
-        symbols=[args.symbol] if args.symbol else [bot_config.instrument],
+        symbols=[symbol],
         data_path=data_path,
         use_tick_data=args.use_tick_data
     )
@@ -441,15 +451,16 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
     
     # Save RL experiences at the end
     print("Saving RL experiences...")
+    experience_path = f"experiences/{symbol}/signal_experience.json"
     if rl_brain is not None and hasattr(rl_brain, 'save_experience'):
         rl_brain.save_experience()
         final_experience_count = len(rl_brain.experiences)
         new_experiences = final_experience_count - initial_experience_count
-        print(f"[OK] Signal RL experiences saved to data/signal_experience.json")
+        print(f"[OK] Signal RL experiences saved to {experience_path}")
         print(f"   Total experiences: {final_experience_count}")
         print(f"   New experiences this backtest: {new_experiences}")
     else:
-        print("ΓÜá∩╕Å  No RL brain to save")
+        print("⚠️  No RL brain to save")
     
     # Return results
     return results
@@ -461,6 +472,13 @@ def main():
     
     # Load configuration early to get account_size for reporter
     bot_config = load_config(backtest_mode=True)
+    
+    # BACKTEST-SPECIFIC OVERRIDES - These are hardcoded defaults for backtesting
+    # They do NOT affect live trading in any way
+    bot_config.account_size = 50000.0  # Standard backtest account size
+    bot_config.max_contracts = 1  # Single contract for backtesting (no position sizing)
+    bot_config.daily_loss_limit = 1000.0  # Standard daily loss limit for testing
+    bot_config.shadow_mode = False  # Backtesting always executes simulated trades
     
     # Setup logging - suppress verbose output for clean backtest display
     config_dict = {'log_directory': os.path.join(PROJECT_ROOT, 'logs')}

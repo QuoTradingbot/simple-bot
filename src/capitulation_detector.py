@@ -1,35 +1,34 @@
 """
-Capitulation Reversal Detection System
+Daily Reversal Detection System
 ========================================
-Detects panic selling/buying flushes and reversal exhaustion signals.
+Detects big moves and reversal exhaustion signals for daily trading.
 
 THE EDGE:
-You are waiting for panic. When everyone panics and dumps their positions 
-(or FOMO buys like crazy), you step in the opposite direction and ride the 
-snapback to fair value. You never try to catch the falling knife during the fall.
-You wait for proof that the fall is OVER, then enter.
+Catch daily reversals when price makes a significant move and shows signs
+of exhaustion. You wait for proof that the move is losing momentum, then 
+enter in the opposite direction to ride the snapback.
 
 LONG SIGNAL CONDITIONS (AFTER FLUSH DOWN) - ALL 9 MUST BE TRUE:
-1. Flush Happened - Range of last 7 bars >= 20 ticks
-2. Flush Was Fast - Velocity >= 3 ticks per bar
-3. We Are Near The Bottom - Within 5 ticks of flush low
-4. RSI Is Extreme Oversold - RSI < 25
-5. Volume Spiked - Current volume >= 2x 20-bar average
+1. Flush Happened - Range of last 7 bars >= 12 ticks (relaxed from 20)
+2. Flush Was Fast - Velocity >= 2 ticks per bar (relaxed from 3)
+3. We Are Near The Bottom - Within 8 ticks of flush low (relaxed from 5)
+4. RSI Is Oversold - RSI < 35 (relaxed from 25)
+5. Volume Spiked - Current volume >= 1.5x 20-bar average (relaxed from 2x)
 6. Flush Stopped Making New Lows - Current bar low >= previous bar low
 7. Reversal Candle - Current bar closes green (close > open)
 8. Price Is Below VWAP - Current close < VWAP
-9. Regime Allows Trading - HIGH_VOL_TRENDING or HIGH_VOL_CHOPPY
+9. Regime Allows Trading - HIGH_VOL or NORMAL regimes (expanded)
 
 SHORT SIGNAL CONDITIONS (AFTER FLUSH UP) - ALL 9 MUST BE TRUE:
-1. Pump Happened - Range of last 7 bars >= 20 ticks
-2. Pump Was Fast - Velocity >= 3 ticks per bar
-3. We Are Near The Top - Within 5 ticks of flush high
-4. RSI Is Extreme Overbought - RSI > 75
-5. Volume Spiked - Current volume >= 2x 20-bar average
+1. Pump Happened - Range of last 7 bars >= 12 ticks (relaxed from 20)
+2. Pump Was Fast - Velocity >= 2 ticks per bar (relaxed from 3)
+3. We Are Near The Top - Within 8 ticks of flush high (relaxed from 5)
+4. RSI Is Overbought - RSI > 65 (relaxed from 75)
+5. Volume Spiked - Current volume >= 1.5x 20-bar average (relaxed from 2x)
 6. Pump Stopped Making New Highs - Current bar high <= previous bar high
 7. Reversal Candle - Current bar closes red (close < open)
 8. Price Is Above VWAP - Current close > VWAP
-9. Regime Allows Trading - HIGH_VOL_TRENDING or HIGH_VOL_CHOPPY
+9. Regime Allows Trading - HIGH_VOL or NORMAL regimes (expanded)
 
 STOP LOSS:
 - Long: 2 ticks below flush low
@@ -76,14 +75,15 @@ class CapitulationDetector:
     All 9 conditions must be TRUE to enter a trade.
     """
     
-    # Configuration constants - EXACT SPEC
-    MIN_FLUSH_TICKS = 20  # Minimum 20 ticks (5 dollars on ES)
-    MIN_VELOCITY_TICKS_PER_BAR = 3  # Flush must be at least 3 ticks per bar
+    # Configuration constants - RELAXED FOR DAILY REVERSALS
+    # These thresholds are tuned to catch more reversal opportunities
+    MIN_FLUSH_TICKS = 12  # Minimum 12 ticks (3 dollars on ES) - catches smaller moves
+    MIN_VELOCITY_TICKS_PER_BAR = 2  # Flush must be at least 2 ticks per bar
     FLUSH_LOOKBACK_BARS = 7  # Look at last 7 one-minute bars
-    NEAR_EXTREME_TICKS = 5  # Must be within 5 ticks of flush extreme
-    VOLUME_SPIKE_THRESHOLD = 2.0  # 2x 20-bar average volume
-    RSI_OVERSOLD_EXTREME = 25  # RSI < 25 for long entry
-    RSI_OVERBOUGHT_EXTREME = 75  # RSI > 75 for short entry
+    NEAR_EXTREME_TICKS = 8  # Must be within 8 ticks of flush extreme - more lenient
+    VOLUME_SPIKE_THRESHOLD = 1.5  # 1.5x 20-bar average volume - easier to trigger
+    RSI_OVERSOLD_EXTREME = 35  # RSI < 35 for long entry - less extreme requirement
+    RSI_OVERBOUGHT_EXTREME = 65  # RSI > 65 for short entry - less extreme requirement
     
     # Stop loss configuration
     STOP_BUFFER_TICKS = 2  # 2 ticks beyond flush extreme
@@ -172,8 +172,9 @@ class CapitulationDetector:
         # CONDITION 8: Price Is Below VWAP (buying at discount)
         conditions["8_below_vwap"] = current_price < vwap
         
-        # CONDITION 9: Regime Allows Trading (HIGH_VOL_TRENDING or HIGH_VOL_CHOPPY)
-        tradeable_regimes = {"HIGH_VOL_TRENDING", "HIGH_VOL_CHOPPY"}
+        # CONDITION 9: Regime Allows Trading - RELAXED to allow more regimes
+        # Now allows NORMAL regimes too, to catch daily reversals
+        tradeable_regimes = {"HIGH_VOL_TRENDING", "HIGH_VOL_CHOPPY", "NORMAL_TRENDING", "NORMAL_CHOPPY", "NORMAL"}
         conditions["9_regime_allows"] = regime in tradeable_regimes
         
         # ALL 9 CONDITIONS MUST BE TRUE
@@ -288,8 +289,9 @@ class CapitulationDetector:
         # CONDITION 8: Price Is Above VWAP (selling at premium)
         conditions["8_above_vwap"] = current_price > vwap
         
-        # CONDITION 9: Regime Allows Trading (HIGH_VOL_TRENDING or HIGH_VOL_CHOPPY)
-        tradeable_regimes = {"HIGH_VOL_TRENDING", "HIGH_VOL_CHOPPY"}
+        # CONDITION 9: Regime Allows Trading - RELAXED to allow more regimes
+        # Now allows NORMAL regimes too, to catch daily reversals
+        tradeable_regimes = {"HIGH_VOL_TRENDING", "HIGH_VOL_CHOPPY", "NORMAL_TRENDING", "NORMAL_CHOPPY", "NORMAL"}
         conditions["9_regime_allows"] = regime in tradeable_regimes
         
         # ALL 9 CONDITIONS MUST BE TRUE

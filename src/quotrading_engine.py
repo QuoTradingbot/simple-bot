@@ -7623,8 +7623,9 @@ def log_session_summary(symbol: str, logout_success: bool = True, show_logout_st
     
     # Display animated rainbow "Thanks for using QuoTrading AI" message
     # Only show when bot art is enabled (not during maintenance mode)
+    # SKIP in backtest mode to prevent spam
     # Starts right after logout message (no extra blank lines)
-    if show_bot_art and display_animated_thank_you:
+    if show_bot_art and display_animated_thank_you and not is_backtest_mode():
         try:
             display_animated_thank_you(duration=60.0, fps=15)
         except Exception as e:
@@ -9602,7 +9603,8 @@ Multi-Symbol Mode:
     
     # Display rainbow logo IMMEDIATELY when PowerShell opens (no initial clear screen)
     # This ensures the logo appears instantly instead of showing a black screen first
-    if RAINBOW_LOGO_AVAILABLE:
+    # SKIP in backtest mode to prevent spam
+    if RAINBOW_LOGO_AVAILABLE and not is_backtest_mode():
         try:
             # Show logo immediately without clearing first - instant display
             # This creates a professional loading screen effect

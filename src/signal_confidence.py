@@ -293,7 +293,7 @@ class SignalConfidenceRL:
         
         CONFIDENCE FORMULA:
         ==================
-        Step 1: Find 20 most similar past trades
+        Step 1: Find 10 most similar past trades
         Step 2: Calculate from those similar trades:
           - Win Rate = Winners / Total
           - Average Profit = Sum of profits / Count
@@ -301,7 +301,7 @@ class SignalConfidenceRL:
           - Final Confidence = (Win Rate × 90%) + (Profit Score × 10%)
         Step 3: If average profit is negative → Auto reject (0% confidence)
         
-        Example: 16 wins out of 20 = 80% WR, $120 avg profit
+        Example: 8 wins out of 10 = 80% WR, $120 avg profit
           Profit Score = 120/300 = 0.40
           Confidence = (0.80 × 0.90) + (0.40 × 0.10) = 0.72 + 0.04 = 76%
         
@@ -312,8 +312,8 @@ class SignalConfidenceRL:
         if len(self.experiences) < 10:
             return 0.65, f"Limited experience ({len(self.experiences)} trades) - optimistic"
         
-        # Step 1: Find 20 most similar past trades
-        similar = self.find_similar_states(current_state, max_results=20)
+        # Step 1: Find 10 most similar past trades
+        similar = self.find_similar_states(current_state, max_results=10)
         
         if not similar:
             return 0.5, "No similar situations - neutral confidence"
@@ -342,7 +342,7 @@ class SignalConfidenceRL:
         
         return confidence, reason
     
-    def find_similar_states(self, current: Dict, max_results: int = 20) -> list:
+    def find_similar_states(self, current: Dict, max_results: int = 10) -> list:
         """
         Find past experiences with similar market states.
         
@@ -356,7 +356,7 @@ class SignalConfidenceRL:
         - Regime Match (10%) - Same market regime or not
         - Hour of Day (5%) - Same time of day or not
         
-        Pick the 20 most similar past trades.
+        Pick the 10 most similar past trades.
         
         EXCLUDED (outcomes/metadata):
           ❌ timestamp, symbol, price, pnl, duration, took_trade,
@@ -412,7 +412,7 @@ class SignalConfidenceRL:
         # Sort by similarity (most similar first)
         scored.sort(key=lambda x: x[0])
         
-        # Return top N most similar (default 20)
+        # Return top N most similar (default 10)
         return [exp for _, exp in scored[:max_results]]
     
     def _calculate_optimal_threshold(self) -> float:

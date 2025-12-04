@@ -155,15 +155,15 @@ def initialize_rl_brains_for_backtest(bot_config) -> Tuple[Any, ModuleType]:
     
     # Initialize RL brain with symbol-specific experience file
     # LIVE TRADING: Always uses 0% exploration (reads from config)
-    # BACKTESTING: Uses 30% exploration for learning/accumulating experiences
+    # BACKTESTING: Uses 100% exploration for learning when no data exists
     signal_exp_file = os.path.join(PROJECT_ROOT, f"experiences/{symbol}/signal_experience.json")
     rl_brain = SignalConfidenceRL(
         experience_file=signal_exp_file,
         backtest_mode=True,
         confidence_threshold=bot_config.rl_confidence_threshold,
-        exploration_rate=0.3,  # 30% exploration for backtesting (learning mode)
-        min_exploration=0.3,
-        exploration_decay=bot_config.rl_exploration_decay
+        exploration_rate=1.0,  # 100% exploration for new strategy (no data yet)
+        min_exploration=1.0,   # Keep at 100% to learn from all signals
+        exploration_decay=1.0  # No decay - always explore during initial learning
     )
     
     # Set it on the bot module if it has rl_brain attribute
@@ -229,6 +229,9 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
                 if len(lines) > 1:  # Skip header
                     last_line = lines[-1]
                     last_timestamp = last_line.split(',')[0]
+                    # Handle timezone-aware timestamp format (e.g., "2025-11-27 18:00:00+00:00")
+                    if '+' in last_timestamp:
+                        last_timestamp = last_timestamp.split('+')[0]  # Remove timezone offset
                     end_date = datetime.strptime(last_timestamp, '%Y-%m-%d %H:%M:%S')
                     end_date = tz.localize(end_date.replace(hour=23, minute=59, second=59))
                 else:

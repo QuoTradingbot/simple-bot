@@ -2206,9 +2206,8 @@
     "total_signals": 71,
     "taken": 71,
     "skipped": 0,
-    "take_rate": 100.0,
-    "recent_pnl": 4075.0,
-    "recent_win_rate": 75.0,
-    "exploration_rate": 100.0
+    "take_rate": 0,
+    "recent_pnl": 0,
+    "recent_win_rate": 0
   }
 }

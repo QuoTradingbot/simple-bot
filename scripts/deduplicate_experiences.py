@@ -33,6 +33,12 @@ def experience_hash(exp):
     Create a hash of an experience based on ALL significant fields.
     Only experiences with identical hashes are considered duplicates.
     
+    NOTE: exploration_rate is EXCLUDED because it's metadata about HOW
+    the signal was taken, not WHAT the signal outcome was. Including it
+    would cause the same trading signal at the same timestamp with the
+    same outcome to be stored twice just because the exploration rate
+    was different during collection.
+    
     Args:
         exp: Experience dictionary
         
@@ -40,13 +46,15 @@ def experience_hash(exp):
         Hash string representing the experience
     """
     # ALL fields that make an experience unique
+    # exploration_rate is EXCLUDED - it's collection metadata, not signal quality
     key_fields = [
         'timestamp', 'symbol', 'price', 'pnl', 'duration', 'took_trade',
         'regime', 'volatility_regime', 'rsi', 'vwap_distance', 'vwap_slope',
         'atr', 'atr_slope', 'macd_hist', 'stoch_k',
         'volume_ratio', 'volume_slope', 'hour', 'session',
         'exit_reason', 'mfe', 'mae', 'returns',
-        'order_type_used', 'entry_slippage_ticks', 'exploration_rate'
+        'order_type_used', 'entry_slippage_ticks'
+        # 'exploration_rate' - EXCLUDED: metadata about collection, not signal quality
     ]
     
     values = []

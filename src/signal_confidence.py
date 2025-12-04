@@ -142,13 +142,19 @@ class SignalConfidenceRL:
         
         # ALL fields that make an experience unique
         # If any of these differ, experiences are NOT duplicates
+        # NOTE: exploration_rate is EXCLUDED because it's metadata about HOW
+        # the signal was taken, not WHAT the signal outcome was. Including it
+        # would cause the same trading signal at the same timestamp with the
+        # same outcome to be stored twice just because the exploration rate
+        # was different during collection.
         key_fields = [
             'timestamp', 'symbol', 'price', 'pnl', 'duration', 'took_trade',
             'regime', 'volatility_regime', 'rsi', 'vwap_distance', 'vwap_slope',
             'atr', 'atr_slope', 'macd_hist', 'stoch_k',
             'volume_ratio', 'volume_slope', 'hour', 'session',
             'mfe', 'mae', 'returns',
-            'order_type_used', 'entry_slippage_ticks', 'exploration_rate'
+            'order_type_used', 'entry_slippage_ticks'
+            # 'exploration_rate' - EXCLUDED: metadata about collection, not signal quality
         ]
         
         # Get exit_reason from either execution_data or experience dict

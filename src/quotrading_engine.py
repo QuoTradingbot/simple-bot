@@ -3928,268 +3928,6 @@ def validate_entry_price_still_valid(symbol: str, signal_price: float, side: str
         return False, reason, current_price
 
 
-def handle_partial_fill(symbol: str, side: str, expected_qty: int, timeout_seconds: float = 10) -> Tuple[int, bool]:
-    """
-    Check if order was partially filled and handle appropriately.
-    
-    CRITICAL FIX: Execution Risk #2 - Partial Fill Handling
-    
-    Args:
-        symbol: Instrument symbol
-        side: 'long' or 'short'
-        expected_qty: Expected quantity to fill
-        timeout_seconds: How long to wait for fill
-    
-    Returns:
-        Tuple of (actual_filled_qty, is_complete_fill)
-    """
-    time_module.sleep(timeout_seconds)
-    
-    # Get actual position
-    current_position = get_position_quantity(symbol)
-    actual_filled = abs(current_position)
-    is_complete = (abs(current_position) == expected_qty)
-    
-    if not is_complete and actual_filled > 0:
-        # PARTIAL FILL DETECTED
-        logger.warning(SEPARATOR_LINE)
-        logger.warning("[WARN] PARTIAL FILL DETECTED")
-        logger.warning(f"  Expected: {expected_qty} contracts")
-        logger.warning(f"  Filled: {actual_filled} contracts")
-        logger.warning(f"  Missing: {expected_qty - actual_filled} contracts")
-        logger.warning(SEPARATOR_LINE)
-        
-        # Options:
-        # 1. Accept partial fill and adjust stops/targets
-        # 2. Try to complete the fill
-        # 3. Close the partial and skip trade
-        
-        min_acceptable_fill_ratio = CONFIG.get("min_acceptable_fill_ratio", 0.5)
-        fill_ratio = actual_filled / expected_qty
-        
-        if fill_ratio >= min_acceptable_fill_ratio:
-            # Acceptable partial fill - work with it
-            logger.info(f"  [OK] Accepting partial fill ({fill_ratio:.0%})")
-            return actual_filled, False
-        else:
-            # Unacceptable partial fill - close it
-            logger.warning(f"  Γ£ù Partial fill too small ({fill_ratio:.0%}) - closing position")
-            # Close the partial position
-            close_side = "SELL" if side == "long" else "BUY"
-            place_market_order(symbol, close_side, actual_filled)
-            return 0, False
-    
-    return actual_filled, is_complete
-
-
-def place_entry_order_with_retry(symbol: str, side: str, contracts: int, 
-                                 order_params: Dict[str, Any], 
-                                 max_retries: int = 3) -> Tuple[Optional[Dict], float, str]:
-    """
-    Place entry order with retry logic for rejection/failure handling.
-    
-    CRITICAL FIX: Execution Risk #3 - Order Rejection Recovery
-    
-    Args:
-        symbol: Instrument symbol
-        side: 'long' or 'short'
-        contracts: Number of contracts
-        order_params: Order parameters from bid/ask manager
-        max_retries: Maximum retry attempts
-    
-    Returns:
-        Tuple of (order, fill_price, order_type_used) where order_type_used is one of:
-        - "passive": Passive limit order filled
-        - "passive_partial": Passive limit order partially filled
-        - "passive_uncertain": Cancel failed, original order may have filled
-        - "aggressive": Aggressive limit order filled
-        - "mixed": Mixed strategy (part passive, part aggressive)
-        - "failed": All retries exhausted
-    
-    Returns:
-        Tuple of (order, fill_price, order_type_used)
-    """
-    order_side = "BUY" if side == "long" else "SELL"
-    tick_size = CONFIG["tick_size"]
-    
-    for attempt in range(1, max_retries + 1):
-        logger.info(f"  [ORDER] Order attempt {attempt}/{max_retries}")
-        
-        try:
-            if order_params['strategy'] == 'passive':
-                limit_price = order_params['limit_price']
-                logger.info(f"  [PASSIVE] Passive Entry: ${limit_price:.2f} (saving spread)")
-                
-                order = place_limit_order(symbol, order_side, contracts, limit_price)
-                
-                if order is not None:
-                    # ===== Gap #2: Queue Monitoring for Passive Orders =====
-                    queue_monitoring_enabled = CONFIG.get("queue_monitoring_enabled", True)
-                    
-                    if queue_monitoring_enabled and bid_ask_manager is not None:
-                        # Use queue monitor for live trading
-                        logger.info(f"  [QUEUE] Monitoring queue position...")
-                        
-                        try:
-                            # Create cancel function with symbol bound
-                            def cancel_order_func(oid):
-                                return cancel_order(symbol, oid)
-                            
-                            was_filled, queue_reason = bid_ask_manager.queue_monitor.monitor_limit_order_queue(
-                                symbol=symbol,
-                                order_id=order.get("order_id") if isinstance(order, dict) else str(order),
-                                limit_price=limit_price,
-                                side=side,
-                                get_quote_func=bid_ask_manager.get_current_quote,
-                                is_filled_func=lambda oid: abs(get_position_quantity(symbol)) >= contracts,
-                                cancel_order_func=cancel_order_func
-                            )
-                            
-                            if was_filled:
-                                logger.info(f"  [FILLED] Queue monitor: {queue_reason}")
-                                return order, limit_price, "passive"
-                            else:
-                                logger.warning(f"  [WARN] Queue monitor: {queue_reason}")
-                                
-                                # CRITICAL FIX: Handle cancel_failed case
-                                # When cancel fails, DO NOT place another order - the original
-                                # order may still be pending and could fill, causing duplicate orders
-                                if queue_reason == "cancel_failed":
-                                    logger.error(f"  [CRITICAL] Cancel failed - waiting for original order")
-                                    logger.error(f"  [CRITICAL] Not placing new order to avoid duplicates")
-                                    
-                                    # Wait a bit to see if the original order fills
-                                    # Note: This timeout could be made configurable via CONFIG if needed
-                                    cancel_failed_wait = 2  # seconds
-                                    time_module.sleep(cancel_failed_wait)
-                                    
-                                    # Check if it filled
-                                    actual_filled = abs(get_position_quantity(symbol))
-                                    if actual_filled >= contracts:
-                                        logger.info(f"  [FILLED] Original order filled after cancel failure")
-                                        return order, limit_price, "passive"
-                                    
-                                    # Original order didn't fill - return the order we have
-                                    # Position reconciliation will handle any discrepancies later
-                                    logger.warning(f"  [WARN] Returning with original order - position may need manual verification")
-                                    return order, limit_price, "passive_uncertain"
-                                
-                                elif queue_reason == "timeout" and attempt < max_retries:
-                                    # Timeout - switch to aggressive (cancel succeeded)
-                                    logger.info(f"  [SWITCH] Switching to aggressive (market) entry")
-                                    order_params['strategy'] = 'aggressive'
-                                    order_params['limit_price'] = order_params.get('fallback_price', limit_price)
-                                    continue
-                                elif queue_reason == "price_moved_away" and attempt < max_retries:
-                                    # Price moved - retry with new price (cancel succeeded)
-                                    logger.info(f"  [RETRY] Reassessing entry with updated quote")
-                                    time_module.sleep(0.5)
-                                    continue
-                                
-                                # Failed - move to retry
-                                logger.warning(f"  [FAIL] Attempt {attempt}: Queue monitoring failed")
-                                
-                        except Exception as e:
-                            logger.error(f"  [ERROR] Queue monitoring error: {e}")
-                            # Fall through to regular passive fill handling
-                    
-                    else:
-                        # Backtesting or queue monitoring disabled - use standard fill handling
-                        actual_filled, is_complete = handle_partial_fill(
-                            symbol, side, contracts, order_params.get('timeout', 10)
-                        )
-                        
-                        if is_complete:
-                            logger.info(f"  [FILLED] Complete fill at ${limit_price:.2f}")
-                            return order, limit_price, "passive"
-                        elif actual_filled > 0:
-                            logger.warning(f"  [PARTIAL] Partial fill: {actual_filled}/{contracts} contracts")
-                            return order, limit_price, "passive_partial"
-                    
-                    # Check for fill (fallback)
-                    actual_filled, is_complete = handle_partial_fill(
-                        symbol, side, contracts, order_params.get('timeout', 10)
-                    )
-                    
-                    if is_complete:
-                        logger.info(f"  [FILLED] Complete fill at ${limit_price:.2f}")
-                        return order, limit_price, "passive"
-                    elif actual_filled > 0:
-                        logger.warning(f"  [PARTIAL] Partial fill: {actual_filled}/{contracts} contracts")
-                        return order, limit_price, "passive_partial"
-                    
-                    # Not filled - retry with better price if attempts remain
-                    logger.warning(f"  [FAIL] Attempt {attempt}: Passive not filled")
-                    
-                    if attempt < max_retries:
-                        # Jump queue by 1 tick
-                        if side == "long":
-                            order_params['limit_price'] += tick_size
-                        else:
-                            order_params['limit_price'] -= tick_size
-                        
-                        logger.info(f"  [RETRY] Retry with improved price: ${order_params['limit_price']:.2f}")
-                        time_module.sleep(0.5)  # Brief pause before retry
-                        continue
-                
-                # Order placement failed
-                logger.error(f"  [ERROR] Attempt {attempt}: Order placement failed")
-                
-            elif order_params['strategy'] == 'aggressive':
-                limit_price = order_params['limit_price']
-                logger.info(f"  [AGGRESSIVE] Aggressive Entry: ${limit_price:.2f} (guaranteed fill)")
-                
-                order = place_limit_order(symbol, order_side, contracts, limit_price)
-                
-                if order is not None:
-                    # Aggressive orders usually fill immediately
-                    time_module.sleep(1)  # Brief wait to confirm fill
-                    actual_filled = get_position_quantity(symbol)
-                    if abs(actual_filled) >= contracts:
-                        logger.info(f"  [FILLED] Aggressive fill at ${limit_price:.2f}")
-                        return order, limit_price, "aggressive"
-                    else:
-                        logger.warning(f"  [PARTIAL] Aggressive order placed but not filled yet")
-                        # Still return it, assume it will fill
-                        return order, limit_price, "aggressive"
-                
-                logger.error(f"  [FAIL] Attempt {attempt}: Aggressive order failed")
-            
-            elif order_params['strategy'] == 'mixed':
-                # Mixed strategy - split between passive and aggressive
-                passive_qty = order_params['passive_contracts']
-                aggressive_qty = order_params['aggressive_contracts']
-                passive_price = order_params['passive_price']
-                aggressive_price = order_params['aggressive_price']
-                
-                logger.info(f"  ≡ƒöÇ Mixed: {passive_qty}@${passive_price:.2f} (passive) + {aggressive_qty}@${aggressive_price:.2f} (aggressive)")
-                
-                # Place both portions
-                passive_order = place_limit_order(symbol, order_side, passive_qty, passive_price)
-                aggressive_order = place_limit_order(symbol, order_side, aggressive_qty, aggressive_price)
-                
-                if aggressive_order is not None:
-                    # Use weighted average fill price
-                    avg_fill_price = (passive_price * passive_qty + aggressive_price * aggressive_qty) / contracts
-                    return aggressive_order, avg_fill_price, "mixed"
-            
-            # Failed this attempt
-            if attempt < max_retries:
-                backoff_time = 0.5 * attempt  # Exponential backoff
-                logger.warning(f"  [WAIT] Retrying in {backoff_time:.1f}s...")
-                time_module.sleep(backoff_time)
-            
-        except Exception as e:
-            logger.error(f"  [FAIL] Attempt {attempt} exception: {e}")
-            if attempt < max_retries:
-                time_module.sleep(0.5 * attempt)
-                continue
-    
-    # All retries exhausted
-    logger.error(f"  [BLOCKED] All {max_retries} attempts failed - ENTRY ABORTED")
-    return None, 0.0, "failed"
-
-
 def is_market_moving_too_fast(symbol: str) -> Tuple[bool, str]:
     """
     Detect if market is moving too fast for safe entry.
@@ -4232,17 +3970,15 @@ def is_market_moving_too_fast(symbol: str) -> Tuple[bool, str]:
 
 def execute_entry(symbol: str, side: str, entry_price: float) -> None:
     """
-    Execute entry order with stop loss and target.
-    Uses intelligent bid/ask order placement strategy with FULL EXECUTION RISK PROTECTION.
+    Execute entry order with stop loss.
+    
+    SIMPLE EXECUTION:
+    - All entries use MARKET ORDER for immediate execution
+    - Stop loss placed immediately based on user's max_loss_per_trade GUI setting
+    - Position state validation (prevents double positioning)
+    - Fast market detection (skips dangerous entries)
     
     SHADOW MODE: Logs signal without placing actual orders.
-    
-    NEW: Production-ready execution with:
-    - Position state validation (prevents double positioning)
-    - Price deterioration protection (max 3 ticks from signal)
-    - Partial fill handling (detects and manages)
-    - Order rejection recovery (3 retries with exponential backoff)
-    - Fast market detection (skips dangerous entries)
     
     Args:
         symbol: Instrument symbol
@@ -4381,29 +4117,17 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
     logger.info(f"  Time: {entry_time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
     logger.info(f"  Symbol: {symbol}")
     
-    # Spread-aware position sizing (Requirement 10)
-    original_contracts = contracts
-    if bid_ask_manager is not None:
-        try:
-            expected_profit_ticks = 20  # Use reasonable default for spread calculation
-            adjusted_contracts, cost_breakdown = bid_ask_manager.calculate_spread_aware_position_size(
-                symbol, contracts, expected_profit_ticks
-            )
-            if adjusted_contracts != original_contracts:
-                logger.warning(f"  Position size adjusted: {original_contracts} -> {adjusted_contracts} contracts")
-                logger.info(f"  Spread cost: {cost_breakdown['cost_percentage']:.1f}% of expected profit")
-                contracts = adjusted_contracts
-        except Exception as e:
-            logger.warning(f"  Spread-aware sizing unavailable: {e}")
+    # Position size is fixed based on user's GUI settings
+    # No spread-aware adjustments - keep it simple
     
     logger.info(f"  Contracts: {contracts}")
     logger.info(f"  Stop Loss: ${stop_price:.2f}")
     
     # Track order execution details for post-trade analysis
     fill_start_time = datetime.now()
-    order_type_used = "market"  # Default
+    order_type_used = "market"  # Always market order
     
-    # Get intelligent order placement strategy from bid/ask manager
+    # Prepare order parameters
     order_side = "BUY" if side == "long" else "SELL"
     actual_fill_price = entry_price
     order = None
@@ -4416,74 +4140,23 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
     bot_status["entry_order_pending_id"] = None  # Will be set after order is placed
     
     try:
-        # ===== FIX #2 & #3: Retry Logic + Partial Fill Handling =====
-        if bid_ask_manager is not None:
-            try:
-                # Get order parameters from bid/ask manager
-                order_params = bid_ask_manager.get_entry_order_params(symbol, side, contracts)
-                
-                logger.info(f"  Order Strategy: {order_params['strategy']}")
-                logger.info(f"  Reason: {order_params['reason']}")
-                
-                # Use retry-enabled order placement with full execution protection
-                order, actual_fill_price, order_type_used = place_entry_order_with_retry(
-                    symbol, side, contracts, order_params, max_retries=3
-                )
-                
-                if order is None:
-                    logger.error("[FAIL] Failed to place entry after retries - TRADE SKIPPED")
-                    return
-                
-                # Update pending order ID
-                bot_status["entry_order_pending_id"] = order.get("order_id")
-                
-                # CRITICAL: IMMEDIATELY save minimal position state to prevent loss on crash
-                # This creates a recovery checkpoint before any further processing
-                state[symbol]["position"]["active"] = True
-                state[symbol]["position"]["side"] = side
-                state[symbol]["position"]["quantity"] = contracts
-                state[symbol]["position"]["entry_price"] = actual_fill_price
-                state[symbol]["position"]["entry_time"] = entry_time
-                state[symbol]["position"]["order_id"] = order.get("order_id")
-                save_position_state(symbol)
-                logger.info(f"  [CHECKPOINT] Emergency position state saved (crash protection)")
-                
-                logger.info(f"  [OK] Order placed successfully using {order_type_used} strategy")
-                
-            except Exception as e:
-                logger.error(f"Error using bid/ask manager for entry: {e}")
-                logger.info("Falling back to market order")
-                order = place_market_order(symbol, order_side, contracts)
-                actual_fill_price = entry_price
-                
-                # CRITICAL: Save emergency checkpoint for fallback path too
-                if order is not None:
-                    bot_status["entry_order_pending_id"] = order.get("order_id")
-                    state[symbol]["position"]["active"] = True
-                    state[symbol]["position"]["side"] = side
-                    state[symbol]["position"]["quantity"] = contracts
-                    state[symbol]["position"]["entry_price"] = actual_fill_price
-                    state[symbol]["position"]["entry_time"] = entry_time
-                    state[symbol]["position"]["order_id"] = order.get("order_id")
-                    save_position_state(symbol)
-                    logger.info(f"  [CHECKPOINT] Emergency position state saved (fallback path)")
-        else:
-            # No bid/ask manager, use traditional market order
-            logger.info("  Using market order (no bid/ask manager)")
-            
-            order = place_market_order(symbol, order_side, contracts)
-            
-            # CRITICAL: Save emergency checkpoint for no-manager path
-            if order is not None:
-                bot_status["entry_order_pending_id"] = order.get("order_id")
-                state[symbol]["position"]["active"] = True
-                state[symbol]["position"]["side"] = side
-                state[symbol]["position"]["quantity"] = contracts
-                state[symbol]["position"]["entry_price"] = entry_price
-                state[symbol]["position"]["entry_time"] = entry_time
-                state[symbol]["position"]["order_id"] = order.get("order_id")
-                save_position_state(symbol)
-                logger.info(f"  [CHECKPOINT] Emergency position state saved (no manager path)")
+        # SIMPLE ENTRY: Always use market order for immediate execution
+        # Stop loss is placed immediately based on user's max_loss_per_trade setting
+        logger.info(f"  Entry: MARKET ORDER")
+        order = place_market_order(symbol, order_side, contracts)
+        order_type_used = "market"
+        
+        if order is not None:
+            bot_status["entry_order_pending_id"] = order.get("order_id")
+            # CRITICAL: IMMEDIATELY save minimal position state to prevent loss on crash
+            state[symbol]["position"]["active"] = True
+            state[symbol]["position"]["side"] = side
+            state[symbol]["position"]["quantity"] = contracts
+            state[symbol]["position"]["entry_price"] = entry_price
+            state[symbol]["position"]["entry_time"] = entry_time
+            state[symbol]["position"]["order_id"] = order.get("order_id")
+            save_position_state(symbol)
+            logger.info(f"  [OK] Market order placed successfully")
         
         if order is None:
             logger.error("Failed to place entry order")
@@ -4548,7 +4221,7 @@ def execute_entry(symbol: str, side: str, entry_price: float) -> None:
             symbol=symbol,
             price=actual_fill_price,
             contracts=contracts,
-            side="LONG" if side == 'buy' else "SHORT"
+            side="LONG" if side == 'long' else "SHORT"
         )
     except Exception as e:
         logger.debug(f"Failed to send entry alert: {e}")

@@ -92,35 +92,25 @@ class BotConfiguration:
     volume_lookback: int = 20  # 20-bar volume average
     
     # ==========================================================================
-    # LEGACY PARAMETERS (kept for backwards compatibility, not used in new strategy)
+    # LEGACY PARAMETERS - REMOVED FROM CAPITULATION REVERSAL STRATEGY
     # ==========================================================================
-    # VWAP bands - NOT USED in capitulation strategy (VWAP is target, not entry zone)
-    vwap_std_dev_1: float = 2.5  # Legacy - not used
-    vwap_std_dev_2: float = 2.1  # Legacy - not used
-    vwap_std_dev_3: float = 3.7  # Legacy - not used
-    
-    # Technical Filters - All handled by CapitulationDetector now
-    use_trend_filter: bool = False  # NOT USED - replaced by regime go/no-go filter
-    use_rsi_filter: bool = True  # RSI still used but with new thresholds (25/75)
-    use_vwap_direction_filter: bool = False  # NOT USED - VWAP is target, not filter
-    use_volume_filter: bool = True  # Volume still used but with 2x threshold
-    use_macd_filter: bool = False  # NOT USED - removed from strategy
-    
-    # Legacy RSI settings (kept for backwards compatibility)
-    rsi_oversold: int = 25  # Now using rsi_extreme_long
-    rsi_overbought: int = 75  # Now using rsi_extreme_short
-    
-    # Legacy trend settings - NOT USED
-    trend_ema_period: int = 21
-    trend_threshold: float = 0.0001
-    
-    # Legacy MACD - NOT USED
-    macd_fast: int = 12
-    macd_slow: int = 26
-    macd_signal: int = 9
-    
-    # Legacy volume settings (kept for reference)
-    volume_spike_multiplier: float = 2.0  # Now using volume_climax_mult
+    # The following were used in the old VWAP Bounce strategy but are NO LONGER USED:
+    # - VWAP std dev bands (entry zones) - Replaced by flush detection
+    # - Trend filter - Replaced by flush direction + regime filter
+    # - VWAP direction filter - Replaced by price vs VWAP check for entry
+    # - MACD filter - Removed entirely
+    # - Trend EMA settings - Not used
+    #
+    # RETAINED FOR VWAP CALCULATION (still needed for target/safety net):
+    # - VWAP calculation is ON (needed for exit strategy)
+    # - ATR calculation is ON (needed for regime detection)
+    #
+    # Filter flags (kept for compatibility, but strategy ignores them):
+    use_trend_filter: bool = False  # OFF - flush direction determines trade direction
+    use_vwap_direction_filter: bool = False  # OFF - replaced by price vs VWAP check
+    use_rsi_filter: bool = True  # ON - RSI 25/75 extreme thresholds
+    use_volume_filter: bool = True  # ON - 2x 20-bar average for climax
+    use_macd_filter: bool = False  # OFF - not used in capitulation strategy
     
     # Time Windows (US Eastern - CME Futures Wall-Clock Schedule)
     # Note: Bot can trade anytime when market is open. These are for maintenance only.
@@ -336,42 +326,42 @@ class BotConfiguration:
     commission_per_contract: float = 2.50  # Commission per contract round-turn
     
     # ==========================================================================
-    # EXIT MANAGEMENT - HARDCODED IN CAPITULATION_DETECTOR.PY
+    # EXIT MANAGEMENT - TRAILING STOP HANDLES ALL PROFIT-TAKING
     # ==========================================================================
-    # All exit management rules are HARDCODED in the bot code.
-    # These values are NOT configurable - the strategy uses fixed rules.
+    # Trailing stop manages all exits. NO fixed VWAP target.
+    # VWAP is only used as a SAFETY NET before trailing activates.
     #
-    # HARDCODED EXIT RULES (see capitulation_detector.py):
-    # - Breakeven: Move stop to entry + 1 tick after 12 ticks profit
-    # - Trailing: Trail 8 ticks behind peak after 15 ticks profit
-    # - Time Stop: Exit after 20 bars if no target/stop hit
-    # - Target: VWAP (mean reversion destination)
+    # EXIT LOGIC (HARDCODED):
+    # - If price reaches VWAP BEFORE trailing activates (before 15 ticks): exit at VWAP
+    # - If trailing activates FIRST (15+ ticks profit): let it ride, ignore VWAP
+    # - Trailing stop eventually exits you, either at VWAP or beyond
     #
-    # The following flags remain for compatibility but use hardcoded values:
-    breakeven_enabled: bool = True  # ENABLED - uses hardcoded 12-tick trigger
-    breakeven_profit_threshold_ticks: int = 12  # HARDCODED - Move stop to entry after 12 ticks profit
+    # HARDCODED VALUES (in capitulation_detector.py):
+    # - breakeven_trigger_ticks: 12 (move stop to entry + 1 tick)
+    # - breakeven_buffer_ticks: 1 (entry + 1 tick offset)
+    # - trailing_trigger_ticks: 15 (start trailing after 15 ticks profit)
+    # - trailing_distance_ticks: 8 (trail 8 ticks behind peak)
+    # - max_hold_bars: 20 (optional time stop after 20 bars)
+    #
+    # WHY TRAILING > FIXED TARGET:
+    # - Small reversal: Trail protects gains, exit near VWAP with 16+ ticks
+    # - Big reversal: Trail lets you ride through VWAP for 80+ ticks
+    # - Weak reversal: Trail still locks in 24+ ticks before pullback
+    # ==========================================================================
+    breakeven_enabled: bool = True  # HARDCODED - Move stop to entry + 1 tick after 12 ticks
+    breakeven_profit_threshold_ticks: int = 12  # HARDCODED - 12 ticks profit trigger
     breakeven_stop_offset_ticks: int = 1  # HARDCODED - Entry + 1 tick buffer
-    trailing_stop_enabled: bool = True  # ENABLED - uses hardcoded 15-tick trigger, 8-tick trail
-    trailing_stop_trigger_ticks: int = 15  # HARDCODED - Start trailing after 15 ticks profit
+    trailing_stop_enabled: bool = True  # HARDCODED - Trailing handles all exits
+    trailing_stop_trigger_ticks: int = 15  # HARDCODED - Start trailing after 15 ticks
     trailing_stop_distance_ticks: int = 8  # HARDCODED - Trail 8 ticks behind peak
     
     # Time-Based Exit (USER CONFIGURABLE via GUI checkbox)
     time_stop_enabled: bool = False  # USER CONFIGURABLE - Exit after max_hold_bars if no resolution
     max_hold_bars: int = 20  # HARDCODED - Time stop after 20 bars (20 min on 1-min chart)
     
-    # Partial Exits (static R-multiples) - Capitulation Strategy exits
-    # For capitulation trades, VWAP is the primary target. Partial exits work as follows:
-    # - 50% exit at 1.5R (approximately halfway to VWAP from entry)
-    # - 30% exit at 2.0R (near VWAP or slightly beyond)
-    # - 20% runner for extended moves
-    # Note: The R-multiples are based on initial risk (stop distance), not VWAP distance
-    partial_exits_enabled: bool = True  # ENABLED - Take 50% at halfway to VWAP
-    partial_exit_1_percentage: float = 0.50  # 50% exit at first level
-    partial_exit_1_r_multiple: float = 1.5  # Exit at 1.5R (halfway to VWAP)
-    partial_exit_2_percentage: float = 0.30  # 30% exit at second level
-    partial_exit_2_r_multiple: float = 2.0  # Exit at 2.0R (near VWAP)
-    partial_exit_3_percentage: float = 0.20  # 20% exit at third level
-    partial_exit_3_r_multiple: float = 3.0  # Exit at 3.0R (runner)
+    # Partial Exits - DISABLED (Trailing stop manages exits now)
+    # Trailing stop handles all profit-taking, no need for partial exits
+    partial_exits_enabled: bool = False  # DISABLED - Trailing stop manages exits
     
     # Reinforcement Learning Parameters
     # RL confidence filtering - uses RL experience to filter out low-confidence signals
@@ -465,8 +455,9 @@ class BotConfiguration:
             raise ValueError("Configuration validation failed:\n  - " + "\n  - ".join(errors))
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert configuration to dictionary (legacy format)."""
+        """Convert configuration to dictionary for engine compatibility."""
         return {
+            # Core Trading Settings
             "broker": self.broker,
             "quotrading_license": self.quotrading_license,
             "instrument": self.instrument,
@@ -477,72 +468,63 @@ class BotConfiguration:
             "risk_reward_ratio": self.risk_reward_ratio,
             "slippage_ticks": self.slippage_ticks,
             "commission_per_contract": self.commission_per_contract,
-            "vwap_std_dev_1": self.vwap_std_dev_1,
-            "vwap_std_dev_2": self.vwap_std_dev_2,
-            "vwap_std_dev_3": self.vwap_std_dev_3,
-            "trend_ema_period": self.trend_ema_period,
-            "trend_threshold": self.trend_threshold,
-            "use_trend_filter": self.use_trend_filter,
-            "use_rsi_filter": self.use_rsi_filter,
-            "use_macd_filter": self.use_macd_filter,
-            "use_vwap_direction_filter": self.use_vwap_direction_filter,
-            "use_volume_filter": self.use_volume_filter,
+            
+            # Filter Settings (Capitulation Reversal uses hardcoded logic)
+            "use_trend_filter": self.use_trend_filter,  # OFF - flush direction determines trade
+            "use_rsi_filter": self.use_rsi_filter,  # ON - RSI 25/75 extreme thresholds
+            "use_macd_filter": self.use_macd_filter,  # OFF - not used
+            "use_vwap_direction_filter": self.use_vwap_direction_filter,  # OFF - replaced by price vs VWAP
+            "use_volume_filter": self.use_volume_filter,  # ON - 2x volume climax
             "rsi_period": self.rsi_period,
-            "rsi_oversold": self.rsi_oversold,
-            "rsi_overbought": self.rsi_overbought,
-            "macd_fast": self.macd_fast,
-            "macd_slow": self.macd_slow,
-            "macd_signal": self.macd_signal,
-            "volume_spike_multiplier": self.volume_spike_multiplier,
             "volume_lookback": self.volume_lookback,
-            "market_open_time": self.market_open_time,
+            
+            # Time Windows
             "entry_start_time": self.entry_start_time,
             "entry_end_time": self.entry_end_time,
             "forced_flatten_time": self.forced_flatten_time,
             "shutdown_time": self.shutdown_time,
             "vwap_reset_time": self.vwap_reset_time,
+            
+            # Risk Settings
             "daily_loss_limit": self.daily_loss_limit,
             "tick_timeout_seconds": self.tick_timeout_seconds,
             "proactive_stop_buffer_ticks": self.proactive_stop_buffer_ticks,
             "flatten_buffer_ticks": self.flatten_buffer_ticks,
             "tick_size": self.tick_size,
             "tick_value": self.tick_value,
+            "max_stop_loss_dollars": self.max_stop_loss_dollars,
+            "account_size": self.account_size,
+            
+            # Operational Mode
             "shadow_mode": self.shadow_mode,
             "ai_mode": self.ai_mode,
             "max_bars_storage": self.max_bars_storage,
-            # Advanced Exit Management (baseline parameters)
+            
+            # Exit Management - HARDCODED (trailing stop handles all exits)
             "breakeven_enabled": self.breakeven_enabled,
             "breakeven_profit_threshold_ticks": self.breakeven_profit_threshold_ticks,
-            "breakeven_trigger_ticks": self.breakeven_profit_threshold_ticks,  # Alias for engine compatibility
+            "breakeven_trigger_ticks": self.breakeven_profit_threshold_ticks,  # Alias
             "breakeven_stop_offset_ticks": self.breakeven_stop_offset_ticks,
-            "breakeven_offset_ticks": self.breakeven_stop_offset_ticks,  # Alias for engine compatibility
-            # Trailing Stop Settings (Capitulation Strategy)
+            "breakeven_offset_ticks": self.breakeven_stop_offset_ticks,  # Alias
             "trailing_stop_enabled": self.trailing_stop_enabled,
             "trailing_stop_trigger_ticks": self.trailing_stop_trigger_ticks,
-            "trailing_trigger_ticks": self.trailing_stop_trigger_ticks,  # Alias for engine compatibility
+            "trailing_trigger_ticks": self.trailing_stop_trigger_ticks,  # Alias
             "trailing_stop_distance_ticks": self.trailing_stop_distance_ticks,
-            "trailing_distance_ticks": self.trailing_stop_distance_ticks,  # Alias for engine compatibility
-            # Time Stop Settings (Capitulation Strategy - USER CONFIGURABLE)
+            "trailing_distance_ticks": self.trailing_stop_distance_ticks,  # Alias
+            
+            # Time Stop (USER CONFIGURABLE)
             "time_stop_enabled": self.time_stop_enabled,
             "max_hold_bars": self.max_hold_bars,
-            "time_stop_bars": self.max_hold_bars,  # Alias for engine compatibility
-            # Partial Exits
+            "time_stop_bars": self.max_hold_bars,  # Alias
+            
+            # Partial Exits DISABLED (trailing handles exits)
             "partial_exits_enabled": self.partial_exits_enabled,
-            "partial_exit_1_percentage": self.partial_exit_1_percentage,
-            "partial_exit_1_r_multiple": self.partial_exit_1_r_multiple,
-            "partial_exit_2_percentage": self.partial_exit_2_percentage,
-            "partial_exit_2_r_multiple": self.partial_exit_2_r_multiple,
-            "partial_exit_3_percentage": self.partial_exit_3_percentage,
-            "partial_exit_3_r_multiple": self.partial_exit_3_r_multiple,
+            
             # RL Configuration
             "rl_confidence_threshold": self.rl_confidence_threshold,
             "rl_exploration_rate": self.rl_exploration_rate,
             "rl_min_exploration_rate": self.rl_min_exploration_rate,
             "rl_exploration_decay": self.rl_exploration_decay,
-            # Account Settings
-            "account_size": self.account_size,
-            # Stop Loss Configuration
-            "max_stop_loss_dollars": self.max_stop_loss_dollars,
         }
 
 

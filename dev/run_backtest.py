@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Development Backtesting Environment for VWAP Bounce Bot
+Development Backtesting Environment for Capitulation Reversal Bot
 
 This is the development/testing environment that:
 - Runs backtests to test bot performance
@@ -46,7 +46,7 @@ from signal_confidence import SignalConfidenceRL
 def parse_arguments():
     """Parse command-line arguments for backtest"""
     parser = argparse.ArgumentParser(
-        description='VWAP Bounce Bot - Development Backtesting Environment',
+        description='Capitulation Reversal Bot - Development Backtesting Environment',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -144,8 +144,8 @@ def initialize_rl_brains_for_backtest(bot_config) -> Tuple[Any, ModuleType]:
     bot_module = importlib.util.module_from_spec(spec)
     sys.modules['quotrading_engine'] = bot_module
     
-    # Also make it available as vwap_bounce_bot for compatibility
-    sys.modules['vwap_bounce_bot'] = bot_module
+    # Also make it available as capitulation_reversal_bot for compatibility
+    sys.modules['capitulation_reversal_bot'] = bot_module
     
     # Load the module
     spec.loader.exec_module(bot_module)
@@ -155,15 +155,15 @@ def initialize_rl_brains_for_backtest(bot_config) -> Tuple[Any, ModuleType]:
     
     # Initialize RL brain with symbol-specific experience file
     # LIVE TRADING: Always uses 0% exploration (reads from config)
-    # BACKTESTING: Uses 30% exploration for learning/accumulating experiences
+    # BACKTESTING: Uses 100% exploration for learning when no data exists
     signal_exp_file = os.path.join(PROJECT_ROOT, f"experiences/{symbol}/signal_experience.json")
     rl_brain = SignalConfidenceRL(
         experience_file=signal_exp_file,
         backtest_mode=True,
         confidence_threshold=bot_config.rl_confidence_threshold,
-        exploration_rate=0.3,  # 30% exploration for backtesting (learning mode)
-        min_exploration=0.3,
-        exploration_decay=bot_config.rl_exploration_decay
+        exploration_rate=1.0,  # 100% exploration for new strategy (no data yet)
+        min_exploration=1.0,   # Keep at 100% to learn from all signals
+        exploration_decay=1.0  # No decay - always explore during initial learning
     )
     
     # Set it on the bot module if it has rl_brain attribute
@@ -229,6 +229,9 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
                 if len(lines) > 1:  # Skip header
                     last_line = lines[-1]
                     last_timestamp = last_line.split(',')[0]
+                    # Handle timezone-aware timestamp format (e.g., "2025-11-27 18:00:00+00:00")
+                    if '+' in last_timestamp:
+                        last_timestamp = last_timestamp.split('+')[0]  # Remove timezone offset
                     end_date = datetime.strptime(last_timestamp, '%Y-%m-%d %H:%M:%S')
                     end_date = tz.localize(end_date.replace(hour=23, minute=59, second=59))
                 else:
@@ -313,14 +316,14 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
     last_exit_reason = 'bot_exit'  # Track last exit reason
     prev_position_active = False
     
-    def vwap_strategy_backtest(bars_1min: List[Dict[str, Any]], bars_15min: List[Dict[str, Any]]) -> None:
+    def capitulation_strategy_backtest(bars_1min: List[Dict[str, Any]], bars_15min: List[Dict[str, Any]]) -> None:
         """
-        Actual VWAP Bounce strategy integrated with backtest engine.
+        Capitulation Reversal strategy integrated with backtest engine.
         Processes historical data through the real bot logic.
         
         This executes:
         - Signal RL for confidence scoring
-        - Pattern matching for signal detection
+        - Capitulation/flush pattern detection
         - Regime detection for market adaptation
         - All trade management (stops, targets, breakeven, trailing)
         - UTC maintenance and flatten rules
@@ -403,7 +406,7 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
         print()  # New line after progress
         
     # Run backtest with integrated strategy
-    results = engine.run_with_strategy(vwap_strategy_backtest)
+    results = engine.run_with_strategy(capitulation_strategy_backtest)
     
     # Get trades from engine metrics and add to reporter
     if hasattr(engine, 'metrics') and hasattr(engine.metrics, 'trades'):
@@ -485,7 +488,7 @@ def main():
     # Suppress verbose logging from most loggers during backtest
     logging.getLogger('quotrading_engine').setLevel(logging.INFO)  # Need INFO level for RL messages
     logging.getLogger('backtesting').setLevel(logging.WARNING)
-    logging.getLogger('vwap_bot').setLevel(logging.ERROR)
+    logging.getLogger('capitulation_bot').setLevel(logging.ERROR)
     logging.getLogger('backtest').setLevel(logging.WARNING)
     logging.getLogger('regime_detection').setLevel(logging.WARNING)  # Suppress regime change spam
     logging.getLogger('signal_confidence').setLevel(logging.WARNING)  # Only show warnings and errors

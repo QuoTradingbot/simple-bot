@@ -1,5 +1,5 @@
 """
-Backtesting Framework for VWAP Bounce Bot
+Backtesting Framework for Capitulation Reversal Bot
 Supports historical data loading, order simulation, and performance analysis
 """
 

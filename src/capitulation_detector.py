@@ -35,8 +35,13 @@ STOP LOSS:
 - Long: 2 ticks below flush low
 - Short: 2 ticks above flush high
 - Emergency max: User's max loss setting (GUI configurable)
+- Use tighter stop: whichever is tighter wins (flush-based or GUI max)
 
-TARGET: VWAP (mean reversion destination)
+EXIT STRATEGY (TRAILING STOP MANAGES ALL EXITS):
+- NO fixed VWAP target - trailing stop handles all profit-taking
+- VWAP is SAFETY NET: Only used if price reaches VWAP before trailing activates
+- Once trailing is active (15+ ticks), ignore VWAP and let it ride
+- Trailing stop eventually exits you, either at VWAP or beyond
 
 TRADE MANAGEMENT:
 - Breakeven: Move stop to entry + 1 tick after 12 ticks profit

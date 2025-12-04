@@ -1,5 +1,5 @@
 """
-Development Environment for VWAP Bounce Bot
+Development Environment for Capitulation Reversal Bot
 
 This folder contains the backtesting framework and development tools.
 Separated from production code in src/ for clean architecture.

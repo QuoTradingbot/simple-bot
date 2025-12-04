@@ -3053,53 +3053,34 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
         logger.info(f"   🚀 Signal generation: ENABLED")
         logger.info("=" * 60)
     
-    # Check VWAP bands
-    vwap_bands = state[symbol]["vwap_bands"]
-    if any(v is None for v in vwap_bands.values()):
-        pass  # Silent - price bands not ready
+    # Check VWAP is available (needed for target/safety net exit)
+    # Note: VWAP bands are NOT used for entry signals in Capitulation Reversal strategy
+    vwap = state[symbol].get("vwap")
+    if vwap is None or vwap <= 0:
+        pass  # Silent - VWAP not ready
         return False, "VWAP not ready"
     
-    # Check trend (optional - DOES NOT block signals if neutral)
-    # Trend filtering happens in signal-specific functions:
-    #   - Uptrend: only longs allowed
-    #   - Downtrend: only shorts allowed
-    #   - Neutral: both allowed (mean reversion)
-    use_trend_filter = CONFIG.get("use_trend_filter", False)
-    if use_trend_filter:
-        trend = state[symbol]["trend_direction"]
-        if trend is None:
-            pass  # Silent - trend not ready
-            return False, "Trend not established"
-        # Neutral trend is OK - will trade both directions
+    # Trend filter - DISABLED for Capitulation Reversal strategy
+    # Flush direction determines trade direction (condition #8 in capitulation_detector.py)
+    # - Long: price < VWAP (buying at discount after flush down)
+    # - Short: price > VWAP (selling at premium after flush up)
     
-    # Check RSI (ITERATION 3 - selective entry thresholds)
-    use_rsi_filter = CONFIG.get("use_rsi_filter", True)
-    rsi_oversold = CONFIG.get("rsi_oversold", 35.0)  # Iteration 3
-    rsi_overbought = CONFIG.get("rsi_overbought", 65.0)  # Iteration 3
+    # Check RSI is available (needed for capitulation signal detection)
+    # Note: RSI thresholds (25/75) are hardcoded in capitulation_detector.py
+    rsi = state[symbol]["rsi"]
+    if rsi is None:
+        pass  # Silent - RSI not yet calculated, allow to proceed
+        # Signal-specific functions will handle RSI check with 25/75 thresholds
     
-    if use_rsi_filter:
-        rsi = state[symbol]["rsi"]
-        if rsi is None:
-            logger.debug("RSI not yet calculated")
-            # Allow trading without RSI if not available yet
-        # Note: RSI check moved to signal-specific functions for long/short
+    # Volume check - handled by capitulation_detector.py (condition #5: 2x average)
+    avg_volume = state[symbol].get("avg_volume")
+    if avg_volume is None:
+        pass  # Silent - average volume not yet calculated, allow to proceed
+        # Signal-specific functions will handle volume check with 2x threshold
     
-    # Check volume spike (optional - for confirmation)
-    use_volume_filter = CONFIG.get("use_volume_filter", True)
-    if use_volume_filter:
-        avg_volume = state[symbol]["avg_volume"]
-        if avg_volume is None:
-            logger.debug("Average volume not yet calculated")
-            # Allow trading without volume filter if not available yet
-    
-    # VWAP direction filter (optional - price vs VWAP for bias)
-    use_vwap_direction_filter = CONFIG.get("use_vwap_direction_filter", True)
-    if use_vwap_direction_filter:
-        vwap = state[symbol]["vwap"]
-        if vwap is None:
-            logger.debug("VWAP not yet calculated")
-            return False, "VWAP not ready"
-        # Note: VWAP direction check moved to signal-specific functions
+    # VWAP direction filter - DISABLED for Capitulation Reversal strategy
+    # Price vs VWAP check is done in capitulation_detector.py condition #8
+    # (Long: price < VWAP, Short: price > VWAP)
     
     # Check bid/ask spread and market condition (Phase: Bid/Ask Strategy)
     if bid_ask_manager is not None:
@@ -3628,11 +3609,11 @@ def check_for_signals(symbol: str) -> None:
     # Get bars for signal check
     prev_bar = state[symbol]["bars_1min"][-2]
     current_bar = state[symbol]["bars_1min"][-1]
-    vwap_bands = state[symbol]["vwap_bands"]
-    trend = state[symbol]["trend_direction"]
+    vwap = state[symbol].get("vwap", 0)
+    regime = state[symbol].get("current_regime", "NORMAL")
     
-    logger.debug(f"Signal check: trend={trend}, prev_low={prev_bar['low']:.2f}, "
-                f"current_close={current_bar['close']:.2f}, lower_band_2={vwap_bands['lower_2']:.2f}")
+    logger.debug(f"Signal check: regime={regime}, prev_low={prev_bar['low']:.2f}, "
+                f"current_close={current_bar['close']:.2f}, vwap={vwap:.2f}")
     
     # PERIODIC HEARTBEAT: Show bot is actively scanning for signals (every 15 minutes)
     # Does NOT reveal strategy details - just confirms bot is running
@@ -4788,7 +4769,19 @@ def check_stop_hit(symbol: str, current_bar: Dict[str, Any], position: Dict[str,
 
 def check_reversal_signal(symbol: str, current_bar: Dict[str, Any], position: Dict[str, Any]) -> Tuple[bool, Optional[float]]:
     """
-    Check for signal reversal (price crossing back to opposite band).
+    Check if price has reached VWAP BEFORE trailing stop activates.
+    
+    CAPITULATION REVERSAL EXIT STRATEGY:
+    - Trailing stop handles all profit-taking (activates at 15+ ticks profit)
+    - VWAP is a SAFETY NET only used if price reaches VWAP before trailing activates
+    - Once trailing is active (15+ ticks), ignore VWAP and let trailing ride
+    
+    Logic:
+    - If price reaches VWAP before trailing activates (before 15 ticks profit): exit at VWAP
+    - If trailing activates first (15+ ticks profit): let it ride, ignore VWAP target
+    - Trailing stop eventually exits you, either at VWAP or beyond
+    
+    This captures more profit on big reversals while still protecting gains on weak ones.
     
     Args:
         symbol: Instrument symbol
@@ -4796,21 +4789,46 @@ def check_reversal_signal(symbol: str, current_bar: Dict[str, Any], position: Di
         position: Position dictionary
     
     Returns:
-        Tuple of (reversal_detected, exit_price)
+        Tuple of (should_exit_at_vwap, exit_price)
     """
-    vwap_bands = state[symbol]["vwap_bands"]
-    trend = state[symbol]["trend_direction"]
+    # If trailing stop is already active, DO NOT use VWAP target
+    # Let trailing stop manage the exit for maximum profit capture
+    if position.get("trailing_stop_active", False):
+        return False, None
+    
+    vwap = state[symbol].get("vwap")
     side = position["side"]
+    entry_price = position.get("entry_price", 0)
     
-    if side == "long" and trend == "up":
-        # If price crosses back above upper band 2, bounce is complete
-        if current_bar["close"] > vwap_bands["upper_2"]:
-            return True, current_bar["close"]
+    # VWAP not available - cannot check target
+    if vwap is None or vwap <= 0:
+        return False, None
     
-    if side == "short" and trend == "down":
-        # If price crosses back below lower band 1, bounce is complete
-        if current_bar["close"] < vwap_bands["lower_1"]:
-            return True, current_bar["close"]
+    # Calculate current profit in ticks
+    tick_size = CONFIG.get("tick_size", 0.25)
+    current_price = current_bar["close"]
+    
+    if side == "long":
+        profit_ticks = (current_price - entry_price) / tick_size
+    else:
+        profit_ticks = (entry_price - current_price) / tick_size
+    
+    # Check if trailing stop would be active at this profit level
+    trailing_trigger = CONFIG.get("trailing_trigger_ticks", 15)
+    if profit_ticks >= trailing_trigger:
+        # Trailing stop should be active - don't use VWAP target
+        return False, None
+    
+    # Trailing not active yet - check if we've reached VWAP (safety net)
+    if side == "long":
+        if current_price >= vwap:
+            logger.info(f"📊 VWAP TARGET HIT (before trailing): Price ${current_price:.2f} >= VWAP ${vwap:.2f}")
+            return True, current_price
+    
+    if side == "short":
+        if current_price <= vwap:
+            logger.info(f"📊 VWAP TARGET HIT (before trailing): Price ${current_price:.2f} <= VWAP ${vwap:.2f}")
+            return True, current_price
     
     return False, None
 
@@ -6094,10 +6112,10 @@ def check_exit_conditions(symbol: str) -> None:
     # EIGHTH - Time-decay tightening (last priority, gradual adjustment)
     check_time_decay_tightening(symbol, bar_time)
     
-    # Check for signal reversal (lowest priority)
-    reversal, price = check_reversal_signal(symbol, current_bar, position)
-    if reversal:
-        execute_exit(symbol, price, "signal_reversal")
+    # Check for VWAP target hit (mean reversion complete)
+    target_hit, price = check_reversal_signal(symbol, current_bar, position)
+    if target_hit:
+        execute_exit(symbol, price, "target_hit")
         return
 
 

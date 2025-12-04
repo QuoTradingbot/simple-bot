@@ -1,9 +1,9 @@
 """
-Signal Confidence - RL Layer for VWAP Signals
-==============================================
-Learns which VWAP bounce signals to trust vs skip.
+Signal Confidence - RL Layer for Capitulation Reversal Signals
+================================================================
+Learns which capitulation reversal signals to trust vs skip.
 
-Keeps your hardcoded VWAP/RSI entry logic, but adds intelligence:
+Keeps your hardcoded entry logic, but adds intelligence:
 - Should I take this signal? (confidence scoring)
 - How much to risk? (position sizing)
 - When to exit? (profit taking)
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 class SignalConfidenceRL:
     """
-    Reinforcement learning layer that decides whether to trust VWAP signals.
+    Reinforcement learning layer that decides whether to trust Capitulation Reversal signals.
     
     NOTE: For production deployments, RL should be hosted in the cloud.
     Local RL experience files are only used for backtesting and development.

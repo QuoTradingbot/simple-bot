@@ -3133,14 +3133,16 @@ def check_long_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
         regime=current_regime
     )
     
+    # Store entry details for both success and failure (for diagnostic logging)
+    state[symbol]["entry_details"] = details
+    
     if not all_passed:
         # Log periodically which conditions are failing (for debugging)
         if details.get("reason"):
             logger.debug(f"Long rejected: {details['reason']}")
         return False
     
-    # Store entry details for position management
-    state[symbol]["entry_details"] = details
+    # Store flush extremes for position management (only on success)
     state[symbol]["flush_low"] = details.get("flush_low")
     state[symbol]["flush_high"] = details.get("flush_high")
     
@@ -3210,14 +3212,16 @@ def check_short_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
         regime=current_regime
     )
     
+    # Store entry details for both success and failure (for diagnostic logging)
+    state[symbol]["entry_details"] = details
+    
     if not all_passed:
         # Log periodically which conditions are failing (for debugging)
         if details.get("reason"):
             logger.debug(f"Short rejected: {details['reason']}")
         return False
     
-    # Store entry details for position management
-    state[symbol]["entry_details"] = details
+    # Store flush extremes for position management (only on success)
     state[symbol]["flush_low"] = details.get("flush_low")
     state[symbol]["flush_high"] = details.get("flush_high")
     
@@ -3477,6 +3481,9 @@ def capture_market_state(symbol: str, current_price: float) -> Dict[str, Any]:
         "symbol": symbol,
         "timestamp": current_time.isoformat(),
         # pnl and took_trade will be added by record_outcome()
+        
+        # Additional field for display purposes (not used in pattern matching)
+        "price": current_price,
     }
     
     return market_state

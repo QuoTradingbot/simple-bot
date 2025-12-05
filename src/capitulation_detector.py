@@ -17,7 +17,7 @@ LONG SIGNAL CONDITIONS (AFTER FLUSH DOWN) - ALL 9 MUST BE TRUE:
 6. Flush Stopped Making New Lows - Current bar low >= previous bar low
 7. Reversal Candle - Current bar closes green (close > open)
 8. Price Is Below VWAP - Current close < VWAP
-9. Regime Allows Trading - HIGH_VOL or NORMAL regimes (expanded)
+9. Regime Allows Trading - ALL regimes allowed (no regime filtering)
 
 SHORT SIGNAL CONDITIONS (AFTER FLUSH UP) - ALL 9 MUST BE TRUE:
 1. Pump Happened - Range of last 7 bars >= 12 ticks (relaxed from 20)
@@ -28,7 +28,7 @@ SHORT SIGNAL CONDITIONS (AFTER FLUSH UP) - ALL 9 MUST BE TRUE:
 6. Pump Stopped Making New Highs - Current bar high <= previous bar high
 7. Reversal Candle - Current bar closes red (close < open)
 8. Price Is Above VWAP - Current close > VWAP
-9. Regime Allows Trading - HIGH_VOL or NORMAL regimes (expanded)
+9. Regime Allows Trading - ALL regimes allowed (no regime filtering)
 
 STOP LOSS:
 - Long: 2 ticks below flush low
@@ -173,8 +173,13 @@ class CapitulationDetector:
         conditions["8_below_vwap"] = current_price < vwap
         
         # CONDITION 9: Regime Allows Trading - RELAXED to allow more regimes
-        # Now allows NORMAL regimes too, to catch daily reversals
-        tradeable_regimes = {"HIGH_VOL_TRENDING", "HIGH_VOL_CHOPPY", "NORMAL_TRENDING", "NORMAL_CHOPPY", "NORMAL"}
+        # Now allows NORMAL and LOW_VOL regimes too, to catch daily reversals
+        # Note: Other conditions (flush, velocity, volume spike) already filter quality
+        tradeable_regimes = {
+            "HIGH_VOL_TRENDING", "HIGH_VOL_CHOPPY", 
+            "NORMAL_TRENDING", "NORMAL_CHOPPY", "NORMAL",
+            "LOW_VOL_TRENDING", "LOW_VOL_RANGING"  # Added: Allow low vol regimes
+        }
         conditions["9_regime_allows"] = regime in tradeable_regimes
         
         # ALL 9 CONDITIONS MUST BE TRUE
@@ -314,8 +319,13 @@ class CapitulationDetector:
         conditions["8_above_vwap"] = current_price > vwap
         
         # CONDITION 9: Regime Allows Trading - RELAXED to allow more regimes
-        # Now allows NORMAL regimes too, to catch daily reversals
-        tradeable_regimes = {"HIGH_VOL_TRENDING", "HIGH_VOL_CHOPPY", "NORMAL_TRENDING", "NORMAL_CHOPPY", "NORMAL"}
+        # Now allows NORMAL and LOW_VOL regimes too, to catch daily reversals
+        # Note: Other conditions (flush, velocity, volume spike) already filter quality
+        tradeable_regimes = {
+            "HIGH_VOL_TRENDING", "HIGH_VOL_CHOPPY", 
+            "NORMAL_TRENDING", "NORMAL_CHOPPY", "NORMAL",
+            "LOW_VOL_TRENDING", "LOW_VOL_RANGING"  # Added: Allow low vol regimes
+        }
         conditions["9_regime_allows"] = regime in tradeable_regimes
         
         # ALL 9 CONDITIONS MUST BE TRUE

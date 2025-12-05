@@ -448,6 +448,21 @@ def run_backtest(args: argparse.Namespace) -> Dict[str, Any]:
     # Print clean summary
     reporter.print_summary()
     
+    # Print diagnostic information
+    print("\n" + "=" * 80)
+    print("DIAGNOSTIC INFORMATION")
+    print("=" * 80)
+    if symbol in state:
+        print(f"Signal check attempts: {state[symbol].get('signal_check_attempts', 0)}")
+        print(f"VWAP missing count: {state[symbol].get('vwap_missing_count', 0)}")
+        print(f"Insufficient bars count: {state[symbol].get('insufficient_bars_count', 0)}")
+        print(f"Total bars processed: {total_bars}")
+        print(f"Final bar count in state: {len(state[symbol].get('bars_1min', []))}")
+        print(f"Final RSI: {state[symbol].get('rsi', 'N/A')}")
+        print(f"Final VWAP: {state[symbol].get('vwap', 'N/A')}")
+        print(f"Final regime: {state[symbol].get('current_regime', 'N/A')}")
+    print("=" * 80 + "\n")
+    
     # Save RL experiences at the end
     print("Saving RL experiences...")
     experience_path = f"experiences/{symbol}/signal_experience.json"

@@ -194,6 +194,9 @@ class CapitulationDetector:
             "regime": regime
         }
         
+        # Count how many conditions passed
+        passed_count = sum(1 for v in conditions.values() if v)
+        
         if all_passed:
             # Store flush info for stop calculation
             self.last_flush = FlushEvent(
@@ -219,6 +222,26 @@ class CapitulationDetector:
             logger.info(f"  RSI: {rsi:.1f}" if rsi else "  RSI: N/A")
             logger.info(f"  Stop: ${details['stop_price']:.2f} | Target: ${vwap:.2f}")
             logger.info("=" * 60)
+        elif passed_count >= 8:
+            # NEAR MISS: 8/9 or 9/9 conditions passed - log for debugging
+            failed = [k for k, v in conditions.items() if not v]
+            logger.warning("=" * 60)
+            logger.warning(f"⚠️  NEAR MISS: LONG signal ({passed_count}/9 conditions)")
+            logger.warning("=" * 60)
+            for key, value in conditions.items():
+                status = "✅" if value else "❌"
+                logger.warning(f"  {status} {key}: {value}")
+            logger.warning(f"  Flush: {flush_range_ticks:.1f} ticks | Min: {self.MIN_FLUSH_TICKS}")
+            logger.warning(f"  Velocity: {velocity:.2f} ticks/bar | Min: {self.MIN_VELOCITY_TICKS_PER_BAR}")
+            logger.warning(f"  Distance from low: {distance_from_low:.1f} ticks | Max: {self.NEAR_EXTREME_TICKS}")
+            logger.warning(f"  RSI: {rsi:.1f} | Max: {self.RSI_OVERSOLD_EXTREME}" if rsi else "  RSI: N/A")
+            logger.warning(f"  Volume ratio: {current_volume / avg_volume_20 if avg_volume_20 > 0 else 0:.2f}x | Min: {self.VOLUME_SPIKE_THRESHOLD}x")
+            logger.warning(f"  VWAP: {vwap:.2f} | Current: {current_price:.2f}")
+            logger.warning(f"  Regime: {regime}")
+            logger.warning(f"  FAILED: {', '.join(failed)}")
+            logger.warning("=" * 60)
+            details["failed_conditions"] = failed
+            details["reason"] = f"Near miss - failed: {', '.join(failed)}"
         else:
             # Find which conditions failed
             failed = [k for k, v in conditions.items() if not v]
@@ -311,6 +334,9 @@ class CapitulationDetector:
             "regime": regime
         }
         
+        # Count how many conditions passed
+        passed_count = sum(1 for v in conditions.values() if v)
+        
         if all_passed:
             # Store flush info for stop calculation
             self.last_flush = FlushEvent(
@@ -336,6 +362,26 @@ class CapitulationDetector:
             logger.info(f"  RSI: {rsi:.1f}" if rsi else "  RSI: N/A")
             logger.info(f"  Stop: ${details['stop_price']:.2f} | Target: ${vwap:.2f}")
             logger.info("=" * 60)
+        elif passed_count >= 8:
+            # NEAR MISS: 8/9 or 9/9 conditions passed - log for debugging
+            failed = [k for k, v in conditions.items() if not v]
+            logger.warning("=" * 60)
+            logger.warning(f"⚠️  NEAR MISS: SHORT signal ({passed_count}/9 conditions)")
+            logger.warning("=" * 60)
+            for key, value in conditions.items():
+                status = "✅" if value else "❌"
+                logger.warning(f"  {status} {key}: {value}")
+            logger.warning(f"  Pump: {flush_range_ticks:.1f} ticks | Min: {self.MIN_FLUSH_TICKS}")
+            logger.warning(f"  Velocity: {velocity:.2f} ticks/bar | Min: {self.MIN_VELOCITY_TICKS_PER_BAR}")
+            logger.warning(f"  Distance from high: {distance_from_high:.1f} ticks | Max: {self.NEAR_EXTREME_TICKS}")
+            logger.warning(f"  RSI: {rsi:.1f} | Min: {self.RSI_OVERBOUGHT_EXTREME}" if rsi else "  RSI: N/A")
+            logger.warning(f"  Volume ratio: {current_volume / avg_volume_20 if avg_volume_20 > 0 else 0:.2f}x | Min: {self.VOLUME_SPIKE_THRESHOLD}x")
+            logger.warning(f"  VWAP: {vwap:.2f} | Current: {current_price:.2f}")
+            logger.warning(f"  Regime: {regime}")
+            logger.warning(f"  FAILED: {', '.join(failed)}")
+            logger.warning("=" * 60)
+            details["failed_conditions"] = failed
+            details["reason"] = f"Near miss - failed: {', '.join(failed)}"
         else:
             # Find which conditions failed
             failed = [k for k, v in conditions.items() if not v]

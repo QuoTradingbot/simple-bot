@@ -3099,14 +3099,19 @@ def check_long_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
     rsi = state[symbol]["rsi"]
     current_regime = state[symbol].get("current_regime", "NORMAL")
     
+    # DIAGNOSTIC: Track how many times we reach this function
+    state[symbol]["signal_check_attempts"] = state[symbol].get("signal_check_attempts", 0) + 1
+    
     # CRITICAL: VWAP is required for capitulation strategy (it's the target)
     if vwap is None or vwap <= 0:
         logger.debug("Long rejected - VWAP not available (required for mean reversion target)")
+        state[symbol]["vwap_missing_count"] = state[symbol].get("vwap_missing_count", 0) + 1
         return False
     
     # Need at least 10 bars for flush detection
     if len(bars) < 10:
         logger.debug("Long rejected - insufficient bars for flush detection")
+        state[symbol]["insufficient_bars_count"] = state[symbol].get("insufficient_bars_count", 0) + 1
         return False
     
     # Calculate 20-bar average volume

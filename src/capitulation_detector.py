@@ -13,22 +13,22 @@ LONG SIGNAL CONDITIONS (AFTER FLUSH DOWN) - ALL 9 MUST BE TRUE:
 2. Flush Was Fast - Velocity >= 2 ticks per bar (relaxed from 3)
 3. We Are Near The Bottom - Within 8 ticks of flush low (relaxed from 5)
 4. RSI Is Oversold - RSI < 35 (relaxed from 25)
-5. Volume Spiked - Current volume >= 1.5x 20-bar average (relaxed from 2x)
+5. Volume Spiked - Current volume >= 1.2x 20-bar average (relaxed from 2x)
 6. Flush Stopped Making New Lows - Current bar low >= previous bar low
 7. Reversal Candle - Current bar closes green (close > open)
 8. Price Is Below VWAP - Current close < VWAP
-9. Regime Allows Trading - ALL regimes allowed (no regime filtering)
+9. Regime Allows Trading - HIGH_VOL or NORMAL regimes (expanded)
 
 SHORT SIGNAL CONDITIONS (AFTER FLUSH UP) - ALL 9 MUST BE TRUE:
 1. Pump Happened - Range of last 7 bars >= 12 ticks (relaxed from 20)
 2. Pump Was Fast - Velocity >= 2 ticks per bar (relaxed from 3)
 3. We Are Near The Top - Within 8 ticks of flush high (relaxed from 5)
 4. RSI Is Overbought - RSI > 65 (relaxed from 75)
-5. Volume Spiked - Current volume >= 1.5x 20-bar average (relaxed from 2x)
+5. Volume Spiked - Current volume >= 1.2x 20-bar average (relaxed from 2x)
 6. Pump Stopped Making New Highs - Current bar high <= previous bar high
 7. Reversal Candle - Current bar closes red (close < open)
 8. Price Is Above VWAP - Current close > VWAP
-9. Regime Allows Trading - ALL regimes allowed (no regime filtering)
+9. Regime Allows Trading - HIGH_VOL or NORMAL regimes (expanded)
 
 STOP LOSS:
 - Long: 2 ticks below flush low
@@ -159,7 +159,7 @@ class CapitulationDetector:
         else:
             conditions["4_rsi_oversold"] = False
         
-        # CONDITION 5: Volume Spiked (current volume >= 2x 20-bar average)
+        # CONDITION 5: Volume Spiked (current volume >= 1.2x 20-bar average)
         current_volume = current_bar.get("volume", 0)
         conditions["5_volume_spike"] = current_volume >= (avg_volume_20 * self.VOLUME_SPIKE_THRESHOLD)
         
@@ -173,13 +173,8 @@ class CapitulationDetector:
         conditions["8_below_vwap"] = current_price < vwap
         
         # CONDITION 9: Regime Allows Trading - RELAXED to allow more regimes
-        # Now allows NORMAL and LOW_VOL regimes too, to catch daily reversals
-        # Note: Other conditions (flush, velocity, volume spike) already filter quality
-        tradeable_regimes = {
-            "HIGH_VOL_TRENDING", "HIGH_VOL_CHOPPY", 
-            "NORMAL_TRENDING", "NORMAL_CHOPPY", "NORMAL",
-            "LOW_VOL_TRENDING", "LOW_VOL_RANGING"  # Added: Allow low vol regimes
-        }
+        # Now allows NORMAL regimes too, to catch daily reversals
+        tradeable_regimes = {"HIGH_VOL_TRENDING", "HIGH_VOL_CHOPPY", "NORMAL_TRENDING", "NORMAL_CHOPPY", "NORMAL"}
         conditions["9_regime_allows"] = regime in tradeable_regimes
         
         # ALL 9 CONDITIONS MUST BE TRUE
@@ -305,7 +300,7 @@ class CapitulationDetector:
         else:
             conditions["4_rsi_overbought"] = False
         
-        # CONDITION 5: Volume Spiked (current volume >= 2x 20-bar average)
+        # CONDITION 5: Volume Spiked (current volume >= 1.2x 20-bar average)
         current_volume = current_bar.get("volume", 0)
         conditions["5_volume_spike"] = current_volume >= (avg_volume_20 * self.VOLUME_SPIKE_THRESHOLD)
         
@@ -319,13 +314,8 @@ class CapitulationDetector:
         conditions["8_above_vwap"] = current_price > vwap
         
         # CONDITION 9: Regime Allows Trading - RELAXED to allow more regimes
-        # Now allows NORMAL and LOW_VOL regimes too, to catch daily reversals
-        # Note: Other conditions (flush, velocity, volume spike) already filter quality
-        tradeable_regimes = {
-            "HIGH_VOL_TRENDING", "HIGH_VOL_CHOPPY", 
-            "NORMAL_TRENDING", "NORMAL_CHOPPY", "NORMAL",
-            "LOW_VOL_TRENDING", "LOW_VOL_RANGING"  # Added: Allow low vol regimes
-        }
+        # Now allows NORMAL regimes too, to catch daily reversals
+        tradeable_regimes = {"HIGH_VOL_TRENDING", "HIGH_VOL_CHOPPY", "NORMAL_TRENDING", "NORMAL_CHOPPY", "NORMAL"}
         conditions["9_regime_allows"] = regime in tradeable_regimes
         
         # ALL 9 CONDITIONS MUST BE TRUE

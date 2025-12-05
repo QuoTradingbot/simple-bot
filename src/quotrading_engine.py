@@ -3116,7 +3116,7 @@ def check_long_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
     6. Flush Stopped Making New Lows - Current bar low >= previous bar low
     7. Reversal Candle - Current bar closes green (close > open)
     8. Price Is Below VWAP - Current close < VWAP
-    9. Regime Allows Trading - ALL regimes allowed (no regime filtering)
+    9. Regime Allows Trading - HIGH_VOL_TRENDING or HIGH_VOL_CHOPPY
     
     Args:
         symbol: Instrument symbol
@@ -3195,7 +3195,7 @@ def check_short_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
     6. Pump Stopped Making New Highs - Current bar high <= previous bar high
     7. Reversal Candle - Current bar closes red (close < open)
     8. Price Is Above VWAP - Current close > VWAP
-    9. Regime Allows Trading - ALL regimes allowed (no regime filtering)
+    9. Regime Allows Trading - HIGH_VOL_TRENDING or HIGH_VOL_CHOPPY
     
     Args:
         symbol: Instrument symbol

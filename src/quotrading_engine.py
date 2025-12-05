@@ -3542,11 +3542,19 @@ def check_for_signals(symbol: str) -> None:
         price = current_bar["close"]
         logger.info(f"📊 Bot active | Price: ${price:.2f} | Scanning for entry signals...")
     
+    # DIAGNOSTIC: Log signal condition checks periodically (every 30 bars = ~30 minutes)
+    # This helps users understand why signals aren't being generated
+    diagnostic_counter = state[symbol].get("diagnostic_counter", 0) + 1
+    state[symbol]["diagnostic_counter"] = diagnostic_counter
+    should_log_diagnostic = (diagnostic_counter % 30 == 0)
+    
     # Declare global RL brain for both signal checks
     global rl_brain
     
     # Check for long signal
-    if check_long_signal_conditions(symbol, prev_bar, current_bar):
+    long_passed = check_long_signal_conditions(symbol, prev_bar, current_bar)
+    if long_passed:
+    if long_passed:
         # MARKET STATE CAPTURE - Record comprehensive market conditions
         # Capture current market state (flat structure with all 16 indicators)
         market_state = capture_market_state(symbol, current_bar["close"])
@@ -3581,9 +3589,17 @@ def check_for_signals(symbol: str) -> None:
         
         execute_entry(symbol, "long", current_bar["close"])
         return
+    elif should_log_diagnostic:
+        # Log why long signal didn't trigger (every 30 bars)
+        entry_details = state[symbol].get("entry_details", {})
+        failed_conditions = entry_details.get("failed_conditions", [])
+        if failed_conditions:
+            logger.info(f"💡 Long signal check - conditions not met: {', '.join(failed_conditions)}")
     
     # Check for short signal
-    if check_short_signal_conditions(symbol, prev_bar, current_bar):
+    short_passed = check_short_signal_conditions(symbol, prev_bar, current_bar)
+    if short_passed:
+    if short_passed:
         # MARKET STATE CAPTURE - Record comprehensive market conditions
         # Capture current market state (flat structure with all 16 indicators)
         market_state = capture_market_state(symbol, current_bar["close"])
@@ -3618,6 +3634,12 @@ def check_for_signals(symbol: str) -> None:
         
         execute_entry(symbol, "short", current_bar["close"])
         return
+    elif should_log_diagnostic:
+        # Log why short signal didn't trigger (every 30 bars)
+        entry_details = state[symbol].get("entry_details", {})
+        failed_conditions = entry_details.get("failed_conditions", [])
+        if failed_conditions:
+            logger.info(f"💡 Short signal check - conditions not met: {', '.join(failed_conditions)}")
 
 
 # ============================================================================

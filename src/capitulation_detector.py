@@ -242,7 +242,7 @@ class CapitulationDetector:
             if passed_count >= 8:
                 print(f"⚠️ Near-miss LONG: {passed_count}/9 passed. Failed: {', '.join(failed)}")
                 print(f"   Bar: close={current_bar['close']:.2f}, open={current_bar['open']:.2f}, vol={current_volume:.0f}")
-                print(f"   Flush: {flush_range_ticks:.1f}t (need {self.MIN_FLUSH_TICKS}+), vel={velocity:.2f} (need {self.MIN_VELOCITY}+)")
+                print(f"   Flush: {flush_range_ticks:.1f}t (need {self.MIN_FLUSH_TICKS}+), vel={velocity:.2f} (need {self.MIN_VELOCITY_TICKS_PER_BAR}+)")
                 print(f"   RSI: {rsi:.1f if rsi is not None else 'N/A'} (need <{self.RSI_OVERSOLD_EXTREME})")
                 print(f"   Volume: {current_volume:.0f} vs avg={avg_volume_20:.0f} (need {current_volume}/{avg_volume_20:.0f} >= {self.VOLUME_SPIKE_THRESHOLD})")
                 print(f"   Distance from low: {distance_from_low:.1f}t (need <={self.NEAR_EXTREME_TICKS})")

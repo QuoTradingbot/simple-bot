@@ -678,6 +678,15 @@ def _load_config_from_json(config: BotConfiguration) -> BotConfiguration:
             if 'symbols' in json_config and json_config['symbols']:
                 config.instrument = json_config['symbols'][0]
                 config.instruments = json_config['symbols']
+            
+            # Handle GUI confidence_threshold field (percentage) -> rl_confidence_threshold (decimal)
+            # GUI saves as percentage (0-100), bot expects decimal (0-1)
+            if 'confidence_threshold' in json_config:
+                threshold = json_config['confidence_threshold']
+                # Convert percentage to decimal if > 1.0
+                if threshold > 1.0:
+                    threshold = threshold / 100.0
+                config.rl_confidence_threshold = threshold
     
     return config
 

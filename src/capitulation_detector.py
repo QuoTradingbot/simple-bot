@@ -224,6 +224,10 @@ class CapitulationDetector:
             failed = [k for k, v in conditions.items() if not v]
             details["failed_conditions"] = failed
             details["reason"] = f"Failed conditions: {', '.join(failed)}"
+            # DEBUG: Periodic sampling of failures to see what's failing
+            import random
+            if random.random() < 0.002:  # 0.2% sample
+                print(f"❌ Long failed ({len(failed)}/9): {', '.join(failed[:4])}")
         
         return all_passed, details
     

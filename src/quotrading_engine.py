@@ -3559,13 +3559,17 @@ def check_for_signals(symbol: str) -> None:
     global rl_brain
     
     # Check for long signal
+    print(f"Checking long signal...")  # DEBUG
     long_passed = check_long_signal_conditions(symbol, prev_bar, current_bar)
+    print(f"Long passed: {long_passed}")  # DEBUG
     if long_passed:
+        print(f"✅ LONG SIGNAL CONDITIONS MET!")  # DEBUG
         # MARKET STATE CAPTURE - Record comprehensive market conditions
         # Capture current market state (flat structure with all 16 indicators)
         market_state = capture_market_state(symbol, current_bar["close"])
         
         # DEBUG: Log market state to diagnose why pattern matching may fail
+        print(f"🔍 SIGNAL GENERATED: flush_dir={market_state.get('flush_direction')}, size={market_state.get('flush_size_ticks'):.1f}t")
         logger.info(f"🔍 [MARKET STATE] Long - flush_dir={market_state.get('flush_direction')}, "
                     f"size={market_state.get('flush_size_ticks'):.1f}t, "
                     f"vel={market_state.get('flush_velocity'):.2f}, "
@@ -3574,6 +3578,8 @@ def check_for_signals(symbol: str) -> None:
         # Ask cloud RL API for decision (or local RL as fallback)
         # Market state has all fields needed: rsi, vwap_distance, atr, volume_ratio, etc.
         take_signal, confidence, reason = get_ml_confidence(market_state, "long")
+        
+        print(f"🔍 AI DECISION: take={take_signal}, conf={confidence:.1%}, reason={reason}")
         
         if not take_signal:
             # Show rejected signals in both live mode and shadow mode

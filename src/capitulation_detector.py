@@ -9,26 +9,26 @@ of exhaustion. You wait for proof that the move is losing momentum, then
 enter in the opposite direction to ride the snapback.
 
 LONG SIGNAL CONDITIONS (AFTER FLUSH DOWN) - ALL 9 MUST BE TRUE:
-1. Flush Happened - Range of last 7 bars >= 12 ticks (relaxed from 20)
-2. Flush Was Fast - Velocity >= 2 ticks per bar (relaxed from 3)
-3. We Are Near The Bottom - Within 8 ticks of flush low (relaxed from 5)
-4. RSI Is Oversold - RSI < 35 (relaxed from 25)
-5. Volume Spiked - Current volume >= 1.2x 20-bar average (relaxed from 2x)
+1. Flush Happened - Range of last 7 bars >= 8 ticks (2.0 points)
+2. Flush Was Fast - Velocity >= 1.5 ticks per bar minimum speed
+3. We Are Near The Bottom - Within 12 ticks (3 points) of flush low
+4. RSI Is Oversold - RSI < 45
+5. Volume Spiked - Current volume >= 1.2x 20-bar average
 6. Flush Stopped Making New Lows - Current bar low >= previous bar low
 7. Reversal Candle - Current bar closes green (close > open)
 8. Price Is Below VWAP - Current close < VWAP
-9. Regime Allows Trading - HIGH_VOL or NORMAL regimes (expanded)
+9. Regime Allows Trading - HIGH_VOL or NORMAL regimes (blocks LOW_VOL)
 
 SHORT SIGNAL CONDITIONS (AFTER FLUSH UP) - ALL 9 MUST BE TRUE:
-1. Pump Happened - Range of last 7 bars >= 12 ticks (relaxed from 20)
-2. Pump Was Fast - Velocity >= 2 ticks per bar (relaxed from 3)
-3. We Are Near The Top - Within 8 ticks of flush high (relaxed from 5)
-4. RSI Is Overbought - RSI > 65 (relaxed from 75)
-5. Volume Spiked - Current volume >= 1.2x 20-bar average (relaxed from 2x)
+1. Pump Happened - Range of last 7 bars >= 8 ticks (2.0 points)
+2. Pump Was Fast - Velocity >= 1.5 ticks per bar minimum speed
+3. We Are Near The Top - Within 12 ticks (3 points) of flush high
+4. RSI Is Overbought - RSI > 55
+5. Volume Spiked - Current volume >= 1.2x 20-bar average
 6. Pump Stopped Making New Highs - Current bar high <= previous bar high
 7. Reversal Candle - Current bar closes red (close < open)
 8. Price Is Above VWAP - Current close > VWAP
-9. Regime Allows Trading - HIGH_VOL or NORMAL regimes (expanded)
+9. Regime Allows Trading - HIGH_VOL or NORMAL regimes (blocks LOW_VOL)
 
 STOP LOSS:
 - Long: 2 ticks below flush low

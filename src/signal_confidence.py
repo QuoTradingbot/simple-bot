@@ -234,6 +234,9 @@ class SignalConfidenceRL:
         threshold_source = "User" if self.user_threshold is not None else "Learned"
         logger.info(f"[RL Confidence] Signal confidence: {confidence:.1%} vs threshold {optimal_threshold:.1%} ({threshold_source}) - {reason}")
         
+        # Print for diagnostics
+        print(f"[RL Decision Check] Confidence {confidence*100:.1f}% vs Threshold {optimal_threshold*100:.1f}% = {'PASS' if take else 'FAIL'}")
+        
         # Exploration: Give rejected signals a chance to be taken
         # This allows the system to learn from signals it would normally skip
         if not take and random.random() < effective_exploration:
@@ -242,6 +245,7 @@ class SignalConfidenceRL:
             reason = f"Exploring ({effective_exploration*100:.0f}% chance for rejected signals, {len(self.experiences)} exp) | Threshold: {optimal_threshold:.1%} ({threshold_source})"
             self.signals_taken += 1
             logger.info(f"[RL Decision] EXPLORATION TRADE TAKEN - {reason}")
+            print(f"[RL Decision] ✅ EXPLORATION TRADE (was rejected but exploring)")
             return take, confidence, reason
         
         # Normal behavior: use threshold decision
@@ -249,10 +253,12 @@ class SignalConfidenceRL:
             self.signals_taken += 1
             reason += f" APPROVED ({confidence:.1%} > {optimal_threshold:.1%})"
             logger.info(f"[RL Decision] ✅ SIGNAL APPROVED - {reason}")
+            print(f"[RL Decision] ✅ TRADE APPROVED (confidence > threshold)")
         else:
             self.signals_skipped += 1
             reason += f" REJECTED ({confidence:.1%} < {optimal_threshold:.1%})"
             logger.info(f"[RL Decision] ❌ SIGNAL REJECTED - {reason}")
+            print(f"[RL Decision] ❌ TRADE REJECTED (confidence < threshold)")
         
         # Decay exploration over time
         self.exploration_rate = max(self.min_exploration, 
@@ -295,6 +301,8 @@ class SignalConfidenceRL:
                         f"velocity={current_state.get('flush_velocity')}, "
                         f"rsi={current_state.get('rsi')}, "
                         f"regime={current_state.get('regime')}")
+            # Print to console for diagnostics
+            print(f"[RL Confidence] 35.0% (DEFAULT) - No similar trades found despite {len(self.experiences)} experiences")
             return 0.35, "No similar situations - safety default"
         
         # Step 2: Calculate metrics from similar trades
@@ -323,6 +331,9 @@ class SignalConfidenceRL:
         
         reason = f"{len(similar)} similar: {win_rate*100:.0f}% WR, ${avg_profit:.0f} avg"
         logger.debug(f"[RL] Calculated confidence: {confidence:.1%} - {reason}")
+        
+        # Print to console for diagnostics (shows in backtest)
+        print(f"[RL Confidence] {confidence*100:.1f}% - {reason}")
         
         return confidence, reason
     

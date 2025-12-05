@@ -228,7 +228,8 @@ class CapitulationDetector:
             passed_count = 9 - len(failed)
             if passed_count >= 8:
                 logger.info(f"🎯 CLOSE TO LONG SIGNAL! {passed_count}/9 passed. Failed: {', '.join(failed)}")
-                logger.info(f"   flush={flush_range_ticks:.1f}t, vel={velocity:.2f}, rsi={rsi:.1f}, vol={current_volume:.0f} (avg={avg_volume_20:.0f})")
+                rsi_str = f"{rsi:.1f}" if rsi is not None else "N/A"
+                logger.info(f"   flush={flush_range_ticks:.1f}t, vel={velocity:.2f}, rsi={rsi_str}, vol={current_volume:.0f} (avg={avg_volume_20:.0f})")
             # DEBUG: Periodic sampling of failures to see what's failing
             import random
             if random.random() < 0.002:  # 0.2% sample
@@ -354,7 +355,8 @@ class CapitulationDetector:
             passed_count = 9 - len(failed)
             if passed_count >= 8:
                 logger.info(f"🎯 CLOSE TO SHORT SIGNAL! {passed_count}/9 passed. Failed: {', '.join(failed)}")
-                logger.info(f"   pump={flush_range_ticks:.1f}t, vel={velocity:.2f}, rsi={rsi:.1f}, vol={current_volume:.0f} (avg={avg_volume_20:.0f})")
+                rsi_str = f"{rsi:.1f}" if rsi is not None else "N/A"
+                logger.info(f"   pump={flush_range_ticks:.1f}t, vel={velocity:.2f}, rsi={rsi_str}, vol={current_volume:.0f} (avg={avg_volume_20:.0f})")
         
         return all_passed, details
     

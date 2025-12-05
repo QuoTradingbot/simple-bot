@@ -3565,6 +3565,12 @@ def check_for_signals(symbol: str) -> None:
         # Capture current market state (flat structure with all 16 indicators)
         market_state = capture_market_state(symbol, current_bar["close"])
         
+        # DEBUG: Log market state to diagnose why pattern matching may fail
+        logger.debug(f"[MARKET STATE] Long - flush_dir={market_state.get('flush_direction')}, "
+                    f"size={market_state.get('flush_size_ticks'):.1f}t, "
+                    f"vel={market_state.get('flush_velocity'):.2f}, "
+                    f"rsi={market_state.get('rsi'):.1f}")
+        
         # Ask cloud RL API for decision (or local RL as fallback)
         # Market state has all fields needed: rsi, vwap_distance, atr, volume_ratio, etc.
         take_signal, confidence, reason = get_ml_confidence(market_state, "long")
@@ -3608,6 +3614,12 @@ def check_for_signals(symbol: str) -> None:
         # MARKET STATE CAPTURE - Record comprehensive market conditions
         # Capture current market state (flat structure with all 16 indicators)
         market_state = capture_market_state(symbol, current_bar["close"])
+        
+        # DEBUG: Log market state to diagnose why pattern matching may fail
+        logger.debug(f"[MARKET STATE] Short - flush_dir={market_state.get('flush_direction')}, "
+                    f"size={market_state.get('flush_size_ticks'):.1f}t, "
+                    f"vel={market_state.get('flush_velocity'):.2f}, "
+                    f"rsi={market_state.get('rsi'):.1f}")
         
         # Ask cloud RL API for decision (or local RL as fallback)
         # Market state has all fields needed: rsi, vwap_distance, atr, volume_ratio, etc.

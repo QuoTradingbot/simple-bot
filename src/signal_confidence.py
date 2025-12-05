@@ -277,28 +277,19 @@ class SignalConfidenceRL:
         """
         # Need at least 10 experiences before using them for decisions
         if len(self.experiences) < 10:
-            # Use user's threshold as safety default (if they set 40%, default to 40%)
-            # This prevents blocking trades when learning is just starting
-            safety_confidence = self.user_threshold if self.user_threshold else 0.35
-            logger.debug(f"[RL] Limited experience: {len(self.experiences)}/10 required - using threshold {safety_confidence:.0%}")
-            return safety_confidence, f"Limited experience ({len(self.experiences)} trades) - using threshold"
+            logger.debug(f"[RL] Limited experience: {len(self.experiences)}/10 required - using safety default 35%")
+            return 0.35, f"Limited experience ({len(self.experiences)} trades) - safety default"
         
         # Step 1: Find 10 most similar past trades
         similar = self.find_similar_states(current_state, max_results=10)
         
         if not similar:
-            # CRITICAL FIX: When no similar trades found, use user's threshold as default
-            # This prevents blocking ALL trades when pattern matching is too strict
-            # User has set their risk tolerance via threshold - respect it
-            safety_confidence = self.user_threshold if self.user_threshold else 0.35
-            logger.warning(f"[RL] No similar trades found despite {len(self.experiences)} experiences")
-            logger.warning(f"[RL] Pattern matching may be too strict - using threshold {safety_confidence:.0%} as default")
-            logger.warning(f"[RL] User threshold={self.user_threshold}, backtest_mode={self.backtest_mode}")
+            logger.warning(f"[RL] No similar trades found despite {len(self.experiences)} experiences - pattern matching may be too strict")
             logger.debug(f"[RL] Current state: flush_size={current_state.get('flush_size_ticks')}, "
                         f"velocity={current_state.get('flush_velocity')}, "
                         f"rsi={current_state.get('rsi')}, "
                         f"regime={current_state.get('regime')}")
-            return safety_confidence, "No similar situations - using threshold as default"
+            return 0.35, "No similar situations - safety default"
         
         # Step 2: Calculate metrics from similar trades
         # Win Rate = Winners / Total
@@ -380,21 +371,17 @@ class SignalConfidenceRL:
             
             # Calculate distance for each feature (normalized to 0-1 range)
             # Lower score = more similar
-            # RELAXED NORMALIZATION: More lenient matching to find similar trades
             
             # === PRIMARY FLUSH SIGNALS (50% total) ===
             
-            # Flush Size (20%) - Normalize by dividing difference by 100 (was 50)
-            # Allow bigger difference in flush size
-            flush_size_diff = abs(current.get('flush_size_ticks', 0) - past.get('flush_size_ticks', 0)) / 100.0
+            # Flush Size (20%) - Normalize by dividing difference by 50
+            flush_size_diff = abs(current.get('flush_size_ticks', 0) - past.get('flush_size_ticks', 0)) / 50.0
             
-            # Velocity (15%) - Normalize by dividing difference by 20 (was 10)  
-            # Allow bigger difference in velocity
-            flush_velocity_diff = abs(current.get('flush_velocity', 0) - past.get('flush_velocity', 0)) / 20.0
+            # Velocity (15%) - Normalize by dividing difference by 10
+            flush_velocity_diff = abs(current.get('flush_velocity', 0) - past.get('flush_velocity', 0)) / 10.0
             
-            # Volume Climax (10%) - Normalize by dividing difference by 5 (was 3)
-            # Allow bigger difference in volume
-            volume_climax_diff = abs(current.get('volume_climax_ratio', 1) - past.get('volume_climax_ratio', 1)) / 5.0
+            # Volume Climax (10%) - Normalize by dividing difference by 3
+            volume_climax_diff = abs(current.get('volume_climax_ratio', 1) - past.get('volume_climax_ratio', 1)) / 3.0
             
             # Flush Direction (5%) - Score 0 if match, score 1 if different
             flush_direction_match = 0.0 if current.get('flush_direction', 'NEUTRAL') == past.get('flush_direction', 'NEUTRAL') else 1.0
@@ -404,9 +391,8 @@ class SignalConfidenceRL:
             # RSI (8%) - Normalize by dividing difference by 100
             rsi_diff = abs(current.get('rsi', 50) - past.get('rsi', 50)) / 100.0
             
-            # Distance From Flush Low (7%) - Normalize by dividing difference by 40 (was 20)
-            # Allow bigger difference in distance from extreme
-            distance_from_low_diff = abs(current.get('distance_from_flush_low', 0) - past.get('distance_from_flush_low', 0)) / 40.0
+            # Distance From Flush Low (7%) - Normalize by dividing difference by 20
+            distance_from_low_diff = abs(current.get('distance_from_flush_low', 0) - past.get('distance_from_flush_low', 0)) / 20.0
             
             # Reversal Candle (5%) - Score 0 if both match, score 1 if different
             reversal_candle_match = 0.0 if current.get('reversal_candle', False) == past.get('reversal_candle', False) else 1.0
@@ -416,9 +402,8 @@ class SignalConfidenceRL:
             
             # === MARKET CONTEXT (15% total) ===
             
-            # VWAP Distance (8%) - Normalize by dividing absolute difference by 200 (was 100)
-            # Allow much bigger difference in VWAP distance
-            vwap_distance_diff = abs(current.get('vwap_distance_ticks', 0) - past.get('vwap_distance_ticks', 0)) / 200.0
+            # VWAP Distance (8%) - Normalize by dividing absolute difference by 100
+            vwap_distance_diff = abs(current.get('vwap_distance_ticks', 0) - past.get('vwap_distance_ticks', 0)) / 100.0
             
             # Regime Match (7%) - Score 0 if regimes match, score 1 if different
             regime_match = 0.0 if current.get('regime', 'NORMAL') == past.get('regime', 'NORMAL') else 1.0

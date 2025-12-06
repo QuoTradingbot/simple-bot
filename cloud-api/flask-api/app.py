@@ -2955,7 +2955,8 @@ def admin_add_user():
                 "license_key": license_key,
                 "account_id": account_id,
                 "email": email,
-                "expiration": expiration.isoformat()
+                "expires_at": expiration.isoformat(),
+                "expiration": expiration.isoformat()  # Keep for backward compatibility
             }), 201
     except Exception as e:
         logging.error(f"Add user error: {e}")

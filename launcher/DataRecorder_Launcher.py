@@ -40,6 +40,9 @@ src_path = Path(__file__).parent.parent / "src"
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 
+# Configuration constants
+RECORDER_CLEANUP_DELAY_SECONDS = 1  # Time to wait for recorder cleanup before exit
+
 
 class DataRecorderLauncher:
     """GUI launcher for market data recording."""
@@ -479,7 +482,7 @@ class DataRecorderLauncher:
                 "Recording is still in progress. Stop recording and exit?"
             ):
                 self.stop_recording()
-                time.sleep(1)  # Give recorder time to clean up
+                time.sleep(RECORDER_CLEANUP_DELAY_SECONDS)  # Give recorder time to clean up
                 self.root.destroy()
         else:
             self.root.destroy()

@@ -39,6 +39,10 @@ except ImportError as e:
 
 logger = logging.getLogger(__name__)
 
+# Configuration constants
+CSV_FLUSH_FREQUENCY = 100  # Flush CSV file every N records
+STATS_REPORT_INTERVAL_SECONDS = 10  # Report statistics every N seconds
+
 
 class MarketDataRecorder:
     """Records live market data to CSV for backtesting."""
@@ -89,6 +93,10 @@ class MarketDataRecorder:
         
         # Contract ID mapping (symbol -> contract_id)
         self.contract_ids = {}
+    
+    def _get_current_timestamp(self) -> str:
+        """Get current timestamp in ISO format."""
+        return datetime.now().isoformat()
     
     def log(self, message: str):
         """Log message to callback and logger."""
@@ -251,8 +259,8 @@ class MarketDataRecorder:
                 ]
                 self.csv_writer.writerow(row)
                 
-                # Flush every 100 records to ensure data is written
-                if sum(self.stats[data['symbol']].values()) % 100 == 0:
+                # Flush periodically to ensure data is written
+                if sum(self.stats[data['symbol']].values()) % CSV_FLUSH_FREQUENCY == 0:
                     self.csv_file.flush()
     
     def _on_quote(self, symbol: str, data: Any):
@@ -263,7 +271,7 @@ class MarketDataRecorder:
         try:
             # Extract quote data
             # Data structure may vary by broker, adjust as needed
-            timestamp = datetime.now().isoformat()
+            timestamp = self._get_current_timestamp()
             
             # Try to extract bid/ask from data object
             bid_price = getattr(data, 'bid_price', None) or getattr(data, 'Bid', None)
@@ -301,7 +309,7 @@ class MarketDataRecorder:
             return
         
         try:
-            timestamp = datetime.now().isoformat()
+            timestamp = self._get_current_timestamp()
             
             # Try to extract trade data
             trade_price = getattr(data, 'price', None) or getattr(data, 'Price', None)
@@ -336,7 +344,7 @@ class MarketDataRecorder:
             return
         
         try:
-            timestamp = datetime.now().isoformat()
+            timestamp = self._get_current_timestamp()
             
             # Market depth is typically an array of price levels
             # Data structure may vary by broker
@@ -371,7 +379,7 @@ class MarketDataRecorder:
         """Start background thread to report statistics."""
         def report_stats():
             while self.is_recording:
-                time.sleep(10)  # Report every 10 seconds
+                time.sleep(STATS_REPORT_INTERVAL_SECONDS)
                 if self.is_recording:
                     total_quotes = sum(s['quotes'] for s in self.stats.values())
                     total_trades = sum(s['trades'] for s in self.stats.values())

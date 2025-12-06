@@ -8,7 +8,10 @@ recorded by the Market Data Recorder for backtesting purposes.
 
 import csv
 from datetime import datetime
-from typing import List, Dict
+from typing import Dict, List, Any, Optional, Callable
+
+# Configuration constants
+TIMESTAMP_DISPLAY_LENGTH = 19  # Length of timestamp to display (YYYY-MM-DD HH:MM:SS)
 
 
 def load_market_data(csv_file: str, symbol: str = None) -> List[Dict]:
@@ -97,7 +100,8 @@ def analyze_market_data(csv_file: str, symbol: str):
         # Show first few quotes
         print("\n  First 3 quotes:")
         for i, q in enumerate(quotes[:3]):
-            print(f"    {i+1}. {q['timestamp'][:19]} - Bid: {q['bid_price']} ({q['bid_size']}) | Ask: {q['ask_price']} ({q['ask_size']})")
+            ts = q['timestamp'][:TIMESTAMP_DISPLAY_LENGTH]
+            print(f"    {i+1}. {ts} - Bid: {q['bid_price']} ({q['bid_size']}) | Ask: {q['ask_price']} ({q['ask_size']})")
     
     print()
     
@@ -118,7 +122,8 @@ def analyze_market_data(csv_file: str, symbol: str):
         # Show first few trades
         print("\n  First 3 trades:")
         for i, t in enumerate(trades[:3]):
-            print(f"    {i+1}. {t['timestamp'][:19]} - {t['trade_side'].upper()} {t['trade_size']} @ {t['trade_price']}")
+            ts = t['timestamp'][:TIMESTAMP_DISPLAY_LENGTH]
+            print(f"    {i+1}. {ts} - {t['trade_side'].upper()} {t['trade_size']} @ {t['trade_price']}")
     
     print()
     

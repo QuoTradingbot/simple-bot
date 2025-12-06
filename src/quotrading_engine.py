@@ -528,6 +528,9 @@ cloud_api_client: Optional[CloudAPIClient] = None
 # Global bid/ask manager
 bid_ask_manager: Optional[BidAskManager] = None
 
+# Global shutdown flag - when True, suppress all non-essential logging
+_shutdown_in_progress = False
+
 # Global trading symbol for multi-symbol session support
 # Set early in main() and used by session-related functions
 # Note: Each bot process runs independently with its own symbol (not thread-shared)
@@ -3048,12 +3051,37 @@ def validate_signal_requirements(symbol: str, bar_time: datetime) -> Tuple[bool,
     
     # Check bid/ask spread and market condition (Phase: Bid/Ask Strategy)
     # SKIP IN BACKTEST MODE - historical data doesn't have bid/ask spreads
+    # NOTE: Bid/ask validation is OPTIONAL - the bot uses market orders for entry
+    # Bid/ask is only used for exit optimization (collecting spread), not required for trading
     if bid_ask_manager is not None and not is_backtest_mode():
-        # Validate spread (Requirement 8)
+        # Validate spread (Requirement 8) - but don't block signals if unavailable
+        # Market orders work fine without bid/ask quotes
         is_acceptable, spread_reason = bid_ask_manager.validate_entry_spread(symbol)
         if not is_acceptable:
-            pass  # Silent - spread check (internal filter)
-            return False, spread_reason
+            # Log spread validation failures periodically to help diagnose issues
+            spread_fail_counter = state[symbol].get("spread_fail_counter", 0) + 1
+            state[symbol]["spread_fail_counter"] = spread_fail_counter
+            
+            # Log first few failures and then every 30 bars
+            if spread_fail_counter <= 5 or spread_fail_counter % 30 == 0:
+                # Only block if spread is too wide (quality issue)
+                # Don't block if quotes are missing (broker issue - market orders still work)
+                if "No bid/ask quote" in spread_reason:
+                    logger.warning(f"⚠️  Bid/ask quotes unavailable: {spread_reason}")
+                    logger.warning(f"   Bot will use market orders (no spread optimization on exits)")
+                    logger.warning(f"   Quote feed issue - check broker adapter or on_quote() calls")
+                    # Don't block signals - market orders work without quotes
+                    pass
+                else:
+                    # Spread is too wide - this is a quality issue, should block
+                    logger.info(f"⚠️  Signal blocked by spread validation: {spread_reason}")
+                    return False, spread_reason
+            elif "No bid/ask quote" not in spread_reason:
+                # Spread quality issue - block the signal
+                return False, spread_reason
+        else:
+            # Reset counter on success
+            state[symbol]["spread_fail_counter"] = 0
         
         # Classify market condition (Requirement 11)
         try:
@@ -3121,7 +3149,12 @@ def check_long_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
         recent_volumes = [bar.get("volume", 0) for bar in list(bars)[-20:]]
         avg_volume_20 = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 1
     else:
-        avg_volume_20 = current_bar.get("volume", 1)
+        # If less than 20 bars, use available bars for average (not current bar)
+        if len(bars) > 0:
+            recent_volumes = [bar.get("volume", 0) for bar in list(bars)]
+            avg_volume_20 = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 1
+        else:
+            avg_volume_20 = 1
     
     # Get capitulation detector
     tick_size = CONFIG.get("tick_size", 0.25)
@@ -3200,7 +3233,12 @@ def check_short_signal_conditions(symbol: str, prev_bar: Dict[str, Any],
         recent_volumes = [bar.get("volume", 0) for bar in list(bars)[-20:]]
         avg_volume_20 = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 1
     else:
-        avg_volume_20 = current_bar.get("volume", 1)
+        # If less than 20 bars, use available bars for average (not current bar)
+        if len(bars) > 0:
+            recent_volumes = [bar.get("volume", 0) for bar in list(bars)]
+            avg_volume_20 = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 1
+        else:
+            avg_volume_20 = 1
     
     # Get capitulation detector
     tick_size = CONFIG.get("tick_size", 0.25)
@@ -3624,11 +3662,26 @@ def check_for_signals(symbol: str) -> None:
         execute_entry(symbol, "long", current_bar["close"])
         return
     elif should_log_diagnostic:
-        # Log why long signal didn't trigger (every 30 bars)
-        entry_details = state[symbol].get("entry_details", {})
-        failed_conditions = entry_details.get("failed_conditions", [])
-        if failed_conditions:
-            logger.info(f"💡 Long signal check - conditions not met: {', '.join(failed_conditions)}")
+        # Skip diagnostic logging if shutdown in progress
+        if not _shutdown_in_progress:
+            # Log why long signal didn't trigger (every 30 bars)
+            entry_details = state[symbol].get("entry_details", {})
+            failed_conditions = entry_details.get("failed_conditions", [])
+            if failed_conditions:
+                logger.info(f"💡 Long signal check - conditions not met: {', '.join(failed_conditions)}")
+            else:
+                # If no failed_conditions, might be insufficient data
+                logger.info(f"💡 Long signal check - no signal detected (may be insufficient data or all conditions failed)")
+    
+    # Enhanced diagnostic every 15 minutes (more frequent than 30)
+    if not _shutdown_in_progress:
+        diagnostic_counter_15 = state[symbol].get("diagnostic_counter_15", 0) + 1
+        state[symbol]["diagnostic_counter_15"] = diagnostic_counter_15
+        if diagnostic_counter_15 % 15 == 0:
+            entry_details = state[symbol].get("entry_details", {})
+            failed_conditions = entry_details.get("failed_conditions", [])
+            if failed_conditions and len(failed_conditions) <= 3:  # Show if only a few conditions failed
+                logger.info(f"🔍 Near-signal: {9 - len(failed_conditions)}/9 conditions passed. Missing: {', '.join(failed_conditions)}")
     
     # Check for short signal
     short_passed = check_short_signal_conditions(symbol, prev_bar, current_bar)
@@ -7657,6 +7710,9 @@ def main(symbol_override: str = None) -> None:
     
     # Register signal handlers for Ctrl+C, SIGTERM, etc.
     def signal_handler(signum, frame):
+        global _shutdown_in_progress
+        _shutdown_in_progress = True
+        logger.warning("Received shutdown signal - stopping all operations")
         release_session()
         sys.exit(0)
     

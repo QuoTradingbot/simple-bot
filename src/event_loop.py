@@ -107,6 +107,7 @@ class EventLoop:
         """Handle SIGINT and SIGTERM signals for graceful shutdown."""
         signal_name = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
         logger.warning(f"Received {signal_name} - initiating graceful shutdown")
+        logger.warning("Bot will stop all non-essential logging and shut down cleanly")
         self.request_shutdown()
     
     def register_handler(self, event_type: EventType, handler: Callable) -> None:

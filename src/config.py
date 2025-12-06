@@ -804,6 +804,12 @@ def load_config(environment: Optional[str] = None, backtest_mode: bool = False) 
             env_value = getattr(env_config, key)
             setattr(config, key, env_value)
     
+    # BACKTEST MODE FIX: Force shadow_mode to False in backtest mode
+    # Shadow mode blocks trade execution, which breaks backtesting
+    # In backtest mode, we always want to execute simulated trades
+    if backtest_mode:
+        config.shadow_mode = False
+    
     # Validate configuration
     config.validate()
     

@@ -9,26 +9,26 @@ of exhaustion. You wait for proof that the move is losing momentum, then
 enter in the opposite direction to ride the snapback.
 
 LONG SIGNAL CONDITIONS (AFTER FLUSH DOWN) - ALL 9 MUST BE TRUE:
-1. Flush Happened - Range of last 7 bars >= 12 ticks (relaxed from 20)
-2. Flush Was Fast - Velocity >= 2 ticks per bar (relaxed from 3)
-3. We Are Near The Bottom - Within 8 ticks of flush low (relaxed from 5)
-4. RSI Is Oversold - RSI < 35 (relaxed from 25)
-5. Volume Spiked - Current volume >= 1.5x 20-bar average (relaxed from 2x)
+1. Flush Happened - Range of last 7 bars >= 8 ticks (2.0 points)
+2. Flush Was Fast - Velocity >= 1.5 ticks per bar minimum speed
+3. We Are Near The Bottom - Within 12 ticks (3 points) of flush low
+4. RSI Is Oversold - RSI < 45
+5. Volume Spiked - Current volume >= 1.2x 20-bar average
 6. Flush Stopped Making New Lows - Current bar low >= previous bar low
 7. Reversal Candle - Current bar closes green (close > open)
 8. Price Is Below VWAP - Current close < VWAP
-9. Regime Allows Trading - HIGH_VOL or NORMAL regimes (expanded)
+9. Regime Allows Trading - HIGH_VOL or NORMAL regimes (blocks LOW_VOL)
 
 SHORT SIGNAL CONDITIONS (AFTER FLUSH UP) - ALL 9 MUST BE TRUE:
-1. Pump Happened - Range of last 7 bars >= 12 ticks (relaxed from 20)
-2. Pump Was Fast - Velocity >= 2 ticks per bar (relaxed from 3)
-3. We Are Near The Top - Within 8 ticks of flush high (relaxed from 5)
-4. RSI Is Overbought - RSI > 65 (relaxed from 75)
-5. Volume Spiked - Current volume >= 1.5x 20-bar average (relaxed from 2x)
+1. Pump Happened - Range of last 7 bars >= 8 ticks (2.0 points)
+2. Pump Was Fast - Velocity >= 1.5 ticks per bar minimum speed
+3. We Are Near The Top - Within 12 ticks (3 points) of flush high
+4. RSI Is Overbought - RSI > 55
+5. Volume Spiked - Current volume >= 1.2x 20-bar average
 6. Pump Stopped Making New Highs - Current bar high <= previous bar high
 7. Reversal Candle - Current bar closes red (close < open)
 8. Price Is Above VWAP - Current close > VWAP
-9. Regime Allows Trading - HIGH_VOL or NORMAL regimes (expanded)
+9. Regime Allows Trading - HIGH_VOL or NORMAL regimes (blocks LOW_VOL)
 
 STOP LOSS:
 - Long: 2 ticks below flush low
@@ -159,7 +159,7 @@ class CapitulationDetector:
         else:
             conditions["4_rsi_oversold"] = False
         
-        # CONDITION 5: Volume Spiked (current volume >= 2x 20-bar average)
+        # CONDITION 5: Volume Spiked (current volume >= 1.2x 20-bar average)
         current_volume = current_bar.get("volume", 0)
         conditions["5_volume_spike"] = current_volume >= (avg_volume_20 * self.VOLUME_SPIKE_THRESHOLD)
         
@@ -233,10 +233,32 @@ class CapitulationDetector:
                 rsi_str = f"{rsi:.1f}" if rsi is not None else "N/A"
                 logger.info(f"   flush={flush_range_ticks:.1f}t, vel={velocity:.2f}, rsi={rsi_str}, vol={current_volume:.0f} (avg={avg_volume_20:.0f}, ratio={current_volume/avg_volume_20 if avg_volume_20 > 0 else 0:.2f}x)")
                 logger.info(f"   dist_from_low={distance_from_low:.1f}t, reversal={current_bar['close']:.2f}>{current_bar['open']:.2f}, below_vwap={current_bar['close']:.2f}<{vwap:.2f}")
-            # DEBUG: Periodic sampling of failures to see what's failing
+            
+            # ENHANCED DIAGNOSTIC: Log ALL 9 conditions with actual values every 10 checks
+            # This helps diagnose what's different between backtest and live
             import random
-            if random.random() < 0.002:  # 0.2% sample
-                print(f"❌ Long failed ({len(failed)}/9): {', '.join(failed[:4])}")
+            # Check if shutdown is in progress (avoid logging during shutdown)
+            try:
+                from quotrading_engine import _shutdown_in_progress as shutdown_flag
+                skip_diagnostic = shutdown_flag
+            except (ImportError, AttributeError):
+                skip_diagnostic = False
+            
+            diagnostic_sample = (random.random() < 0.1 or passed_count >= 7) and not skip_diagnostic  # 10% sample OR close to signal
+            if diagnostic_sample:
+                rsi_str = f"{rsi:.1f}" if rsi is not None else "N/A"
+                print(f"\n🔍 SIGNAL CHECK DIAGNOSTIC (Passed: {passed_count}/9)")
+                print(f"   1. Flush Size: {flush_range_ticks:.1f}t (need >={self.MIN_FLUSH_TICKS}) {'✅' if conditions.get('1_flush_happened') else '❌'}")
+                print(f"   2. Velocity: {velocity:.2f} t/bar (need >={self.MIN_VELOCITY_TICKS_PER_BAR}) {'✅' if conditions.get('2_fast_flush') else '❌'}")
+                print(f"   3. Near Extreme: {distance_from_low:.1f}t from low (need <={self.NEAR_EXTREME_TICKS}) {'✅' if conditions.get('3_near_bottom') else '❌'}")
+                print(f"   4. RSI: {rsi_str} (need <{self.RSI_OVERSOLD_EXTREME}) {'✅' if conditions.get('4_rsi_oversold') else '❌'}")
+                print(f"   5. Volume Spike: {current_volume:.0f} / {avg_volume_20:.0f} = {current_volume/avg_volume_20 if avg_volume_20 > 0 else 0:.2f}x (need >={self.VOLUME_SPIKE_THRESHOLD}x) {'✅' if conditions.get('5_volume_spike') else '❌'}")
+                print(f"   6. Stopped New Lows: cur_low={current_bar['low']:.2f} >= prev_low={prev_bar['low']:.2f} {'✅' if conditions.get('6_stopped_new_lows') else '❌'}")
+                print(f"   7. Reversal Candle: close={current_bar['close']:.2f} > open={current_bar['open']:.2f} {'✅' if conditions.get('7_reversal_candle') else '❌'}")
+                print(f"   8. Below VWAP: close={current_bar['close']:.2f} < vwap={vwap:.2f} {'✅' if conditions.get('8_below_vwap') else '❌'}")
+                print(f"   9. Regime: {regime} (allowed: HIGH_VOL*, NORMAL*) {'✅' if conditions.get('9_regime_allows') else '❌'}")
+                if passed_count >= 7:
+                    print(f"   ⚠️  VERY CLOSE! Only {9-passed_count} condition(s) away from signal!")
             
             # DIAGNOSTIC: Log ALL near-misses (8 or 9 conditions) to help debug why 0 signals
             if passed_count >= 8:
@@ -300,7 +322,7 @@ class CapitulationDetector:
         else:
             conditions["4_rsi_overbought"] = False
         
-        # CONDITION 5: Volume Spiked (current volume >= 2x 20-bar average)
+        # CONDITION 5: Volume Spiked (current volume >= 1.2x 20-bar average)
         current_volume = current_bar.get("volume", 0)
         conditions["5_volume_spike"] = current_volume >= (avg_volume_20 * self.VOLUME_SPIKE_THRESHOLD)
         
@@ -371,6 +393,31 @@ class CapitulationDetector:
                 logger.info(f"🎯 CLOSE TO SHORT SIGNAL! {passed_count}/9 passed. Failed: {', '.join(failed)}")
                 rsi_str = f"{rsi:.1f}" if rsi is not None else "N/A"
                 logger.info(f"   pump={flush_range_ticks:.1f}t, vel={velocity:.2f}, rsi={rsi_str}, vol={current_volume:.0f} (avg={avg_volume_20:.0f})")
+            
+            # ENHANCED DIAGNOSTIC: Log ALL 9 conditions with actual values every 10 checks
+            import random
+            # Check if shutdown is in progress (avoid logging during shutdown)
+            try:
+                from quotrading_engine import _shutdown_in_progress as shutdown_flag
+                skip_diagnostic = shutdown_flag
+            except (ImportError, AttributeError):
+                skip_diagnostic = False
+            
+            diagnostic_sample = (random.random() < 0.1 or passed_count >= 7) and not skip_diagnostic  # 10% sample OR close to signal
+            if diagnostic_sample:
+                rsi_str = f"{rsi:.1f}" if rsi is not None else "N/A"
+                print(f"\n🔍 SHORT SIGNAL CHECK DIAGNOSTIC (Passed: {passed_count}/9)")
+                print(f"   1. Pump Size: {flush_range_ticks:.1f}t (need >={self.MIN_FLUSH_TICKS}) {'✅' if conditions.get('1_pump_happened') else '❌'}")
+                print(f"   2. Velocity: {velocity:.2f} t/bar (need >={self.MIN_VELOCITY_TICKS_PER_BAR}) {'✅' if conditions.get('2_fast_pump') else '❌'}")
+                print(f"   3. Near Extreme: {distance_from_high:.1f}t from high (need <={self.NEAR_EXTREME_TICKS}) {'✅' if conditions.get('3_near_top') else '❌'}")
+                print(f"   4. RSI: {rsi_str} (need >{self.RSI_OVERBOUGHT_EXTREME}) {'✅' if conditions.get('4_rsi_overbought') else '❌'}")
+                print(f"   5. Volume Spike: {current_volume:.0f} / {avg_volume_20:.0f} = {current_volume/avg_volume_20 if avg_volume_20 > 0 else 0:.2f}x (need >={self.VOLUME_SPIKE_THRESHOLD}x) {'✅' if conditions.get('5_volume_spike') else '❌'}")
+                print(f"   6. Stopped New Highs: cur_high={current_bar['high']:.2f} <= prev_high={prev_bar['high']:.2f} {'✅' if conditions.get('6_stopped_new_highs') else '❌'}")
+                print(f"   7. Reversal Candle: close={current_bar['close']:.2f} < open={current_bar['open']:.2f} {'✅' if conditions.get('7_reversal_candle') else '❌'}")
+                print(f"   8. Above VWAP: close={current_bar['close']:.2f} > vwap={vwap:.2f} {'✅' if conditions.get('8_above_vwap') else '❌'}")
+                print(f"   9. Regime: {regime} (allowed: HIGH_VOL*, NORMAL*) {'✅' if conditions.get('9_regime_allows') else '❌'}")
+                if passed_count >= 7:
+                    print(f"   ⚠️  VERY CLOSE! Only {9-passed_count} condition(s) away from signal!")
         
         return all_passed, details
     

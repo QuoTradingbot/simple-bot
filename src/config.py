@@ -330,14 +330,13 @@ class BotConfiguration:
     # EXIT LOGIC (HARDCODED):
     # - Breakeven: Move stop to entry + 1 tick after 12 ticks profit
     # - Trailing: Start trailing after 15 ticks profit (8 ticks behind peak)
-    # - Time stop: Optional exit after 20 bars if no resolution
     #
     # HARDCODED VALUES (in capitulation_detector.py):
     # - breakeven_trigger_ticks: 12 (move stop to entry + 1 tick)
     # - breakeven_buffer_ticks: 1 (entry + 1 tick offset)
     # - trailing_trigger_ticks: 15 (start trailing after 15 ticks profit)
     # - trailing_distance_ticks: 8 (trail 8 ticks behind peak)
-    # - max_hold_bars: 20 (optional time stop after 20 bars)
+    # - max_hold_bars: 20 (time stop - user configurable via GUI)
     #
     # WHY TRAILING WORKS:
     # - Small reversal: Trail protects gains, locks in 16+ ticks

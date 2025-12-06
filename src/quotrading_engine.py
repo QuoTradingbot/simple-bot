@@ -4517,17 +4517,17 @@ def check_stop_hit(symbol: str, current_bar: Dict[str, Any], position: Dict[str,
 
 def check_reversal_signal(symbol: str, current_bar: Dict[str, Any], position: Dict[str, Any]) -> Tuple[bool, Optional[float]]:
     """
-    Check if price has reached VWAP BEFORE trailing stop activates.
+    Check if price has reached reversal level before trailing stop activates.
     
     CAPITULATION REVERSAL EXIT STRATEGY:
     - Trailing stop handles all profit-taking (activates at 15+ ticks profit)
-    - VWAP is a SAFETY NET only used if price reaches VWAP before trailing activates
-    - Once trailing is active (15+ ticks), ignore VWAP and let trailing ride
+    - Early exit check: If price reverses before trailing activates, exit early
+    - Once trailing is active (15+ ticks), let trailing ride
     
     Logic:
-    - If price reaches VWAP before trailing activates (before 15 ticks profit): exit at VWAP
-    - If trailing activates first (15+ ticks profit): let it ride, ignore VWAP target
-    - Trailing stop eventually exits you, either at VWAP or beyond
+    - If price reverses before trailing activates (before 15 ticks profit): exit early
+    - If trailing activates first (15+ ticks profit): let it ride
+    - Trailing stop eventually exits the position
     
     This captures more profit on big reversals while still protecting gains on weak ones.
     
@@ -4567,15 +4567,15 @@ def check_reversal_signal(symbol: str, current_bar: Dict[str, Any], position: Di
         # Trailing stop should be active - don't use VWAP target
         return False, None
     
-    # Trailing not active yet - check if we've reached VWAP (safety net)
+    # Trailing not active yet - check if we've reached reversal point (early exit)
     if side == "long":
         if current_price >= vwap:
-            logger.info(f"📊 VWAP TARGET HIT (before trailing): Price ${current_price:.2f} >= VWAP ${vwap:.2f}")
+            logger.info(f"📊 REVERSAL HIT (before trailing): Price ${current_price:.2f} >= ${vwap:.2f}")
             return True, current_price
     
     if side == "short":
         if current_price <= vwap:
-            logger.info(f"📊 VWAP TARGET HIT (before trailing): Price ${current_price:.2f} <= VWAP ${vwap:.2f}")
+            logger.info(f"📊 REVERSAL HIT (before trailing): Price ${current_price:.2f} <= ${vwap:.2f}")
             return True, current_price
     
     return False, None
@@ -5646,10 +5646,10 @@ def check_exit_conditions(symbol: str) -> None:
     # EIGHTH - Time-decay tightening (last priority, gradual adjustment)
     check_time_decay_tightening(symbol, bar_time)
     
-    # Check for VWAP target hit (mean reversion complete)
-    target_hit, price = check_reversal_signal(symbol, current_bar, position)
-    if target_hit:
-        execute_exit(symbol, price, "target_hit")
+    # Check for reversal signal (early exit before trailing activates)
+    reversal_hit, price = check_reversal_signal(symbol, current_bar, position)
+    if reversal_hit:
+        execute_exit(symbol, price, "reversal_hit")
         return
 
 

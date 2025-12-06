@@ -1577,9 +1577,9 @@ def heartbeat():
             return jsonify({"status": "error", "message": rate_msg}), 429
         
         # Validate license
-        is_valid, message, _ = validate_license(license_key)
+        is_valid, message, license_expiration = validate_license(license_key)
         if not is_valid:
-            return jsonify({"status": "error", "message": message}), 403
+            return jsonify({"status": "error", "message": message, "license_valid": False}), 403
         
         # Record heartbeat with session locking
         conn = get_db_connection()
@@ -1624,13 +1624,29 @@ def heartbeat():
                     
                     active_count = count_active_symbol_sessions(conn, license_key)
                     
+                    # Calculate days and hours until expiration
+                    days_until_expiration = None
+                    hours_until_expiration = None
+                    if license_expiration:
+                        now_utc = datetime.now(timezone.utc)
+                        expiration = license_expiration
+                        # If expiration is naive, make it UTC-aware
+                        if expiration.tzinfo is None:
+                            expiration = expiration.replace(tzinfo=timezone.utc)
+                        time_until_expiration = expiration - now_utc
+                        days_until_expiration = time_until_expiration.days
+                        hours_until_expiration = time_until_expiration.total_seconds() / 3600
+                    
                     return jsonify({
                         "status": "success",
                         "message": f"Heartbeat recorded for {symbol}",
                         "license_valid": True,
                         "session_conflict": False,
                         "symbol": symbol,
-                        "active_symbols": active_count
+                        "active_symbols": active_count,
+                        "license_expiration": license_expiration.isoformat() if license_expiration else None,
+                        "days_until_expiration": days_until_expiration,
+                        "hours_until_expiration": hours_until_expiration
                     }), 200
                 
                 # LEGACY: No symbol provided - use original single-session logic
@@ -1686,11 +1702,27 @@ def heartbeat():
                     
                     conn.commit()
                     
+                # Calculate days and hours until expiration
+                days_until_expiration = None
+                hours_until_expiration = None
+                if license_expiration:
+                    now_utc = datetime.now(timezone.utc)
+                    expiration = license_expiration
+                    # If expiration is naive, make it UTC-aware
+                    if expiration.tzinfo is None:
+                        expiration = expiration.replace(tzinfo=timezone.utc)
+                    time_until_expiration = expiration - now_utc
+                    days_until_expiration = time_until_expiration.days
+                    hours_until_expiration = time_until_expiration.total_seconds() / 3600
+                
                 return jsonify({
                     "status": "success",
                     "message": "Heartbeat recorded",
                     "license_valid": True,
-                    "session_conflict": False
+                    "session_conflict": False,
+                    "license_expiration": license_expiration.isoformat() if license_expiration else None,
+                    "days_until_expiration": days_until_expiration,
+                    "hours_until_expiration": hours_until_expiration
                 }), 200
             finally:
                 return_connection(conn)

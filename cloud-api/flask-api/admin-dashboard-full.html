@@ -2142,7 +2142,25 @@
                 
                 if (data.license_valid) {
                     const expiresAt = data.license_expiration ? new Date(data.license_expiration).toLocaleDateString() : 'Never';
-                    const daysLeft = data.days_until_expiration || 'Unlimited';
+                    
+                    // Calculate time remaining display
+                    let timeRemaining = 'Unlimited';
+                    if (data.days_until_expiration !== null && data.days_until_expiration !== undefined) {
+                        const days = Math.floor(data.days_until_expiration);
+                        const hours = data.hours_until_expiration !== null ? Math.floor(data.hours_until_expiration % 24) : 0;
+                        const totalHours = data.hours_until_expiration !== null ? Math.floor(data.hours_until_expiration) : 0;
+                        
+                        if (days < 0 || totalHours < 0) {
+                            timeRemaining = 'EXPIRED';
+                        } else if (days > 0) {
+                            timeRemaining = `${days} day${days !== 1 ? 's' : ''}`;
+                        } else if (totalHours > 0) {
+                            timeRemaining = `${totalHours} hour${totalHours !== 1 ? 's' : ''}`;
+                        } else {
+                            const minutes = Math.floor((data.hours_until_expiration * 60) % 60);
+                            timeRemaining = `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+                        }
+                    }
                     
                     resultDiv.innerHTML = `
                         <div style="background: #e6f4ea; border: 2px solid #34a853; border-radius: 12px; padding: 24px;">
@@ -2158,8 +2176,8 @@
                                     <div style="color: #202124; font-weight: 500;">${expiresAt}</div>
                                 </div>
                                 <div style="background: white; padding: 16px; border-radius: 8px;">
-                                    <div style="color: #5f6368; font-size: 13px; margin-bottom: 4px;">Days Remaining</div>
-                                    <div style="color: #202124; font-weight: 500;">${daysLeft}</div>
+                                    <div style="color: #5f6368; font-size: 13px; margin-bottom: 4px;">Time Remaining</div>
+                                    <div style="color: #202124; font-weight: 500;">${timeRemaining}</div>
                                 </div>
                             </div>
                             <div style="margin-top: 16px; padding: 12px; background: rgba(255,255,255,0.5); border-radius: 8px; font-size: 14px; color: #1e8e3e;">
@@ -2238,6 +2256,8 @@
                 const data = await response.json();
                 
                 if (response.ok) {
+                    const expiresAt = data.expires_at ? new Date(data.expires_at).toLocaleString() : 'Unknown';
+                    
                     resultDiv.innerHTML = `
                         <div style="background: #e6f4ea; border: 2px solid #34a853; border-radius: 8px; padding: 16px;">
                             <div style="font-size: 32px; text-align: center; margin-bottom: 8px;">✅</div>
@@ -2247,7 +2267,7 @@
                                 <div style="font-family: 'Courier New', monospace; font-size: 13px; color: #202124; font-weight: 600;">${data.license_key}</div>
                             </div>
                             <div style="font-size: 12px; color: #5f6368; text-align: center;">
-                                Expires: ${new Date(data.expires_at).toLocaleString()}
+                                Expires: ${expiresAt}
                             </div>
                         </div>
                     `;

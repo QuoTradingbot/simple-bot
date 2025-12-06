@@ -18,7 +18,7 @@ from tkinter import ttk, messagebox
 import os
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 import sys
 import subprocess
 import re
@@ -88,6 +88,21 @@ def get_device_fingerprint() -> str:
     fingerprint_hash = hashlib.sha256(fingerprint_raw.encode()).hexdigest()[:16]
     
     return fingerprint_hash
+
+
+def ensure_utc_aware(dt: datetime) -> datetime:
+    """
+    Ensure a datetime object is UTC-aware.
+    
+    Args:
+        dt: datetime object (may be naive or aware)
+    
+    Returns:
+        UTC-aware datetime object
+    """
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def check_launcher_lock(api_key: str) -> tuple[bool, dict]:
@@ -598,7 +613,9 @@ class QuoTradingLauncher:
                     if expiry_date_str:
                         try:
                             expiry_date = datetime.fromisoformat(expiry_date_str.replace('Z', '+00:00'))
-                            time_until_expiration = expiry_date - datetime.now(expiry_date.tzinfo)
+                            # Ensure expiry_date is timezone-aware (UTC)
+                            expiry_date = ensure_utc_aware(expiry_date)
+                            time_until_expiration = expiry_date - datetime.now(timezone.utc)
                             days_until_expiration = time_until_expiration.days
                             hours_until_expiration = time_until_expiration.total_seconds() / 3600
                         except Exception:
@@ -1737,6 +1754,9 @@ class QuoTradingLauncher:
             else:
                 # Already a datetime object
                 expiration_dt = license_expiration
+            
+            # Ensure expiration_dt is timezone-aware (UTC)
+            expiration_dt = ensure_utc_aware(expiration_dt)
             
             # Calculate time remaining
             now = datetime.now(timezone.utc)

@@ -8307,10 +8307,44 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
             bot_status["stop_reason"] = "License validation failed - invalid key"
         
         elif response.status_code == 403:
-            # Session conflict - another device is using this license
+            # Could be either expired license or session conflict - check license_valid first
             try:
                 data = response.json()
-                if data.get("session_conflict"):
+                
+                # Check for license expiration FIRST (explicit check for False)
+                if "license_valid" in data and data["license_valid"] is False:
+                    reason = data.get('message', 'License invalid')
+                    logger.critical("=" * 70)
+                    logger.critical("")
+                    logger.critical("  ⚠️ YOUR LICENSE HAS EXPIRED")
+                    logger.critical("")
+                    logger.critical(f"  {reason}")
+                    logger.critical("")
+                    logger.critical("  Your license key has expired and needs to be renewed.")
+                    logger.critical("  Please renew your subscription to continue trading.")
+                    logger.critical("")
+                    logger.critical("  Contact: support@quotrading.com")
+                    logger.critical("")
+                    logger.critical("=" * 70)
+                    bot_status["license_expired"] = True
+                    bot_status["trading_enabled"] = False
+                    bot_status["emergency_stop"] = True
+                    bot_status["stop_reason"] = "license_expired"
+                    
+                    # Disconnect broker
+                    if broker is not None:
+                        try:
+                            broker.disconnect()
+                        except:
+                            pass
+                    
+                    # Exit the bot completely
+                    logger.critical("Shutting down bot in 5 seconds...")
+                    time_module.sleep(5)
+                    logger.critical("BOT SHUTDOWN - License expired")
+                    sys.exit(1)  # Exit with error code
+                elif data.get("session_conflict"):
+                    # Session conflict - another device is using this license
                     logger.critical("=" * 70)
                     logger.critical("")
                     logger.critical("  ⚠️ LICENSE ALREADY IN USE - AUTO SHUTDOWN")
@@ -8340,11 +8374,44 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
                     logger.critical("BOT SHUTDOWN - Session conflict detected")
                     sys.exit(1)  # Exit with error code
                 else:
-                    logger.critical("LICENSE VALIDATION FAILED - Forbidden")
+                    # Generic 403 - could be expired license without explicit flag
+                    reason = data.get('message', 'Forbidden')
+                    # Check message for expiration keywords as fallback
+                    if "expir" in reason.lower():
+                        logger.critical("=" * 70)
+                        logger.critical("")
+                        logger.critical("  ⚠️ YOUR LICENSE HAS EXPIRED")
+                        logger.critical("")
+                        logger.critical(f"  {reason}")
+                        logger.critical("")
+                        logger.critical("  Your license key has expired and needs to be renewed.")
+                        logger.critical("  Please renew your subscription to continue trading.")
+                        logger.critical("")
+                        logger.critical("  Contact: support@quotrading.com")
+                        logger.critical("")
+                        logger.critical("=" * 70)
+                        bot_status["stop_reason"] = "license_expired"
+                    else:
+                        logger.critical("LICENSE VALIDATION FAILED - Forbidden")
+                        logger.critical(f"Reason: {reason}")
+                        bot_status["stop_reason"] = "License validation failed - forbidden"
+                    
                     bot_status["license_expired"] = True
                     bot_status["trading_enabled"] = False
                     bot_status["emergency_stop"] = True
-                    bot_status["stop_reason"] = "License validation failed - forbidden"
+                    
+                    # Disconnect broker
+                    if broker is not None:
+                        try:
+                            broker.disconnect()
+                        except:
+                            pass
+                    
+                    # Exit the bot completely
+                    logger.critical("Shutting down bot in 5 seconds...")
+                    time_module.sleep(5)
+                    logger.critical("BOT SHUTDOWN - License validation failed")
+                    sys.exit(1)  # Exit with error code
             except:
                 logger.critical("LICENSE VALIDATION FAILED - Forbidden")
                 bot_status["license_expired"] = True
@@ -8464,8 +8531,41 @@ def send_heartbeat() -> None:
         if response.status_code == 200:
             data = response.json()
             
+            # Check for license expiration FIRST (even with 200 status, data might indicate invalid)
+            if "license_valid" in data and data["license_valid"] is False:
+                reason = data.get('message', 'License invalid')
+                logger.critical("=" * 70)
+                logger.critical("")
+                logger.critical("  ⚠️ YOUR LICENSE HAS EXPIRED")
+                logger.critical("")
+                logger.critical(f"  {reason}")
+                logger.critical("")
+                logger.critical("  Your license key has expired and needs to be renewed.")
+                logger.critical("  Please renew your subscription to continue trading.")
+                logger.critical("")
+                logger.critical("  Contact: support@quotrading.com")
+                logger.critical("")
+                logger.critical("=" * 70)
+                
+                # Disable trading and shut down
+                bot_status["trading_enabled"] = False
+                bot_status["emergency_stop"] = True
+                bot_status["stop_reason"] = "license_expired"
+                
+                # Disconnect broker
+                if broker is not None:
+                    try:
+                        broker.disconnect()
+                    except:
+                        pass
+                
+                # Exit the bot completely
+                logger.critical("Shutting down bot in 5 seconds...")
+                time_module.sleep(5)
+                logger.critical("BOT SHUTDOWN - License expired")
+                sys.exit(1)  # Exit with error code
             # Check for session conflict (license in use on another device)
-            if data.get("session_conflict", False):
+            elif data.get("session_conflict", False):
                 logger.critical("=" * 70)
                 logger.critical("")
                 logger.critical("  ⚠️ LICENSE ALREADY IN USE - AUTO SHUTDOWN")
@@ -8500,36 +8600,140 @@ def send_heartbeat() -> None:
             
             logger.debug("Heartbeat sent successfully")
         elif response.status_code == 403:
-            # Session conflict detected by server
-            logger.critical("=" * 70)
-            logger.critical("")
-            logger.critical("  ⚠️ LICENSE ALREADY IN USE - AUTO SHUTDOWN")
-            logger.critical("")
-            logger.critical("  Your license key is currently active on another device/instance.")
-            logger.critical("  Only one instance can use a license at a time.")
-            logger.critical("  This bot instance will now shut down automatically.")
-            logger.critical("")
-            logger.critical("  Contact: support@quotrading.com")
-            logger.critical("")
-            logger.critical("=" * 70)
-            
-            # Disable trading and shut down
-            bot_status["trading_enabled"] = False
-            bot_status["emergency_stop"] = True
-            bot_status["stop_reason"] = "license_conflict"
-            
-            # Disconnect broker
-            if broker is not None:
-                try:
-                    broker.disconnect()
-                except:
-                    pass
-            
-            # Exit the bot completely
-            logger.critical("Shutting down bot in 5 seconds...")
-            time_module.sleep(5)
-            logger.critical("BOT SHUTDOWN - Session conflict detected")
-            sys.exit(1)  # Exit with error code
+            # Could be either expired license or session conflict - check license_valid first
+            try:
+                data = response.json()
+                
+                # Check for license expiration FIRST (explicit check for False)
+                if "license_valid" in data and data["license_valid"] is False:
+                    reason = data.get('message', 'License invalid')
+                    logger.critical("=" * 70)
+                    logger.critical("")
+                    logger.critical("  ⚠️ YOUR LICENSE HAS EXPIRED")
+                    logger.critical("")
+                    logger.critical(f"  {reason}")
+                    logger.critical("")
+                    logger.critical("  Your license key has expired and needs to be renewed.")
+                    logger.critical("  Please renew your subscription to continue trading.")
+                    logger.critical("")
+                    logger.critical("  Contact: support@quotrading.com")
+                    logger.critical("")
+                    logger.critical("=" * 70)
+                    
+                    # Disable trading and shut down
+                    bot_status["trading_enabled"] = False
+                    bot_status["emergency_stop"] = True
+                    bot_status["stop_reason"] = "license_expired"
+                    
+                    # Disconnect broker
+                    if broker is not None:
+                        try:
+                            broker.disconnect()
+                        except:
+                            pass
+                    
+                    # Exit the bot completely
+                    logger.critical("Shutting down bot in 5 seconds...")
+                    time_module.sleep(5)
+                    logger.critical("BOT SHUTDOWN - License expired")
+                    sys.exit(1)  # Exit with error code
+                elif data.get("session_conflict"):
+                    # Session conflict detected by server
+                    logger.critical("=" * 70)
+                    logger.critical("")
+                    logger.critical("  ⚠️ LICENSE ALREADY IN USE - AUTO SHUTDOWN")
+                    logger.critical("")
+                    logger.critical("  Your license key is currently active on another device/instance.")
+                    logger.critical("  Only one instance can use a license at a time.")
+                    logger.critical("  This bot instance will now shut down automatically.")
+                    logger.critical("")
+                    logger.critical("  Contact: support@quotrading.com")
+                    logger.critical("")
+                    logger.critical("=" * 70)
+                    
+                    # Disable trading and shut down
+                    bot_status["trading_enabled"] = False
+                    bot_status["emergency_stop"] = True
+                    bot_status["stop_reason"] = "license_conflict"
+                    
+                    # Disconnect broker
+                    if broker is not None:
+                        try:
+                            broker.disconnect()
+                        except:
+                            pass
+                    
+                    # Exit the bot completely
+                    logger.critical("Shutting down bot in 5 seconds...")
+                    time_module.sleep(5)
+                    logger.critical("BOT SHUTDOWN - Session conflict detected")
+                    sys.exit(1)  # Exit with error code
+                else:
+                    # Generic 403 - could be expired license without explicit flag
+                    reason = data.get('message', 'Forbidden')
+                    # Check message for expiration keywords as fallback
+                    if "expir" in reason.lower():
+                        logger.critical("=" * 70)
+                        logger.critical("")
+                        logger.critical("  ⚠️ YOUR LICENSE HAS EXPIRED")
+                        logger.critical("")
+                        logger.critical(f"  {reason}")
+                        logger.critical("")
+                        logger.critical("  Your license key has expired and needs to be renewed.")
+                        logger.critical("  Please renew your subscription to continue trading.")
+                        logger.critical("")
+                        logger.critical("  Contact: support@quotrading.com")
+                        logger.critical("")
+                        logger.critical("=" * 70)
+                        bot_status["stop_reason"] = "license_expired"
+                    else:
+                        logger.critical("=" * 70)
+                        logger.critical("LICENSE VALIDATION FAILED - Forbidden")
+                        logger.critical(f"Reason: {reason}")
+                        logger.critical("Contact: support@quotrading.com")
+                        logger.critical("=" * 70)
+                        bot_status["stop_reason"] = "license_validation_failed"
+                    
+                    # Disable trading and shut down
+                    bot_status["trading_enabled"] = False
+                    bot_status["emergency_stop"] = True
+                    
+                    # Disconnect broker
+                    if broker is not None:
+                        try:
+                            broker.disconnect()
+                        except:
+                            pass
+                    
+                    # Exit the bot completely
+                    logger.critical("Shutting down bot in 5 seconds...")
+                    time_module.sleep(5)
+                    logger.critical("BOT SHUTDOWN - License validation failed")
+                    sys.exit(1)  # Exit with error code
+            except Exception as e:
+                # Failed to parse response - treat as license validation failure
+                logger.critical("=" * 70)
+                logger.critical("LICENSE VALIDATION FAILED - Forbidden")
+                logger.critical("Contact: support@quotrading.com")
+                logger.critical("=" * 70)
+                
+                # Disable trading and shut down
+                bot_status["trading_enabled"] = False
+                bot_status["emergency_stop"] = True
+                bot_status["stop_reason"] = "license_validation_failed"
+                
+                # Disconnect broker
+                if broker is not None:
+                    try:
+                        broker.disconnect()
+                    except:
+                        pass
+                
+                # Exit the bot completely
+                logger.critical("Shutting down bot in 5 seconds...")
+                time_module.sleep(5)
+                logger.critical("BOT SHUTDOWN - License validation failed")
+                sys.exit(1)  # Exit with error code
         else:
             logger.debug(f"Heartbeat returned HTTP {response.status_code}")
     

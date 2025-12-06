@@ -1466,6 +1466,19 @@ class BrokerSDKImplementation(BrokerInterface):
             logger.error(f"Error subscribing to quotes: {e}")
             self._record_failure()
     
+    def get_contract_id(self, symbol: str) -> Optional[str]:
+        """
+        Public method to get contract ID for a symbol.
+        Useful for external tools like data recorders.
+        
+        Args:
+            symbol: Trading symbol (e.g., 'ES', 'NQ')
+        
+        Returns:
+            Contract ID string or None if not found
+        """
+        return self._get_contract_id_sync(symbol)
+    
     def _get_contract_id_sync(self, symbol: str) -> Optional[str]:
         """
         Get TopStep contract ID for a symbol (e.g., ES -> CON.F.US.EP.Z25).

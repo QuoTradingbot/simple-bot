@@ -168,6 +168,12 @@ launcher/*.exe
 # Launcher config (contains credentials)
 launcher/config.json
 
+# Data Recorder config (contains credentials)
+launcher/data_recorder_config.json
+
+# Allow market_data directory to be committed (for continuous recording)
+# Individual CSV files in market_data/ will be tracked
+
 # Keep example/template files
 !data/.gitkeep
 !launcher/.gitkeep

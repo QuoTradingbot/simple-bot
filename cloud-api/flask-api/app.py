@@ -116,6 +116,38 @@ def mask_email(email: str) -> str:
         return f"***@{domain}"
     return f"{local[:2]}***@{domain}"
 
+def format_datetime_utc(dt):
+    """Format datetime as UTC ISO string with 'Z' suffix.
+    
+    Ensures naive datetimes are treated as UTC and returns proper ISO format
+    that JavaScript can parse consistently across all timezones.
+    
+    Args:
+        dt: datetime object (can be None, naive, or timezone-aware)
+    
+    Returns:
+        ISO format string with 'Z' suffix (e.g., '2025-12-06T17:37:44Z') or None
+    """
+    if dt is None:
+        return None
+    
+    # If datetime is naive (no timezone), assume it's UTC and make it aware
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    
+    # Convert to ISO format and ensure it uses 'Z' suffix for UTC
+    iso_str = dt.isoformat()
+    
+    # Replace timezone offset with 'Z' for UTC
+    if iso_str.endswith('+00:00'):
+        return iso_str.replace('+00:00', 'Z')
+    elif not iso_str.endswith('Z'):
+        # If it's not UTC, convert to UTC first
+        dt_utc = dt.astimezone(timezone.utc)
+        return dt_utc.isoformat().replace('+00:00', 'Z')
+    
+    return iso_str
+
 def send_license_email(email, license_key, whop_user_id=None, whop_membership_id=None):
     logging.info(f"🔍 send_license_email() called for {mask_email(email)}, license {mask_sensitive(license_key)}")
     logging.info(f"🔍 SENDGRID_API_KEY present: {bool(SENDGRID_API_KEY)}")
@@ -1644,7 +1676,7 @@ def heartbeat():
                         "session_conflict": False,
                         "symbol": symbol,
                         "active_symbols": active_count,
-                        "license_expiration": license_expiration.isoformat().replace('+00:00', 'Z') if license_expiration else None,
+                        "license_expiration": format_datetime_utc(license_expiration),
                         "days_until_expiration": days_until_expiration,
                         "hours_until_expiration": hours_until_expiration
                     }), 200
@@ -2534,9 +2566,9 @@ def admin_list_users():
                     "license_key": user['license_key'],
                     "license_type": user['license_type'].upper() if user['license_type'] else 'MONTHLY',
                     "license_status": user['license_status'].upper() if user['license_status'] else 'ACTIVE',
-                    "license_expiration": user['license_expiration'].isoformat().replace('+00:00', 'Z') if user['license_expiration'] else None,
-                    "created_at": user['created_at'].isoformat().replace('+00:00', 'Z') if user['created_at'] else None,
-                    "last_active": user['last_active'].isoformat().replace('+00:00', 'Z') if user['last_active'] else None,
+                    "license_expiration": format_datetime_utc(user['license_expiration']),
+                    "created_at": format_datetime_utc(user['created_at']),
+                    "last_active": format_datetime_utc(user['last_active']),
                     "is_online": user['is_online'],
                     "api_call_count": int(user['api_call_count']) if user['api_call_count'] else 0,
                     "trade_count": int(user['trade_count']) if user['trade_count'] else 0
@@ -2607,9 +2639,9 @@ def admin_get_user(account_id):
                     "license_key": user['license_key'],
                     "license_type": user['license_type'],
                     "license_status": user['license_status'],
-                    "license_expiration": user['license_expiration'].isoformat().replace('+00:00', 'Z') if user['license_expiration'] else None,
-                    "created_at": user['created_at'].isoformat().replace('+00:00', 'Z') if user['created_at'] else None,
-                    "last_active": user['last_active'].isoformat().replace('+00:00', 'Z') if user['last_active'] else None,
+                    "license_expiration": format_datetime_utc(user['license_expiration']),
+                    "created_at": format_datetime_utc(user['created_at']),
+                    "last_active": format_datetime_utc(user['last_active']),
                     "notes": None
                 },
                 "recent_api_calls": api_call_count,
@@ -2955,8 +2987,8 @@ def admin_add_user():
                 "license_key": license_key,
                 "account_id": account_id,
                 "email": email,
-                "expires_at": expiration.isoformat().replace('+00:00', 'Z'),
-                "expiration": expiration.isoformat().replace('+00:00', 'Z')  # Keep for backward compatibility
+                "expires_at": format_datetime_utc(expiration),
+                "expiration": format_datetime_utc(expiration)  # Keep for backward compatibility
             }), 201
     except Exception as e:
         logging.error(f"Add user error: {e}")

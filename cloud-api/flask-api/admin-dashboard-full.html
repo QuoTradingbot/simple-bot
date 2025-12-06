@@ -2753,11 +2753,14 @@
         // Countdown timer for license expiration
         function formatCountdown(expirationDateStr) {
             if (!expirationDateStr) return 'N/A';
-            // Use UTC time for both current time and expiration to avoid timezone issues
+            // CRITICAL: Use UTC for both current time and expiration time
+            // Otherwise timezone offset causes wrong countdown (e.g., 5 min shows as 5 hours)
             const now = new Date();
             const expiration = new Date(expirationDateStr);
             
             // Calculate difference in milliseconds
+            // Both dates are Date objects, so subtraction works correctly regardless of timezone
+            // because JavaScript internally stores all dates as UTC milliseconds since epoch
             const diffMs = expiration - now;
             
             // Already expired

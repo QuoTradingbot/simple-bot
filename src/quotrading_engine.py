@@ -8329,7 +8329,7 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
                     bot_status["license_expired"] = True
                     bot_status["trading_enabled"] = False
                     bot_status["emergency_stop"] = True
-                    bot_status["stop_reason"] = "License expired"
+                    bot_status["stop_reason"] = "license_expired"
                     
                     # Disconnect broker
                     if broker is not None:
@@ -8390,7 +8390,7 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
                         logger.critical("  Contact: support@quotrading.com")
                         logger.critical("")
                         logger.critical("=" * 70)
-                        bot_status["stop_reason"] = "License expired"
+                        bot_status["stop_reason"] = "license_expired"
                     else:
                         logger.critical("LICENSE VALIDATION FAILED - Forbidden")
                         logger.critical(f"Reason: {reason}")
@@ -8698,7 +8698,7 @@ def send_heartbeat() -> None:
                     logger.critical("BOT SHUTDOWN - License validation failed")
                     sys.exit(1)  # Exit with error code
             except Exception as e:
-                # Failed to parse response - treat as session conflict
+                # Failed to parse response - treat as license validation failure
                 logger.critical("=" * 70)
                 logger.critical("LICENSE VALIDATION FAILED - Forbidden")
                 logger.critical("Contact: support@quotrading.com")

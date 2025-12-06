@@ -8399,6 +8399,19 @@ def handle_license_check_event(data: Dict[str, Any]) -> None:
                     bot_status["license_expired"] = True
                     bot_status["trading_enabled"] = False
                     bot_status["emergency_stop"] = True
+                    
+                    # Disconnect broker
+                    if broker is not None:
+                        try:
+                            broker.disconnect()
+                        except:
+                            pass
+                    
+                    # Exit the bot completely
+                    logger.critical("Shutting down bot in 5 seconds...")
+                    time_module.sleep(5)
+                    logger.critical("BOT SHUTDOWN - License validation failed")
+                    sys.exit(1)  # Exit with error code
             except:
                 logger.critical("LICENSE VALIDATION FAILED - Forbidden")
                 bot_status["license_expired"] = True
